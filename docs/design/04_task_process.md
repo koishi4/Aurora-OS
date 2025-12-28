@@ -12,6 +12,7 @@
 - 增加上下文结构与 `context_switch` 汇编入口，当前仅保留接口占位。
 - 内核栈在早期由帧分配器分配连续页，后续与任务生命周期绑定。
 - TaskControlBlock 支持入口函数指针与栈顶配置，早期用 dummy task 验证流程。
+- 调度触发周期可配置（tick 周期参数），避免频繁切换。
 
 ## 关键数据结构
 - TaskControlBlock / ProcessControlBlock：状态、优先级、时间片等字段预留。
@@ -41,5 +42,5 @@ after boot
 ## 测试点
 - tick 计数增长与 `sleep_ms` / `wait_timeout_ms` 行为。
 - notify_one/notify_all 的唤醒行为。
-- scheduler tick hook 的日志输出。
+- scheduler tick hook 的日志输出与周期调度行为。
 - 后续 busybox/多任务场景回归。

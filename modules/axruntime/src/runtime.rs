@@ -52,13 +52,6 @@ pub fn init() {
     }
 }
 
-pub fn schedule() {
-    if let Some(mut task) = RUN_QUEUE.pop_ready() {
-        task.state = TaskState::Running;
-        RUN_QUEUE.push_back(task);
-    }
-}
-
 pub fn schedule_once() {
     let mut next = match RUN_QUEUE.pop_ready() {
         Some(task) => task,
@@ -74,4 +67,13 @@ pub fn schedule_once() {
     }
 
     RUN_QUEUE.push_back(next);
+}
+
+pub fn maybe_schedule(ticks: u64, interval: u64) {
+    if interval == 0 {
+        return;
+    }
+    if ticks % interval == 0 {
+        schedule_once();
+    }
 }

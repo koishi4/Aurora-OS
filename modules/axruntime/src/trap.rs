@@ -90,9 +90,7 @@ extern "C" fn trap_handler(tf: &mut TrapFrame) {
             }
             let ticks = time::tick();
             runtime::on_tick(ticks);
-            if ticks % 100 == 0 {
-                runtime::schedule_once();
-            }
+            runtime::maybe_schedule(ticks, 100);
             return;
         }
     } else if code == SCAUSE_SUPERVISOR_ECALL {
