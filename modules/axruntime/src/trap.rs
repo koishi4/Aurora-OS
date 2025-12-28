@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use core::arch::asm;
+use core::ptr;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{runtime, sbi, time};
@@ -57,6 +58,37 @@ const SCAUSE_SUPERVISOR_TIMER: usize = 5;
 const SCAUSE_SUPERVISOR_ECALL: usize = 9;
 
 static TIMER_INTERVAL: AtomicU64 = AtomicU64::new(0);
+static mut CURRENT_TRAP_FRAME: *mut TrapFrame = ptr::null_mut();
+
+pub struct TrapFrameGuard;
+
+pub fn enter_trap(tf: &mut TrapFrame) -> TrapFrameGuard {
+    // Safety: single-hart early boot; the trap frame lives on the current stack.
+    unsafe {
+        CURRENT_TRAP_FRAME = tf as *mut TrapFrame;
+    }
+    TrapFrameGuard
+}
+
+impl Drop for TrapFrameGuard {
+    fn drop(&mut self) {
+        // Safety: trap handler exits with interrupts disabled; clear the pointer.
+        unsafe {
+            CURRENT_TRAP_FRAME = ptr::null_mut();
+        }
+    }
+}
+
+pub fn current_trap_frame() -> Option<&'static mut TrapFrame> {
+    // Safety: only valid while handling a trap on the current hart.
+    unsafe {
+        if CURRENT_TRAP_FRAME.is_null() {
+            None
+        } else {
+            Some(&mut *CURRENT_TRAP_FRAME)
+        }
+    }
+}
 
 pub fn init() {
     unsafe { write_stvec(__trap_vector as usize) };
@@ -74,6 +106,7 @@ pub fn enable_timer_interrupt(interval_ticks: u64) {
 
 #[no_mangle]
 extern "C" fn trap_handler(tf: &mut TrapFrame) {
+    let _guard = enter_trap(tf);
     let scause = tf.scause;
     let stval = tf.stval;
     let sepc = tf.sepc;

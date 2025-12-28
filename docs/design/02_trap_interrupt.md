@@ -12,6 +12,7 @@
 - 定时器中断使用 SBI set_timer 重新编程，实现周期性 tick。
 - tick 计数在 time 模块中维护，供后续调度与超时使用。
 - tick 中断仅设置调度请求标志，由空闲上下文完成切换，避免在 trap 中切换上下文。
+- 使用 TrapFrameGuard 记录当前 trapframe 指针，为后续抢占保存上下文预留入口。
 
 ## 关键数据结构
 - TrapFrame：保存通用寄存器与 CSR 的固定布局结构。

@@ -37,6 +37,7 @@
 - 引入 SleepQueue 与 sleep_current_ms，tick 到期唤醒睡眠任务。
 - 增加 dummy C 使用 sleep_ms 验证睡眠唤醒。
 - TaskWaitQueue 状态切换调整为由 runtime 统一管理。
+- 增加 TrapFrameGuard，记录当前 trapframe 指针。
 
 ## 问题
 - OSComp 测例与 FS/Net 尚未接入。

@@ -16,6 +16,7 @@
 - RunQueue 保存 `TaskId`，任务实体存放在固定大小的 TaskTable。
 - 增加 TaskWaitQueue，使用 TaskId 阻塞/唤醒任务并配合 RunQueue（状态切换由 runtime 负责）。
 - 增加 SleepQueue 与 `sleep_current_ms`，由 tick 触发唤醒并回收到 RunQueue。
+- 记录 trapframe 指针（TrapFrameGuard），为后续抢占式调度做准备。
 - 内核栈在早期由帧分配器分配连续页，任务栈来自固定大小的栈池（上限 `MAX_TASKS`）。
 - TaskControlBlock 支持入口函数指针与栈顶配置，早期用多 dummy task 验证轮转与睡眠唤醒。
 - 调度触发周期可配置（`SCHED_INTERVAL_TICKS`），避免频繁切换。

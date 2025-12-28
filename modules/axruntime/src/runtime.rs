@@ -68,6 +68,7 @@ pub fn on_tick(ticks: u64) {
     if ticks % 100 == 0 {
         crate::println!("scheduler: tick={}", ticks);
     }
+    // Move expired sleepers back to the run queue.
     let mut woke_any = false;
     while let Some(task_id) = SLEEP_QUEUE.pop_ready(ticks) {
         if !task::set_state(task_id, TaskState::Ready) {
@@ -187,6 +188,7 @@ pub fn yield_now() {
         let Some(task_ptr) = task::task_ptr(task_id) else {
             return;
         };
+        // Mark ready before enqueueing; if the queue is full, keep running.
         if !task::set_state(task_id, TaskState::Ready) {
             return;
         }
@@ -223,6 +225,7 @@ pub fn sleep_current_ms(ms: u64) -> bool {
         let Some(task_ptr) = task::task_ptr(task_id) else {
             return false;
         };
+        // Transition to Blocked before enqueueing into the sleep queue.
         if !task::set_state(task_id, TaskState::Blocked) {
             return false;
         }
@@ -247,6 +250,7 @@ pub fn block_current(queue: &TaskWaitQueue) {
         let Some(task_ptr) = task::task_ptr(task_id) else {
             return;
         };
+        // Transition to Blocked before enqueueing into the wait queue.
         if !task::set_state(task_id, TaskState::Blocked) {
             return;
         }

@@ -15,6 +15,7 @@
 - 引入 SleepQueue 与 sleep_current_ms，tick 到期后唤醒任务。
 - 增加 dummy C 使用 sleep_ms 验证睡眠唤醒流程。
 - 调整 TaskWaitQueue 为纯 TaskId 容器，状态切换集中在 runtime。
+- 增加 TrapFrameGuard，用于记录当前 trapframe 指针。
 
 ## 问题与定位
 - 调度仍处于占位阶段，尚未引入用户态/系统调用上下文保存。

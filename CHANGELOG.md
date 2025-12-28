@@ -31,3 +31,4 @@
 - Add a sleep queue and scheduler-backed sleep helper.
 - Add a third dummy task to exercise sleep.
 - Refine block/wake state transitions for wait queues.
+- Add a trapframe guard for future preemption.
