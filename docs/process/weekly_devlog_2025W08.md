@@ -21,6 +21,7 @@
 - 帧分配器接入 ekernel 之后的可用内存区间。
 - 页表页改为从帧分配器动态分配。
 - 增加 Waiter 超时等待原型。
+- 增加 WaitQueue 原型与 notify 接口。
 
 ## 问题
 - OSComp 测例与 FS/Net 尚未接入。

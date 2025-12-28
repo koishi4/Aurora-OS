@@ -10,6 +10,7 @@ mod cpu;
 mod time;
 mod sleep;
 mod wait;
+mod wait_queue;
 
 use core::panic::PanicInfo;
 

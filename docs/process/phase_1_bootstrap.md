@@ -17,6 +17,7 @@
 - 增加 time 模块维护 tick 计数，为后续调度做准备。
 - 增加基于 tick 的 sleep_ms 辅助函数。
 - 增加 Waiter 结构，用于超时等待原型。
+- 增加 WaitQueue 原型，提供基础 notify 接口。
 
 ## 问题与定位
 - 当前仅支持单核与 legacy SBI 接口。
