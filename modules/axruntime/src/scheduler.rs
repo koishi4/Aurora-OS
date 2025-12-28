@@ -2,6 +2,7 @@
 
 use core::cell::UnsafeCell;
 
+use crate::context::Context;
 use crate::task::{TaskControlBlock, TaskState};
 
 pub struct RunQueue {
@@ -49,3 +50,21 @@ impl RunQueue {
 }
 
 unsafe impl Sync for RunQueue {}
+
+extern "C" {
+    fn context_switch(prev: *mut Context, next: *const Context);
+}
+
+pub fn switch(prev: &mut TaskControlBlock, next: &TaskControlBlock) {
+    if prev.id == next.id {
+        return;
+    }
+    if next.context.sp == 0 {
+        // 尚未设置上下文时不切换。
+        return;
+    }
+    // Safety: context_switch preserves all callee-saved registers.
+    unsafe {
+        context_switch(&mut prev.context as *mut Context, &next.context as *const Context);
+    }
+}

@@ -17,8 +17,8 @@ pub fn init(timebase_hz: u64, tick_hz: u64) -> u64 {
     interval
 }
 
-pub fn tick() {
-    TICKS.fetch_add(1, Ordering::Relaxed);
+pub fn tick() -> u64 {
+    TICKS.fetch_add(1, Ordering::Relaxed) + 1
 }
 
 pub fn ticks() -> u64 {

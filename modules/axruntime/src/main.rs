@@ -14,11 +14,13 @@ mod wait_queue;
 mod task;
 mod scheduler;
 mod runtime;
+mod context;
 
 use core::panic::PanicInfo;
 
 core::arch::global_asm!(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../arch/riscv64/entry.S")));
 core::arch::global_asm!(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../arch/riscv64/trap.S")));
+core::arch::global_asm!(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../arch/riscv64/context.S")));
 
 #[no_mangle]
 pub extern "C" fn rust_main(hart_id: usize, dtb_addr: usize) -> ! {

@@ -88,8 +88,11 @@ extern "C" fn trap_handler(tf: &mut TrapFrame) {
                 let now = read_time();
                 sbi::set_timer(now + interval);
             }
-            time::tick();
-            runtime::on_tick();
+            let ticks = time::tick();
+            runtime::on_tick(ticks);
+            if ticks % 100 == 0 {
+                runtime::schedule_once();
+            }
             return;
         }
     } else if code == SCAUSE_SUPERVISOR_ECALL {

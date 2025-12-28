@@ -19,6 +19,7 @@
 - 增加 Waiter 结构，用于超时等待原型。
 - 增加 WaitQueue 原型，提供基础 notify 接口。
 - 增加最小 RunQueue/TCB 与调度 tick hook 占位。
+- 增加 Context 结构与 context_switch 汇编入口占位。
 
 ## 问题与定位
 - 当前仅支持单核与 legacy SBI 接口。

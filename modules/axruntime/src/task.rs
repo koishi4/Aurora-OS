@@ -2,6 +2,8 @@
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
+use crate::context::Context;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskState {
     Ready,
@@ -13,6 +15,7 @@ pub enum TaskState {
 pub struct TaskControlBlock {
     pub id: u64,
     pub state: TaskState,
+    pub context: Context,
 }
 
 static NEXT_TASK_ID: AtomicU64 = AtomicU64::new(1);
@@ -23,6 +26,7 @@ impl TaskControlBlock {
         Self {
             id,
             state: TaskState::Ready,
+            context: Context::zero(),
         }
     }
 }

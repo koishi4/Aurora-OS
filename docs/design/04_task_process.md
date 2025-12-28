@@ -9,12 +9,14 @@
 - 调度器采用 tick 驱动的时间片抢占，初期可用简单 RR。
 - 早期提供 `sleep_ms`、`Waiter`（超时等待）与 `WaitQueue`（等待队列）辅助，后续替换为阻塞原语。
 - 引入最小 `RunQueue` 与 `TaskControlBlock` 作为调度骨架，占位 tick 驱动的轮转逻辑。
+- 增加上下文结构与 `context_switch` 汇编入口，当前仅保留接口占位。
 
 ## 关键数据结构
 - TaskControlBlock / ProcessControlBlock：状态、优先级、时间片等字段预留。
 - RunQueue / WaitQueue：就绪队列与等待队列（后续实现）。
 - Waiter：最小超时等待封装，基于 tick + wfi。
 - WaitQueue：固定容量等待队列，支持 notify_one/notify_all。
+- Context：保存 callee-saved 寄存器的最小上下文结构。
 
 ## 关键流程图或伪代码
 ```text
