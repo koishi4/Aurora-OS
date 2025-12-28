@@ -17,3 +17,4 @@
 - Add a WaitQueue helper with notify_one/notify_all.
 - Add minimal run queue and scheduler tick hook scaffolding.
 - Add context struct and context_switch assembly stub.
+- Add a kernel stack helper backed by contiguous frames.

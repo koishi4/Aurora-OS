@@ -3,6 +3,7 @@
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use crate::scheduler::RunQueue;
+use crate::stack;
 use crate::task::{TaskControlBlock, TaskState};
 
 static TICK_COUNT: AtomicU64 = AtomicU64::new(0);
@@ -28,6 +29,12 @@ pub fn init() {
     let idle = TaskControlBlock::new();
     RUN_QUEUE.push(idle);
     TICK_COUNT.store(0, Ordering::Relaxed);
+
+    if let Some(stack) = stack::init_idle_stack() {
+        crate::println!("scheduler: idle stack top={:#x}", stack.top());
+    } else {
+        crate::println!("scheduler: failed to init idle stack");
+    }
 }
 
 pub fn schedule() {

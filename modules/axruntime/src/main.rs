@@ -15,6 +15,7 @@ mod task;
 mod scheduler;
 mod runtime;
 mod context;
+mod stack;
 
 use core::panic::PanicInfo;
 
