@@ -10,3 +10,4 @@
 - Enable periodic timer ticks using SBI set_timer and DTB timebase frequency.
 - Enter an idle loop after early initialization to keep the kernel running.
 - Track timer tick count in a dedicated time module.
+- Add a basic sleep_ms helper driven by timer ticks.

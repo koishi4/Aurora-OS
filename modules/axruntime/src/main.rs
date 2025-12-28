@@ -8,6 +8,7 @@ mod trap;
 mod mm;
 mod cpu;
 mod time;
+mod sleep;
 
 use core::panic::PanicInfo;
 

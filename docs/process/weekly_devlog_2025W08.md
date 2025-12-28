@@ -17,6 +17,7 @@
 - 接入 timebase-frequency 并启用定时器 tick。
 - 启动后进入 idle 循环等待中断。
 - 增加 time 模块维护 tick 计数。
+- 增加基于 tick 的 sleep_ms 辅助函数。
 
 ## 问题
 - OSComp 测例与 FS/Net 尚未接入。
