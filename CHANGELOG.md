@@ -20,3 +20,4 @@
 - Add a kernel stack helper backed by contiguous frames.
 - Add task entry stub and dummy task initialization.
 - Add a configurable tick-based scheduling interval.
+- Add default tick/config constants for scheduler timing.

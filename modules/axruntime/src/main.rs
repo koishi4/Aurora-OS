@@ -16,6 +16,7 @@ mod scheduler;
 mod runtime;
 mod context;
 mod stack;
+mod config;
 
 use core::panic::PanicInfo;
 
@@ -51,7 +52,7 @@ pub extern "C" fn rust_main(hart_id: usize, dtb_addr: usize) -> ! {
     mm::init(dtb_info.memory);
 
     let timebase = dtb_info.timebase_frequency.unwrap_or(10_000_000);
-    let tick_hz = 10u64;
+    let tick_hz = config::DEFAULT_TICK_HZ;
     let interval = time::init(timebase, tick_hz);
     crate::println!("timer: tick={}Hz interval={} ticks", tick_hz, interval);
     trap::enable_timer_interrupt(interval);

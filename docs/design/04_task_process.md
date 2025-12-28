@@ -12,7 +12,7 @@
 - 增加上下文结构与 `context_switch` 汇编入口，当前仅保留接口占位。
 - 内核栈在早期由帧分配器分配连续页，后续与任务生命周期绑定。
 - TaskControlBlock 支持入口函数指针与栈顶配置，早期用 dummy task 验证流程。
-- 调度触发周期可配置（tick 周期参数），避免频繁切换。
+- 调度触发周期可配置（`SCHED_INTERVAL_TICKS`），避免频繁切换。
 
 ## 关键数据结构
 - TaskControlBlock / ProcessControlBlock：状态、优先级、时间片等字段预留。

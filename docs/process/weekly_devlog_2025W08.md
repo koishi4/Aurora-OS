@@ -26,7 +26,7 @@
 - 增加 Context 结构与 context_switch 汇编入口占位。
 - 增加 KernelStack 原型（连续页内核栈）。
 - 增加 TaskEntry 占位与 dummy task 初始化。
-- 增加调度触发周期参数占位。
+- 增加调度触发周期参数占位（SCHED_INTERVAL_TICKS）。
 
 ## 问题
 - OSComp 测例与 FS/Net 尚未接入。

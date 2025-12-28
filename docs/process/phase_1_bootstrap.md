@@ -22,7 +22,7 @@
 - 增加 Context 结构与 context_switch 汇编入口占位。
 - 增加 KernelStack 原型，使用连续页作为内核栈。
 - 增加 TaskEntry 占位与 dummy task 初始化。
-- 增加调度触发周期参数，占位可配置调度策略。
+- 增加调度触发周期参数，占位可配置调度策略（SCHED_INTERVAL_TICKS）。
 
 ## 问题与定位
 - 当前仅支持单核与 legacy SBI 接口。
