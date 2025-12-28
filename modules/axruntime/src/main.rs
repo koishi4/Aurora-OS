@@ -9,6 +9,7 @@ mod mm;
 mod cpu;
 mod time;
 mod sleep;
+mod wait;
 
 use core::panic::PanicInfo;
 
