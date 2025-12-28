@@ -25,3 +25,4 @@
 - Add a cooperative yield path for the dummy task.
 - Add round-robin cursor and a second dummy task.
 - Pool early task stacks with a fixed slot limit.
+- Add a task table and store task IDs in the run queue.

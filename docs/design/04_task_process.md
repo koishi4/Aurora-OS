@@ -13,12 +13,13 @@
 - 使用 `need_resched` 标志从 tick 中断发起调度请求，切换在空闲上下文执行。
 - 增加 `yield_now` 协作式让渡，使用 CURRENT_TASK 保存运行中任务。
 - RunQueue 维护轮转指针，实现最小 RR 顺序。
+- RunQueue 保存 `TaskId`，任务实体存放在固定大小的 TaskTable。
 - 内核栈在早期由帧分配器分配连续页，任务栈来自固定大小的栈池（上限 `MAX_TASKS`）。
 - TaskControlBlock 支持入口函数指针与栈顶配置，早期用双 dummy task 验证轮转。
 - 调度触发周期可配置（`SCHED_INTERVAL_TICKS`），避免频繁切换。
 
 ## 关键数据结构
-- TaskControlBlock / ProcessControlBlock：状态、优先级、时间片等字段预留。
+- TaskControlBlock / TaskId / TaskTable：固定槽位管理、状态、上下文等字段预留。
 - RunQueue / WaitQueue：就绪队列与等待队列（后续实现）。
 - Waiter：最小超时等待封装，基于 tick + wfi。
 - WaitQueue：固定容量等待队列，支持 notify_one/notify_all。

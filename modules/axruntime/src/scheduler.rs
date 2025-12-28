@@ -3,10 +3,10 @@
 use core::cell::UnsafeCell;
 
 use crate::context::Context;
-use crate::task::{TaskControlBlock, TaskState};
+use crate::task::{TaskControlBlock, TaskId};
 
 pub struct RunQueue {
-    slots: UnsafeCell<[Option<TaskControlBlock>; RunQueue::MAX_TASKS]>,
+    slots: UnsafeCell<[Option<TaskId>; RunQueue::MAX_TASKS]>,
     head: UnsafeCell<usize>,
 }
 
@@ -20,7 +20,7 @@ impl RunQueue {
         }
     }
 
-    pub fn push(&self, task: TaskControlBlock) -> bool {
+    pub fn push(&self, task: TaskId) -> bool {
         // Safety: single-hart early use; no concurrent access yet.
         let slots = unsafe { &mut *self.slots.get() };
         for slot in slots.iter_mut() {
@@ -32,24 +32,24 @@ impl RunQueue {
         false
     }
 
-    pub fn pop_ready(&self) -> Option<TaskControlBlock> {
+    pub fn pop_ready(&self) -> Option<TaskId> {
         // Safety: single-hart early use; no concurrent access yet.
         let slots = unsafe { &mut *self.slots.get() };
         let head = unsafe { &mut *self.head.get() };
         for _ in 0..Self::MAX_TASKS {
             let idx = *head;
             *head = (*head + 1) % Self::MAX_TASKS;
-            if let Some(task) = slots[idx].take() {
-                if task.state == TaskState::Ready {
-                    return Some(task);
+            if let Some(task_id) = slots[idx].take() {
+                if crate::task::is_ready(task_id) {
+                    return Some(task_id);
                 }
-                slots[idx] = Some(task);
+                slots[idx] = Some(task_id);
             }
         }
         None
     }
 
-    pub fn push_back(&self, task: TaskControlBlock) {
+    pub fn push_back(&self, task: TaskId) {
         let _ = self.push(task);
     }
 }

@@ -4,14 +4,14 @@ use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::scheduler::RunQueue;
 use crate::stack;
-use crate::task::{TaskControlBlock, TaskState};
+use crate::task::{self, TaskControlBlock, TaskId, TaskState};
 
 static TICK_COUNT: AtomicU64 = AtomicU64::new(0);
 static NEED_RESCHED: AtomicBool = AtomicBool::new(false);
 static RUN_QUEUE: RunQueue = RunQueue::new();
-static mut CURRENT_TASK: Option<TaskControlBlock> = None;
+static mut CURRENT_TASK: Option<TaskId> = None;
 static mut IDLE_TASK: TaskControlBlock = TaskControlBlock {
-    id: 0,
+    id: crate::config::MAX_TASKS,
     state: TaskState::Running,
     context: crate::context::Context::zero(),
     entry: None,
@@ -59,25 +59,35 @@ pub fn init() {
     }
 
     if let Some(stack) = stack::alloc_task_stack() {
-        let task = TaskControlBlock::with_entry(dummy_task_a, stack.top());
-        let ok = RUN_QUEUE.push(task);
-        crate::println!("scheduler: dummy A added={}", ok);
+        if let Some(task_id) = task::alloc_task(dummy_task_a, stack.top()) {
+            let ok = RUN_QUEUE.push(task_id);
+            crate::println!("scheduler: dummy A added={} id={}", ok, task_id);
+        } else {
+            crate::println!("scheduler: dummy A alloc failed");
+        }
     } else {
         crate::println!("scheduler: failed to init dummy task stack");
     }
 
     if let Some(stack) = stack::alloc_task_stack() {
-        let task = TaskControlBlock::with_entry(dummy_task_b, stack.top());
-        let ok = RUN_QUEUE.push(task);
-        crate::println!("scheduler: dummy B added={}", ok);
+        if let Some(task_id) = task::alloc_task(dummy_task_b, stack.top()) {
+            let ok = RUN_QUEUE.push(task_id);
+            crate::println!("scheduler: dummy B added={} id={}", ok, task_id);
+        } else {
+            crate::println!("scheduler: dummy B alloc failed");
+        }
     } else {
         crate::println!("scheduler: failed to init dummy task stack B");
     }
 }
 
 pub fn schedule_once() {
-    let next = match RUN_QUEUE.pop_ready() {
-        Some(task) => task,
+    let next_id = match RUN_QUEUE.pop_ready() {
+        Some(task_id) => task_id,
+        None => return,
+    };
+    let task_ptr = match task::task_ptr(next_id) {
+        Some(ptr) => ptr,
         None => return,
     };
 
@@ -86,16 +96,12 @@ pub fn schedule_once() {
         if CURRENT_TASK.is_some() {
             return;
         }
-        CURRENT_TASK = Some(next);
-        let task_ptr = CURRENT_TASK.as_mut().map(|task| task as *mut TaskControlBlock);
-        let Some(task_ptr) = task_ptr else {
-            return;
-        };
+        CURRENT_TASK = Some(next_id);
         (*task_ptr).state = TaskState::Running;
         crate::scheduler::switch(&mut IDLE_TASK, &*task_ptr);
-        let mut task = CURRENT_TASK.take().unwrap();
-        task.state = TaskState::Ready;
-        RUN_QUEUE.push_back(task);
+        (*task_ptr).state = TaskState::Ready;
+        CURRENT_TASK = None;
+        RUN_QUEUE.push_back(next_id);
     }
 }
 
@@ -118,8 +124,10 @@ pub fn yield_if_needed() {
 pub fn yield_now() {
     // Safety: single-hart early use; CURRENT_TASK is only accessed in init/idle/task contexts.
     unsafe {
-        let task_ptr = CURRENT_TASK.as_mut().map(|task| task as *mut TaskControlBlock);
-        let Some(task_ptr) = task_ptr else {
+        let Some(task_id) = CURRENT_TASK else {
+            return;
+        };
+        let Some(task_ptr) = task::task_ptr(task_id) else {
             return;
         };
         NEED_RESCHED.store(true, Ordering::Relaxed);
