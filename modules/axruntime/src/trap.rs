@@ -67,12 +67,14 @@ pub fn enter_trap(tf: &mut TrapFrame) -> TrapFrameGuard {
     unsafe {
         CURRENT_TRAP_FRAME = tf as *mut TrapFrame;
     }
+    runtime::on_trap_entry(tf);
     TrapFrameGuard
 }
 
 impl Drop for TrapFrameGuard {
     fn drop(&mut self) {
         // Safety: trap handler exits with interrupts disabled; clear the pointer.
+        runtime::on_trap_exit();
         unsafe {
             CURRENT_TRAP_FRAME = ptr::null_mut();
         }

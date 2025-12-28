@@ -22,7 +22,7 @@
 - 调度触发周期可配置（`SCHED_INTERVAL_TICKS`），避免频繁切换。
 
 ## 关键数据结构
-- TaskControlBlock / TaskId / TaskTable：固定槽位管理、状态、上下文等字段预留。
+- TaskControlBlock / TaskId / TaskTable：固定槽位管理、状态、上下文与 trapframe 指针。
 - RunQueue / TaskWaitQueue / WaitQueue：就绪队列、任务等待队列与 Waiter 等待队列。
 - Waiter：最小超时等待封装，基于 tick + wfi。
 - WaitQueue：固定容量等待队列，支持 notify_one/notify_all。

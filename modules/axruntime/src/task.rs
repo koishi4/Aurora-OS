@@ -20,6 +20,9 @@ pub struct TaskControlBlock {
     pub state: TaskState,
     pub context: Context,
     pub entry: Option<TaskEntry>,
+    // Pointer to the active trap frame on this task's kernel stack.
+    // Valid only during trap handling; cleared on trap exit.
+    pub trap_frame: Option<usize>,
 }
 
 const UNINIT_TASK: MaybeUninit<TaskControlBlock> = MaybeUninit::uninit();
@@ -33,6 +36,7 @@ impl TaskControlBlock {
             state: TaskState::Ready,
             context: Context::zero(),
             entry: None,
+            trap_frame: None,
         }
     }
 
@@ -79,6 +83,30 @@ pub fn set_state(id: TaskId, state: TaskState) -> bool {
         }
         let task = &mut *TASK_TABLE[id].as_mut_ptr();
         task.state = state;
+        true
+    }
+}
+
+pub fn set_trap_frame(id: TaskId, trap_frame: usize) -> bool {
+    // Safety: single-hart early boot; trap frames live on the current stack.
+    unsafe {
+        if id >= MAX_TASKS || !TASK_USED[id] {
+            return false;
+        }
+        let task = &mut *TASK_TABLE[id].as_mut_ptr();
+        task.trap_frame = Some(trap_frame);
+        true
+    }
+}
+
+pub fn clear_trap_frame(id: TaskId) -> bool {
+    // Safety: single-hart early boot; task slots are stable.
+    unsafe {
+        if id >= MAX_TASKS || !TASK_USED[id] {
+            return false;
+        }
+        let task = &mut *TASK_TABLE[id].as_mut_ptr();
+        task.trap_frame = None;
         true
     }
 }

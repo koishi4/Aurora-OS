@@ -21,6 +21,7 @@ static mut IDLE_TASK: TaskControlBlock = TaskControlBlock {
     state: TaskState::Running,
     context: crate::context::Context::zero(),
     entry: None,
+    trap_frame: None,
 };
 
 fn dummy_task_a() -> ! {
@@ -90,6 +91,24 @@ pub fn on_tick(ticks: u64) {
 
 pub fn tick_count() -> u64 {
     TICK_COUNT.load(Ordering::Relaxed)
+}
+
+pub fn on_trap_entry(tf: &mut crate::trap::TrapFrame) {
+    // Safety: single-hart early use; current task does not change inside traps.
+    unsafe {
+        if let Some(task_id) = CURRENT_TASK {
+            let _ = task::set_trap_frame(task_id, tf as *mut _ as usize);
+        }
+    }
+}
+
+pub fn on_trap_exit() {
+    // Safety: single-hart early use; clear any trap frame pointer on exit.
+    unsafe {
+        if let Some(task_id) = CURRENT_TASK {
+            let _ = task::clear_trap_frame(task_id);
+        }
+    }
 }
 
 pub fn init() {

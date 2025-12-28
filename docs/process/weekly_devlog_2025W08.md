@@ -38,6 +38,7 @@
 - 增加 dummy C 使用 sleep_ms 验证睡眠唤醒。
 - TaskWaitQueue 状态切换调整为由 runtime 统一管理。
 - 增加 TrapFrameGuard，记录当前 trapframe 指针。
+- TaskControlBlock 增加 trapframe 指针字段，预留抢占上下文保存。
 
 ## 问题
 - OSComp 测例与 FS/Net 尚未接入。

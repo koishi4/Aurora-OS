@@ -16,6 +16,7 @@
 
 ## 关键数据结构
 - TrapFrame：保存通用寄存器与 CSR 的固定布局结构。
+- TrapFrameGuard：记录当前 trapframe 指针（仅在 trap 生命周期内有效）。
 - 关键 CSR：sstatus / sepc / scause / stval。
 
 ## 关键流程图或伪代码

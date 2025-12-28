@@ -32,3 +32,4 @@
 - Add a third dummy task to exercise sleep.
 - Refine block/wake state transitions for wait queues.
 - Add a trapframe guard for future preemption.
+- Track trapframe pointers in the task table.
