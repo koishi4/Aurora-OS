@@ -1,10 +1,13 @@
 #![allow(dead_code)]
 
-use crate::{cpu, time};
+use crate::{cpu, runtime, time};
 
 // Busy-sleep using timer ticks; useful for early bring-up.
 
 pub fn sleep_ms(ms: u64) {
+    if runtime::sleep_current_ms(ms) {
+        return;
+    }
     if ms == 0 {
         return;
     }

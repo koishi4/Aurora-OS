@@ -15,6 +15,7 @@
 - RunQueue 维护轮转指针，实现最小 RR 顺序。
 - RunQueue 保存 `TaskId`，任务实体存放在固定大小的 TaskTable。
 - 增加 TaskWaitQueue，使用 TaskId 阻塞/唤醒任务并配合 RunQueue。
+- 增加 SleepQueue 与 `sleep_current_ms`，由 tick 触发唤醒并回收到 RunQueue。
 - 内核栈在早期由帧分配器分配连续页，任务栈来自固定大小的栈池（上限 `MAX_TASKS`）。
 - TaskControlBlock 支持入口函数指针与栈顶配置，早期用双 dummy task 验证轮转。
 - 调度触发周期可配置（`SCHED_INTERVAL_TICKS`），避免频繁切换。

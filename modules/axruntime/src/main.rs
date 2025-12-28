@@ -9,6 +9,7 @@ mod mm;
 mod cpu;
 mod time;
 mod sleep;
+mod sleep_queue;
 mod wait;
 mod wait_queue;
 mod task_wait_queue;
