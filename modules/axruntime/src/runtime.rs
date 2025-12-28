@@ -49,6 +49,19 @@ fn dummy_task_b() -> ! {
     }
 }
 
+fn dummy_task_c() -> ! {
+    let mut last_tick = 0;
+    loop {
+        let ticks = tick_count();
+        if ticks != last_tick && ticks % 120 == 0 {
+            crate::println!("dummy(C): sleep 200ms at tick={}", ticks);
+            crate::sleep::sleep_ms(200);
+            last_tick = ticks;
+        }
+        crate::cpu::wait_for_interrupt();
+    }
+}
+
 pub fn on_tick(ticks: u64) {
     TICK_COUNT.store(ticks, Ordering::Relaxed);
     if ticks % 100 == 0 {
@@ -102,6 +115,17 @@ pub fn init() {
         }
     } else {
         crate::println!("scheduler: failed to init dummy task stack B");
+    }
+
+    if let Some(stack) = stack::alloc_task_stack() {
+        if let Some(task_id) = task::alloc_task(dummy_task_c, stack.top()) {
+            let ok = RUN_QUEUE.push(task_id);
+            crate::println!("scheduler: dummy C added={} id={}", ok, task_id);
+        } else {
+            crate::println!("scheduler: dummy C alloc failed");
+        }
+    } else {
+        crate::println!("scheduler: failed to init dummy task stack C");
     }
 }
 
