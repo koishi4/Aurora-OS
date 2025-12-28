@@ -11,7 +11,7 @@ pub struct RunQueue {
 }
 
 impl RunQueue {
-    pub const MAX_TASKS: usize = 8;
+    pub const MAX_TASKS: usize = crate::config::MAX_TASKS;
 
     pub const fn new() -> Self {
         Self {

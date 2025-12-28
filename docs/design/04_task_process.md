@@ -13,7 +13,7 @@
 - 使用 `need_resched` 标志从 tick 中断发起调度请求，切换在空闲上下文执行。
 - 增加 `yield_now` 协作式让渡，使用 CURRENT_TASK 保存运行中任务。
 - RunQueue 维护轮转指针，实现最小 RR 顺序。
-- 内核栈在早期由帧分配器分配连续页，后续与任务生命周期绑定。
+- 内核栈在早期由帧分配器分配连续页，任务栈来自固定大小的栈池（上限 `MAX_TASKS`）。
 - TaskControlBlock 支持入口函数指针与栈顶配置，早期用双 dummy task 验证轮转。
 - 调度触发周期可配置（`SCHED_INTERVAL_TICKS`），避免频繁切换。
 

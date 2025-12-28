@@ -41,8 +41,11 @@ impl KernelStack {
 }
 
 static mut IDLE_STACK: MaybeUninit<KernelStack> = MaybeUninit::uninit();
-static mut TASK_STACK: MaybeUninit<KernelStack> = MaybeUninit::uninit();
-static mut TASK_STACK2: MaybeUninit<KernelStack> = MaybeUninit::uninit();
+const TASK_STACK_SLOTS: usize = crate::config::MAX_TASKS;
+const UNINIT_STACK: MaybeUninit<KernelStack> = MaybeUninit::uninit();
+static mut TASK_STACKS: [MaybeUninit<KernelStack>; TASK_STACK_SLOTS] =
+    [UNINIT_STACK; TASK_STACK_SLOTS];
+static mut TASK_STACKS_USED: usize = 0;
 
 pub fn init_idle_stack() -> Option<&'static KernelStack> {
     // Safety: single init during early boot.
@@ -53,20 +56,16 @@ pub fn init_idle_stack() -> Option<&'static KernelStack> {
     }
 }
 
-pub fn init_task_stack() -> Option<&'static KernelStack> {
-    // Safety: single init during early boot.
+pub fn alloc_task_stack() -> Option<&'static KernelStack> {
+    // Safety: single-hart early boot; pool index advances monotonically.
     unsafe {
+        if TASK_STACKS_USED >= TASK_STACK_SLOTS {
+            return None;
+        }
         let stack = KernelStack::new()?;
-        TASK_STACK.write(stack);
-        Some(TASK_STACK.assume_init_ref())
-    }
-}
-
-pub fn init_task_stack2() -> Option<&'static KernelStack> {
-    // Safety: single init during early boot.
-    unsafe {
-        let stack = KernelStack::new()?;
-        TASK_STACK2.write(stack);
-        Some(TASK_STACK2.assume_init_ref())
+        let idx = TASK_STACKS_USED;
+        TASK_STACKS_USED += 1;
+        TASK_STACKS[idx].write(stack);
+        Some(TASK_STACKS[idx].assume_init_ref())
     }
 }

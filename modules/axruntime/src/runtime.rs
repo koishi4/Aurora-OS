@@ -58,7 +58,7 @@ pub fn init() {
         crate::println!("scheduler: failed to init idle stack");
     }
 
-    if let Some(stack) = stack::init_task_stack() {
+    if let Some(stack) = stack::alloc_task_stack() {
         let task = TaskControlBlock::with_entry(dummy_task_a, stack.top());
         let ok = RUN_QUEUE.push(task);
         crate::println!("scheduler: dummy A added={}", ok);
@@ -66,7 +66,7 @@ pub fn init() {
         crate::println!("scheduler: failed to init dummy task stack");
     }
 
-    if let Some(stack) = stack::init_task_stack2() {
+    if let Some(stack) = stack::alloc_task_stack() {
         let task = TaskControlBlock::with_entry(dummy_task_b, stack.top());
         let ok = RUN_QUEUE.push(task);
         crate::println!("scheduler: dummy B added={}", ok);
