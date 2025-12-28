@@ -99,9 +99,9 @@ pub fn schedule_once() {
         CURRENT_TASK = Some(next_id);
         (*task_ptr).state = TaskState::Running;
         crate::scheduler::switch(&mut IDLE_TASK, &*task_ptr);
-        (*task_ptr).state = TaskState::Ready;
-        CURRENT_TASK = None;
-        RUN_QUEUE.push_back(next_id);
+        if CURRENT_TASK == Some(next_id) {
+            CURRENT_TASK = None;
+        }
     }
 }
 
@@ -132,8 +132,9 @@ pub fn yield_now() {
         };
         NEED_RESCHED.store(true, Ordering::Relaxed);
         (*task_ptr).state = TaskState::Ready;
+        RUN_QUEUE.push_back(task_id);
+        CURRENT_TASK = None;
         crate::scheduler::switch(&mut *task_ptr, &IDLE_TASK);
-        (*task_ptr).state = TaskState::Running;
     }
 }
 

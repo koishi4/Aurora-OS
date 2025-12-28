@@ -32,6 +32,7 @@
 - RunQueue 加入轮转指针，增加第二个 dummy task 验证 RR 调度。
 - 任务栈改为栈池分配，统一管理早期任务栈。
 - 任务改为 TaskTable 管理，RunQueue 保存 TaskId。
+- 修复协作式 yield 入队与 current 标志清理，避免切换卡住。
 
 ## 问题
 - OSComp 测例与 FS/Net 尚未接入。

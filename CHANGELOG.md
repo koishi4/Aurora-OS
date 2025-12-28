@@ -26,3 +26,4 @@
 - Add round-robin cursor and a second dummy task.
 - Pool early task stacks with a fixed slot limit.
 - Add a task table and store task IDs in the run queue.
+- Fix cooperative yield to requeue the current task.

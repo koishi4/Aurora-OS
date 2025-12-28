@@ -11,7 +11,7 @@
 - 引入最小 `RunQueue` 与 `TaskControlBlock` 作为调度骨架，占位 tick 驱动的轮转逻辑。
 - 增加上下文结构与 `context_switch` 汇编入口，当前仅保留接口占位。
 - 使用 `need_resched` 标志从 tick 中断发起调度请求，切换在空闲上下文执行。
-- 增加 `yield_now` 协作式让渡，使用 CURRENT_TASK 保存运行中任务。
+- 增加 `yield_now` 协作式让渡，主动入队并清理 CURRENT_TASK，再切回空闲。
 - RunQueue 维护轮转指针，实现最小 RR 顺序。
 - RunQueue 保存 `TaskId`，任务实体存放在固定大小的 TaskTable。
 - 内核栈在早期由帧分配器分配连续页，任务栈来自固定大小的栈池（上限 `MAX_TASKS`）。
