@@ -22,3 +22,4 @@
 - Add a configurable tick-based scheduling interval.
 - Add default tick/config constants for scheduler timing.
 - Defer scheduler switches to the idle loop via a resched flag.
+- Add a cooperative yield path for the dummy task.
