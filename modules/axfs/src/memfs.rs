@@ -189,6 +189,14 @@ impl<'a> MemFs<'a> {
         Some(Metadata::new(node.file_type, size, node.mode))
     }
 
+    pub fn readlink(&self, inode: InodeId) -> VfsResult<&'static [u8]> {
+        let node = self.node(inode).ok_or(VfsError::NotFound)?;
+        if node.file_type != FileType::Symlink {
+            return Err(VfsError::NotSupported);
+        }
+        Err(VfsError::NotSupported)
+    }
+
     pub fn resolve_parent<'b>(&self, path: &'b str) -> Result<(InodeId, &'b str), ResolveError> {
         if !path.starts_with('/') {
             return Err(ResolveError::Invalid);
@@ -284,8 +292,11 @@ impl<'a> VfsOps for MemFs<'a> {
         }
     }
 
-    fn write_at(&self, _inode: InodeId, _offset: u64, _buf: &[u8]) -> VfsResult<usize> {
-        Err(VfsError::NotSupported)
+    fn write_at(&self, inode: InodeId, _offset: u64, buf: &[u8]) -> VfsResult<usize> {
+        match inode {
+            DEV_NULL_ID | DEV_ZERO_ID => Ok(buf.len()),
+            _ => Err(VfsError::NotSupported),
+        }
     }
 }
 
@@ -339,6 +350,16 @@ mod tests {
     }
 
     #[test]
+    fn dev_nodes_write() {
+        let fs = MemFs::new();
+        let buf = [0x5a_u8; 4];
+        let written = fs.write_at(DEV_NULL_ID, 0, &buf).unwrap();
+        assert_eq!(written, 4);
+        let written = fs.write_at(DEV_ZERO_ID, 0, &buf).unwrap();
+        assert_eq!(written, 4);
+    }
+
+    #[test]
     fn resolve_parent_paths() {
         let fs = MemFs::new();
         let (parent, name) = fs.resolve_parent("/dev/null").unwrap();
@@ -347,7 +368,14 @@ mod tests {
         let (parent, name) = fs.resolve_parent("/missing").unwrap();
         assert_eq!(parent, ROOT_ID);
         assert_eq!(name, "missing");
+        let (parent, name) = fs.resolve_parent("/dev/").unwrap();
+        assert_eq!(parent, ROOT_ID);
+        assert_eq!(name, "dev");
+        let (parent, name) = fs.resolve_parent("/dev/../init").unwrap();
+        assert_eq!(parent, ROOT_ID);
+        assert_eq!(name, "init");
         assert_eq!(fs.resolve_parent("/").unwrap_err(), ResolveError::Invalid);
+        assert_eq!(fs.resolve_parent("/dev/..").unwrap_err(), ResolveError::Invalid);
         assert_eq!(
             fs.resolve_parent("/dev/null/child").unwrap_err(),
             ResolveError::NotDir

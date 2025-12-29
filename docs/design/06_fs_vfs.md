@@ -11,6 +11,7 @@
 - `modules/axfs` 提供 memfs 作为最小只读实现，先覆盖 `/` 与 `/dev` 等伪目录，逐步替换 syscall 中的硬编码路径。
 - 早期 syscalls 通过 memfs 的路径解析与元数据查询返回 openat/newfstatat 结果，作为接入 VFS 的第一步。
 - memfs 支持携带 `/init` ELF 镜像以提供 read_at 路径，作为后续 VFS 读写接口的占位实现。
+- memfs 对 `/dev/null`/`/dev/zero` 提供最小 read/write 行为，作为 VFS 设备节点接入示例。
 - 挂载点采用 `MountTable` 管理，根文件系统可切换 FAT32/ext4。
 - 路径解析走 dentry 缓存，减少重复 lookup。
 - 页缓存以页为单位缓存文件数据，写入采用 write-back + 定期刷盘。

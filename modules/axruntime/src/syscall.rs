@@ -5,7 +5,7 @@ use core::mem::size_of;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use axfs::memfs;
-use axfs::{FileType, InodeId, VfsOps};
+use axfs::{FileType, InodeId, VfsError, VfsOps};
 use crate::futex;
 use crate::mm::{self, UserAccess, UserPtr, UserSlice};
 use crate::{sbi, time};
@@ -693,7 +693,7 @@ fn sys_write(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
         return Err(Errno::Fault);
     }
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    write_to_entry(entry, root_pa, buf, len)
+    write_to_entry(fd, entry, root_pa, buf, len)
 }
 
 fn sys_readv(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
@@ -759,7 +759,7 @@ fn sys_writev(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> 
         if iov.iov_len == 0 {
             continue;
         }
-        match write_to_entry(entry, root_pa, iov.iov_base, iov.iov_len) {
+        match write_to_entry(fd, entry, root_pa, iov.iov_base, iov.iov_len) {
             Ok(written) => {
                 total += written;
                 if written < iov.iov_len {
@@ -1128,9 +1128,18 @@ fn sys_readlinkat(_dirfd: usize, pathname: usize, buf: usize, len: usize) -> Res
         return Ok(0);
     }
     validate_user_write(root_pa, buf, len)?;
-    match memfs_lookup_inode(root_pa, pathname) {
-        Ok(_) => Err(Errno::Inval),
-        Err(err) => Err(err),
+    let fs = memfs::MemFs::with_init_image(init_memfile_image());
+    let inode = memfs_lookup_inode(root_pa, pathname)?;
+    match fs.readlink(inode) {
+        Ok(target) => {
+            let to_copy = min(len, target.len());
+            UserSlice::new(buf, to_copy)
+                .copy_from_slice(root_pa, &target[..to_copy])
+                .ok_or(Errno::Fault)?;
+            Ok(to_copy)
+        }
+        Err(VfsError::NotSupported) => Err(Errno::Inval),
+        Err(_) => Err(Errno::NoEnt),
     }
 }
 
@@ -2999,13 +3008,51 @@ fn read_memfs_at(
     Ok(total)
 }
 
-fn write_to_entry(entry: FdEntry, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
+fn write_memfs_fd(fd: usize, root_pa: usize, inode: InodeId, buf: usize, len: usize) -> Result<usize, Errno> {
+    let offset = fd_offset(fd).ok_or(Errno::Badf)?;
+    let written = write_memfs_at(root_pa, inode, offset, buf, len)?;
+    set_fd_offset(fd, offset + written);
+    Ok(written)
+}
+
+fn write_memfs_at(
+    root_pa: usize,
+    inode: InodeId,
+    offset: usize,
+    buf: usize,
+    len: usize,
+) -> Result<usize, Errno> {
+    if len == 0 {
+        return Ok(0);
+    }
+    let fs = memfs::MemFs::with_init_image(init_memfile_image());
+    let mut total = 0usize;
+    let mut remaining = len;
+    let mut scratch = [0u8; 256];
+    while remaining > 0 {
+        let chunk = min(remaining, scratch.len());
+        let src = buf.checked_add(total).ok_or(Errno::Fault)?;
+        UserSlice::new(src, chunk)
+            .copy_to_slice(root_pa, &mut scratch[..chunk])
+            .ok_or(Errno::Fault)?;
+        let written = match fs.write_at(inode, (offset + total) as u64, &scratch[..chunk]) {
+            Ok(written) => written,
+            Err(_) => return Err(Errno::Badf),
+        };
+        total += written;
+        if written < chunk {
+            break;
+        }
+        remaining = remaining.saturating_sub(chunk);
+    }
+    Ok(total)
+}
+
+fn write_to_entry(fd: usize, entry: FdEntry, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     match entry.kind {
         FdKind::Stdout | FdKind::Stderr => write_console_from(root_pa, buf, len),
-        FdKind::DevNull | FdKind::DevZero => {
-            validate_user_read(root_pa, buf, len)?;
-            Ok(len)
-        }
+        FdKind::DevNull => write_memfs_fd(fd, root_pa, memfs::DEV_NULL_ID, buf, len),
+        FdKind::DevZero => write_memfs_fd(fd, root_pa, memfs::DEV_ZERO_ID, buf, len),
         FdKind::InitFile => Err(Errno::Badf),
         FdKind::PipeWrite(pipe_id) => {
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
