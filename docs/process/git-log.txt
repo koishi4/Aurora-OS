@@ -1,4 +1,25 @@
-* commit 3fc89b84d621c71dd53978abf024d8579ce637ef (HEAD -> bootstrap-riscv64)
+* commit 9633120b5142176ecabb1b5c27e448466c8f7664 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:45:07 +0800
+| 
+|     feat(syscall): add readlinkat stub
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 20 ++++++++++++++++++++
+|  4 files changed, 23 insertions(+), 3 deletions(-)
+| 
+* commit ebdd8a4b752b9893298b9d3d09ce9eae2397ce6a
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:43:39 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 3fc89b84d621c71dd53978abf024d8579ce637ef
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 12:43:23 +0800
 | 
