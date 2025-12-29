@@ -130,6 +130,10 @@ const SYS_GETPGID: usize = 155;
 const SYS_SETSID: usize = 157;
 
 const TIOCGWINSZ: usize = 0x5413;
+const TCGETS: usize = 0x5401;
+const TCSETS: usize = 0x5402;
+const TCSETSW: usize = 0x5403;
+const TCSETSF: usize = 0x5404;
 const SYS_CLOCK_GETTIME: usize = 113;
 const SYS_CLOCK_GETTIME64: usize = 403;
 const SYS_CLOCK_GETRES: usize = 114;
@@ -303,6 +307,19 @@ struct Winsize {
     ws_col: u16,
     ws_xpixel: u16,
     ws_ypixel: u16,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Termios {
+    c_iflag: u32,
+    c_oflag: u32,
+    c_cflag: u32,
+    c_lflag: u32,
+    c_line: u8,
+    c_cc: [u8; 19],
+    c_ispeed: u32,
+    c_ospeed: u32,
 }
 
 fn sys_exit(_code: usize) -> Result<usize, Errno> {
@@ -660,24 +677,60 @@ fn sys_ioctl(fd: usize, cmd: usize, arg: usize) -> Result<usize, Errno> {
     if fd > 2 {
         return Err(Errno::Badf);
     }
-    if cmd != TIOCGWINSZ {
-        return Err(Errno::Inval);
+    match cmd {
+        TIOCGWINSZ => {
+            if arg == 0 {
+                return Err(Errno::Fault);
+            }
+            let root_pa = mm::current_root_pa();
+            if root_pa == 0 {
+                return Err(Errno::Fault);
+            }
+            let winsz = Winsize {
+                ws_row: 24,
+                ws_col: 80,
+                ws_xpixel: 0,
+                ws_ypixel: 0,
+            };
+            UserPtr::new(arg).write(root_pa, winsz).ok_or(Errno::Fault)?;
+            Ok(0)
+        }
+        TCGETS => {
+            if arg == 0 {
+                return Err(Errno::Fault);
+            }
+            let root_pa = mm::current_root_pa();
+            if root_pa == 0 {
+                return Err(Errno::Fault);
+            }
+            let termios = Termios {
+                c_iflag: 0,
+                c_oflag: 0,
+                c_cflag: 0,
+                c_lflag: 0,
+                c_line: 0,
+                c_cc: [0; 19],
+                c_ispeed: 0,
+                c_ospeed: 0,
+            };
+            UserPtr::new(arg).write(root_pa, termios).ok_or(Errno::Fault)?;
+            Ok(0)
+        }
+        TCSETS | TCSETSW | TCSETSF => {
+            if arg == 0 {
+                return Err(Errno::Fault);
+            }
+            let root_pa = mm::current_root_pa();
+            if root_pa == 0 {
+                return Err(Errno::Fault);
+            }
+            UserPtr::<Termios>::new(arg)
+                .read(root_pa)
+                .ok_or(Errno::Fault)?;
+            Ok(0)
+        }
+        _ => Err(Errno::Inval),
     }
-    if arg == 0 {
-        return Err(Errno::Fault);
-    }
-    let root_pa = mm::current_root_pa();
-    if root_pa == 0 {
-        return Err(Errno::Fault);
-    }
-    let winsz = Winsize {
-        ws_row: 24,
-        ws_col: 80,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
-    };
-    UserPtr::new(arg).write(root_pa, winsz).ok_or(Errno::Fault)?;
-    Ok(0)
 }
 
 fn sys_sysinfo(info: usize) -> Result<usize, Errno> {

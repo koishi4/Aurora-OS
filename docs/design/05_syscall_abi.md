@@ -28,7 +28,7 @@
 - 早期实现 `set_tid_address`，校验指针可写并返回占位 TID。
 - 早期实现 `close`，允许关闭标准输入输出。
 - 早期实现 `getrlimit/prlimit64`，返回默认无限资源限制占位。
-- 早期实现 `ioctl(TIOCGWINSZ)`，为终端提供默认窗口大小。
+- 早期实现 `ioctl(TIOCGWINSZ/TCGETS/TCSETS*)`，为终端提供窗口大小与最小 termios 占位。
 - 早期实现 `sysinfo`，提供最小内存与运行时间信息占位。
 - 早期实现 `getrandom`，使用轻量伪随机填充。
 - 早期实现 `fstat`，为标准输入输出返回字符设备元数据。

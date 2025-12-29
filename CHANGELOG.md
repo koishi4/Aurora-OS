@@ -55,7 +55,7 @@
 - Add set_tid_address stub with pointer validation.
 - Add close stub for stdio fds.
 - Add getrlimit/prlimit64 stubs with default limits.
-- Add ioctl TIOCGWINSZ stub with default 80x24.
+- Add ioctl stubs for TIOCGWINSZ/TCGETS/TCSETS with default terminal data.
 - Add nanosleep stub using timebase busy wait.
 - Add sysinfo stub for uptime and memory size.
 - Add getrandom stub with xorshift output.
