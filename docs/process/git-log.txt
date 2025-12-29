@@ -1,4 +1,30 @@
-* commit 30a7fa5f80e4a50deed54809e648cf2836b08eb6 (HEAD -> bootstrap-riscv64)
+* commit d12dea8f530cc22b0265c283f8e967637ea52e82 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:53:40 +0800
+| 
+|     feat(fs): add mount table with devfs/procfs stubs
+| 
+|  CHANGELOG.md                     |   1 +
+|  docs/design/06_fs_vfs.md         |   1 +
+|  docs/process/phase_4_fs.md       |   2 +
+|  modules/axfs/src/devfs.rs        | 127 ++++++++++++++++++++++
+|  modules/axfs/src/lib.rs          |   3 +
+|  modules/axfs/src/memfs.rs        |  34 +++++-
+|  modules/axfs/src/mount.rs        | 190 ++++++++++++++++++++++++++++++++
+|  modules/axfs/src/procfs.rs       |  70 ++++++++++++
+|  modules/axruntime/src/syscall.rs | 215 +++++++++++++++++++++++--------------
+|  9 files changed, 560 insertions(+), 83 deletions(-)
+| 
+* commit a6eae960ae56766742c529f2d53b3cb128c99498
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:30:49 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit 30a7fa5f80e4a50deed54809e648cf2836b08eb6
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 22:30:34 +0800
 | 
