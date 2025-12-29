@@ -68,3 +68,4 @@
 - Add prctl stub for process name.
 - Add sched affinity stubs for single CPU.
 - Add getrusage stub returning zero stats.
+- Add setpgid/getpgid/setsid stubs.

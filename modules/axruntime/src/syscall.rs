@@ -93,6 +93,9 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_SCHED_SETAFFINITY => sys_sched_setaffinity(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_SCHED_GETAFFINITY => sys_sched_getaffinity(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_GETRUSAGE => sys_getrusage(ctx.args[0], ctx.args[1]),
+        SYS_SETPGID => sys_setpgid(ctx.args[0], ctx.args[1]),
+        SYS_GETPGID => sys_getpgid(ctx.args[0]),
+        SYS_SETSID => sys_setsid(),
         _ => Err(Errno::NoSys),
     }
 }
@@ -122,6 +125,9 @@ const SYS_PRCTL: usize = 167;
 const SYS_SCHED_SETAFFINITY: usize = 122;
 const SYS_SCHED_GETAFFINITY: usize = 123;
 const SYS_GETRUSAGE: usize = 165;
+const SYS_SETPGID: usize = 154;
+const SYS_GETPGID: usize = 155;
+const SYS_SETSID: usize = 157;
 
 const TIOCGWINSZ: usize = 0x5413;
 const SYS_CLOCK_GETTIME: usize = 113;
@@ -1005,6 +1011,18 @@ fn sys_getrusage(who: usize, usage: usize) -> Result<usize, Errno> {
         .write(root_pa, usage_val)
         .ok_or(Errno::Fault)?;
     Ok(0)
+}
+
+fn sys_setpgid(_pid: usize, _pgid: usize) -> Result<usize, Errno> {
+    Ok(0)
+}
+
+fn sys_getpgid(_pid: usize) -> Result<usize, Errno> {
+    Ok(1)
+}
+
+fn sys_setsid() -> Result<usize, Errno> {
+    Ok(1)
 }
 
 fn load_iovec(root_pa: usize, iov_ptr: usize, index: usize) -> Result<Iovec, Errno> {
