@@ -370,7 +370,10 @@ fn sys_readv(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
     if fd != 0 {
         return Err(Errno::Badf);
     }
-    if iovcnt == 0 || iovcnt > IOV_MAX {
+    if iovcnt == 0 {
+        return Ok(0);
+    }
+    if iovcnt > IOV_MAX {
         return Err(Errno::Inval);
     }
     if iov_ptr == 0 {
@@ -409,7 +412,10 @@ fn sys_writev(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> 
     if fd != 1 && fd != 2 {
         return Err(Errno::Badf);
     }
-    if iovcnt == 0 || iovcnt > IOV_MAX {
+    if iovcnt == 0 {
+        return Ok(0);
+    }
+    if iovcnt > IOV_MAX {
         return Err(Errno::Inval);
     }
     if iov_ptr == 0 {
