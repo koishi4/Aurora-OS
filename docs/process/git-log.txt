@@ -1,4 +1,25 @@
-* commit d1804684514fbd42bb36c86fbd171903a6b9c648 (HEAD -> bootstrap-riscv64)
+* commit 93cef623e70cdeac2a69391fe65ee57fbf86a3bc (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:17:09 +0800
+| 
+|     feat(syscall): support clone tid flags
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 40 +++++++++++++++++++++++++++----
+|  4 files changed, 39 insertions(+), 5 deletions(-)
+| 
+* commit 513f40967fda19e59fed2b8063f529a5fbd22fa7
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:11:53 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 26 +++++++++++++++++++++++++-
+|  1 file changed, 25 insertions(+), 1 deletion(-)
+| 
+* commit d1804684514fbd42bb36c86fbd171903a6b9c648
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 19:11:32 +0800
 | 
