@@ -2539,20 +2539,22 @@ fn ppoll_wait(root_pa: usize, fds: usize, nfds: usize, timeout_ms: Option<u64>) 
             }
         }
     }
-    // 多 fd 情况使用共享等待队列 + 周期性超时，减少纯 sleep-retry 轮询。
+    // 多 fd 情况用简单 sleep-retry 轮询：定时睡眠后重新扫描。
     let mut remaining_ms = timeout_ms;
     loop {
-        let wait_ms = match remaining_ms {
+        let sleep_ms = match remaining_ms {
             Some(0) => return Ok(0),
             Some(ms) => core::cmp::min(ms, PPOLL_RETRY_SLEEP_MS),
             None => PPOLL_RETRY_SLEEP_MS,
         };
-        if wait_ms == 0 {
+        if sleep_ms == 0 {
             return Ok(0);
         }
-        let _ = crate::runtime::wait_timeout_ms(ppoll_wait_queue(), wait_ms);
+        if !crate::runtime::sleep_current_ms(sleep_ms) {
+            return Ok(0);
+        }
         if let Some(ms) = remaining_ms {
-            remaining_ms = Some(ms.saturating_sub(wait_ms));
+            remaining_ms = Some(ms.saturating_sub(sleep_ms));
         }
         let (ready_retry, _) = ppoll_scan(root_pa, fds, nfds)?;
         if ready_retry > 0 {

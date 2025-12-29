@@ -50,7 +50,7 @@
 - Add mknodat/symlinkat/linkat/renameat/renameat2 stubs with AT_FDCWD-only path validation.
 - Add statfs/fstatfs stubs returning placeholder filesystem stats.
 - Add fchmodat/fchownat/utimensat stubs for root and /dev pseudo paths.
-- Add poll/ppoll stubs that report pipe readiness, block on a single pipe fd, and use a shared wait queue with periodic rescans for multi-fd waits.
+- Add poll/ppoll stubs that report pipe readiness, block on a single pipe fd, and use a sleep-retry loop for multi-fd waits.
 - Add console input stash and polling readiness for stdin; USER_TEST now covers pipe poll readiness.
 - Enable timer-driven preemption by returning running tasks to the run queue and scheduling from idle.
 - Add execve loader for `/init` built-in ELF image with argv/envp stack layout.
