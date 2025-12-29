@@ -188,6 +188,8 @@ const SYS_UNAME: usize = 160;
 
 const CLOCK_REALTIME: usize = 0;
 const CLOCK_MONOTONIC: usize = 1;
+const CLOCK_REALTIME_COARSE: usize = 5;
+const CLOCK_MONOTONIC_COARSE: usize = 6;
 const CLOCK_MONOTONIC_RAW: usize = 4;
 const CLOCK_BOOTTIME: usize = 7;
 const IOV_MAX: usize = 1024;
@@ -535,7 +537,12 @@ fn sys_clock_gettime(clock_id: usize, tp: usize) -> Result<usize, Errno> {
         tv_nsec: (now_ns % 1_000_000_000) as i64,
     };
     match clock_id {
-        CLOCK_REALTIME | CLOCK_MONOTONIC | CLOCK_MONOTONIC_RAW | CLOCK_BOOTTIME => {
+        CLOCK_REALTIME
+        | CLOCK_MONOTONIC
+        | CLOCK_REALTIME_COARSE
+        | CLOCK_MONOTONIC_COARSE
+        | CLOCK_MONOTONIC_RAW
+        | CLOCK_BOOTTIME => {
             let root_pa = mm::current_root_pa();
             if root_pa == 0 {
                 return Err(Errno::Fault);
@@ -565,7 +572,12 @@ fn sys_clock_getres(clock_id: usize, tp: usize) -> Result<usize, Errno> {
         tv_nsec: nsec as i64,
     };
     match clock_id {
-        CLOCK_REALTIME | CLOCK_MONOTONIC | CLOCK_MONOTONIC_RAW | CLOCK_BOOTTIME => {
+        CLOCK_REALTIME
+        | CLOCK_MONOTONIC
+        | CLOCK_REALTIME_COARSE
+        | CLOCK_MONOTONIC_COARSE
+        | CLOCK_MONOTONIC_RAW
+        | CLOCK_BOOTTIME => {
             let root_pa = mm::current_root_pa();
             if root_pa == 0 {
                 return Err(Errno::Fault);
