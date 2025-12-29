@@ -1,4 +1,28 @@
-* commit c8d4bfa120d721737fc619cfefe5548c5684418e (HEAD -> bootstrap-riscv64)
+* commit d1804684514fbd42bb36c86fbd171903a6b9c648 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:11:32 +0800
+| 
+|     fix(proc): harden execve waitpid clone paths
+| 
+|  CHANGELOG.md                            |  3 +
+|  docs/design/03_memory.md                |  1 +
+|  docs/design/05_syscall_abi.md           |  2 +
+|  docs/process/phase_3_process_syscall.md |  3 +
+|  modules/axruntime/src/mm.rs             | 37 ++++++++----
+|  modules/axruntime/src/process.rs        | 98 ++++++++++++++++---------------
+|  modules/axruntime/src/user.rs           | 25 ++++++--
+|  7 files changed, 103 insertions(+), 66 deletions(-)
+| 
+* commit 1930503f119b0cb9d50b360ca8538de0c52656c7
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 18:57:42 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 25 ++++++++++++++++++++++++-
+|  1 file changed, 24 insertions(+), 1 deletion(-)
+| 
+* commit c8d4bfa120d721737fc619cfefe5548c5684418e
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 18:57:29 +0800
 | 
