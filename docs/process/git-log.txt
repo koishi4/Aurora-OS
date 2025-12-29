@@ -1,4 +1,27 @@
-* commit e506b3fa72274cad218fdb67ba088530c2d81408 (HEAD -> bootstrap-riscv64)
+* commit 43cb22e91255b9660c16b1009182d86ffe80a536 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 15:57:49 +0800
+| 
+|     feat(sched): enable timer preemption
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/02_trap_interrupt.md        |  2 +-
+|  docs/design/04_task_process.md          |  4 ++--
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/runtime.rs        | 25 +++++++++++++++++++++++++
+|  modules/axruntime/src/trap.rs           |  1 +
+|  6 files changed, 31 insertions(+), 3 deletions(-)
+| 
+* commit b67d13097757d17811371c443ad7788fed30de30
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 15:53:36 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 25 ++++++++++++++++++++++++-
+|  1 file changed, 24 insertions(+), 1 deletion(-)
+| 
+* commit e506b3fa72274cad218fdb67ba088530c2d81408
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 15:53:26 +0800
 | 
