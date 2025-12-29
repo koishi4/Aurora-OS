@@ -1,4 +1,26 @@
-* commit 4a964d8415176e7ac6cc405295d418d4fa4bb50b (HEAD -> bootstrap-riscv64)
+* commit 50c49d0a4d4ff2d27570ffafde075e19412475ae (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:58:26 +0800
+| 
+|     feat(syscall): reclaim futex slots
+| 
+|  CHANGELOG.md                             |  1 +
+|  docs/design/05_syscall_abi.md            |  1 +
+|  docs/process/phase_3_process_syscall.md  |  1 +
+|  modules/axruntime/src/futex.rs           | 22 ++++++++++++++++++++--
+|  modules/axruntime/src/task_wait_queue.rs |  6 ++++++
+|  5 files changed, 29 insertions(+), 2 deletions(-)
+| 
+* commit c1a6c0c5713dd522619c9702cce4658c4e8d8190
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:54:31 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 26 +++++++++++++++++++++++++-
+|  1 file changed, 25 insertions(+), 1 deletion(-)
+| 
+* commit 4a964d8415176e7ac6cc405295d418d4fa4bb50b
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 19:54:18 +0800
 | 
