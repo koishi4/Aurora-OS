@@ -8,6 +8,7 @@
 - WaitQueue 改为基于 TaskWaitQueue + SleepQueue 的阻塞等待，返回 WaitResult。
 - TaskControlBlock 增加 wait_reason，唤醒时记录通知/超时来源。
 - 添加 transition_state 校验，跳过过期等待项并避免错误状态覆盖。
+- dummy task 覆盖 wait_timeout/notify 路径，验证通知与超时分支。
 - 更新 04_task_process 设计与 phase_3 过程文档。
 - `make test-qemu-smoke ARCH=riscv64 PLATFORM=qemu` 通过。
 

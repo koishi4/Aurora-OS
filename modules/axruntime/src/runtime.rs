@@ -9,12 +9,13 @@ use crate::task::{self, TaskControlBlock, TaskId, TaskState, WaitReason};
 use crate::task_wait_queue::TaskWaitQueue;
 use crate::time;
 use crate::wait::WaitResult;
+use crate::wait_queue::WaitQueue;
 
 static TICK_COUNT: AtomicU64 = AtomicU64::new(0);
 static NEED_RESCHED: AtomicBool = AtomicBool::new(false);
 static RUN_QUEUE: RunQueue = RunQueue::new();
-static TASK_WAIT_QUEUE: TaskWaitQueue = TaskWaitQueue::new();
 static SLEEP_QUEUE: SleepQueue = SleepQueue::new();
+static WAIT_QUEUE: WaitQueue = WaitQueue::new();
 // CURRENT_TASK is valid only while executing inside a task context.
 static mut CURRENT_TASK: Option<TaskId> = None;
 static mut IDLE_TASK: TaskControlBlock = task::idle_task();
@@ -24,8 +25,10 @@ fn dummy_task_a() -> ! {
     loop {
         let ticks = tick_count();
         if ticks != last_tick && ticks % 50 == 0 {
-            crate::println!("dummy(A): block at tick={}", ticks);
-            block_current(&TASK_WAIT_QUEUE);
+            let timeout_ms = if ticks % 200 == 0 { 500 } else { 10_000 };
+            crate::println!("dummy(A): wait {}ms at tick={}", timeout_ms, ticks);
+            let result = WAIT_QUEUE.wait_timeout_ms(timeout_ms);
+            crate::println!("dummy(A): wait result={:?} tick={}", result, tick_count());
             last_tick = ticks;
         }
         crate::cpu::wait_for_interrupt();
@@ -37,8 +40,8 @@ fn dummy_task_b() -> ! {
     loop {
         let ticks = tick_count();
         if ticks != last_tick && ticks % 80 == 0 {
-            let woke = wake_one(&TASK_WAIT_QUEUE);
-            crate::println!("dummy(B): wake_one={} tick={}", woke, ticks);
+            let woke = WAIT_QUEUE.notify_one();
+            crate::println!("dummy(B): notify_one={} tick={}", woke, ticks);
             yield_now();
             last_tick = ticks;
         }
@@ -294,6 +297,8 @@ pub fn wait_timeout_ms(queue: &TaskWaitQueue, timeout_ms: u64) -> WaitResult {
         NEED_RESCHED.store(true, Ordering::Relaxed);
         CURRENT_TASK = None;
         crate::scheduler::switch(&mut *task_ptr, &IDLE_TASK);
+        // Clear any stale wait-queue entry left by timeout or notify races.
+        let _ = queue.pop(task_id);
         match task::take_wait_reason(task_id) {
             WaitReason::Notified => WaitResult::Notified,
             _ => WaitResult::Timeout,

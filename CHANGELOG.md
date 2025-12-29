@@ -34,3 +34,4 @@
 - Add a trapframe guard for future preemption.
 - Track trapframe pointers in the task table.
 - Track wait completion reasons and validate task state transitions.
+- Exercise wait queues with notify/timeout dummy tasks.

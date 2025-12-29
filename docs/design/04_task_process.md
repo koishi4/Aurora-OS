@@ -59,5 +59,6 @@ wake_one(waitq)
 ## 测试点
 - tick 计数增长与 `sleep_ms` / `wait_timeout_ms` 行为。
 - notify_one/notify_all 的唤醒行为与 WaitReason 返回值。
+- dummy task 的 wait/notify 组合覆盖通知与超时两种路径。
 - scheduler tick hook 的日志输出与周期调度行为。
 - 后续 busybox/多任务场景回归。
