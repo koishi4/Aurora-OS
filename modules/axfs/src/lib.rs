@@ -2,7 +2,7 @@
 
 pub mod memfs;
 
-pub use axvfs::{FileType, InodeId, Metadata};
+pub use axvfs::{FileType, InodeId, Metadata, VfsError, VfsOps};
 
 #[cfg(test)]
 extern crate std;

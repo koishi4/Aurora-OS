@@ -5,7 +5,7 @@ use core::mem::size_of;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use axfs::memfs;
-use axfs::{FileType, InodeId};
+use axfs::{FileType, InodeId, VfsOps};
 use crate::futex;
 use crate::mm::{self, UserAccess, UserPtr, UserSlice};
 use crate::{sbi, time};
@@ -271,7 +271,6 @@ const FD_TABLE_BASE: usize = 3;
 const FD_TABLE_SLOTS: usize = 16;
 const PIPE_SLOTS: usize = 8;
 const PIPE_BUFFER_SIZE: usize = 512;
-const ROOT_PATH: &[u8] = b"/";
 const MAX_PATH_LEN: usize = 128;
 const SIG_BLOCK: usize = 0;
 const SIG_UNBLOCK: usize = 1;
@@ -1068,14 +1067,10 @@ fn sys_newfstatat(_dirfd: usize, pathname: usize, stat_ptr: usize, _flags: usize
     if mm::translate_user_ptr(root_pa, stat_ptr, size, UserAccess::Write).is_none() {
         return Err(Errno::Fault);
     }
-    let fs = memfs::MemFs::new();
+    let fs = memfs::MemFs::with_init_image(init_memfile_image());
     let inode = memfs_lookup_inode(root_pa, pathname)?;
     let meta = fs.metadata_for(inode).ok_or(Errno::NoEnt)?;
-    let size = if inode == memfs::INIT_ID {
-        init_memfile_image().len()
-    } else {
-        meta.size as usize
-    };
+    let size = meta.size as usize;
     let mode = file_type_mode(meta.file_type) | meta.mode as u32;
     UserPtr::new(stat_ptr)
         .write(root_pa, build_stat(mode, size))
@@ -1560,10 +1555,12 @@ fn sys_chdir(pathname: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    if user_path_eq(root_pa, pathname, ROOT_PATH)? {
-        return Ok(0);
+    let inode = memfs_lookup_inode(root_pa, pathname)?;
+    if inode == memfs::ROOT_ID {
+        Ok(0)
+    } else {
+        Err(Errno::NoEnt)
     }
-    Err(Errno::NoEnt)
 }
 
 fn sys_fchdir(fd: usize) -> Result<usize, Errno> {
@@ -2311,18 +2308,6 @@ fn default_statfs() -> Statfs {
     }
 }
 
-fn user_path_eq(root_pa: usize, ptr: usize, target: &[u8]) -> Result<bool, Errno> {
-    for (idx, &expected) in target.iter().enumerate() {
-        let addr = ptr.checked_add(idx).ok_or(Errno::Fault)?;
-        let ch = read_user_byte(root_pa, addr)?;
-        if ch == 0 || ch != expected {
-            return Ok(false);
-        }
-    }
-    let term_addr = ptr.checked_add(target.len()).ok_or(Errno::Fault)?;
-    Ok(read_user_byte(root_pa, term_addr)? == 0)
-}
-
 fn stdio_kind(fd: usize) -> Option<FdKind> {
     match fd {
         0 => Some(FdKind::Stdin),
@@ -2958,16 +2943,28 @@ fn init_memfile_image() -> &'static [u8] {
 
 fn read_init_file(fd: usize, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     let offset = fd_offset(fd).ok_or(Errno::Badf)?;
-    let image = init_memfile_image();
-    if offset >= image.len() {
-        return Ok(0);
+    let fs = memfs::MemFs::with_init_image(init_memfile_image());
+    let mut total = 0usize;
+    let mut remaining = len;
+    let mut scratch = [0u8; 256];
+    while remaining > 0 {
+        let chunk = min(remaining, scratch.len());
+        let read = match fs.read_at(memfs::INIT_ID, (offset + total) as u64, &mut scratch[..chunk]) {
+            Ok(read) => read,
+            Err(_) => return Err(Errno::Badf),
+        };
+        if read == 0 {
+            break;
+        }
+        let dst = buf.checked_add(total).ok_or(Errno::Fault)?;
+        UserSlice::new(dst, read)
+            .copy_from_slice(root_pa, &scratch[..read])
+            .ok_or(Errno::Fault)?;
+        total += read;
+        remaining = remaining.saturating_sub(read);
     }
-    let to_read = min(len, image.len() - offset);
-    UserSlice::new(buf, to_read)
-        .copy_from_slice(root_pa, &image[offset..offset + to_read])
-        .ok_or(Errno::Fault)?;
-    set_fd_offset(fd, offset + to_read);
-    Ok(to_read)
+    set_fd_offset(fd, offset + total);
+    Ok(total)
 }
 
 fn write_to_entry(entry: FdEntry, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {

@@ -1,3 +1,5 @@
+use core::cmp::min;
+
 use axvfs::{FileType, InodeId, Metadata, VfsError, VfsOps, VfsResult};
 
 pub const DT_CHR: u8 = 2;
@@ -117,11 +119,19 @@ const DEV_ENTRIES: [DirEntry; 4] = [
     },
 ];
 
-pub struct MemFs;
+pub struct MemFs<'a> {
+    init_image: Option<&'a [u8]>,
+}
 
-impl MemFs {
+impl<'a> MemFs<'a> {
     pub const fn new() -> Self {
-        Self
+        Self { init_image: None }
+    }
+
+    pub fn with_init_image(image: &'a [u8]) -> Self {
+        Self {
+            init_image: Some(image),
+        }
     }
 
     fn node(&self, inode: InodeId) -> Option<&'static Node> {
@@ -171,11 +181,16 @@ impl MemFs {
 
     pub fn metadata_for(&self, inode: InodeId) -> Option<Metadata> {
         let node = self.node(inode)?;
-        Some(Metadata::new(node.file_type, 0, node.mode))
+        let size = if inode == INIT_ID {
+            self.init_image.map(|image| image.len() as u64).unwrap_or(0)
+        } else {
+            0
+        };
+        Some(Metadata::new(node.file_type, size, node.mode))
     }
 }
 
-impl VfsOps for MemFs {
+impl<'a> VfsOps for MemFs<'a> {
     fn root(&self) -> VfsResult<InodeId> {
         Ok(ROOT_ID)
     }
@@ -200,8 +215,21 @@ impl VfsOps for MemFs {
         self.metadata_for(inode).ok_or(VfsError::NotFound)
     }
 
-    fn read_at(&self, _inode: InodeId, _offset: u64, _buf: &mut [u8]) -> VfsResult<usize> {
-        Err(VfsError::NotSupported)
+    fn read_at(&self, inode: InodeId, offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
+        if inode != INIT_ID {
+            return Err(VfsError::NotSupported);
+        }
+        let image = match self.init_image {
+            Some(image) => image,
+            None => return Err(VfsError::NotSupported),
+        };
+        let offset = offset as usize;
+        if offset >= image.len() {
+            return Ok(0);
+        }
+        let to_read = min(buf.len(), image.len() - offset);
+        buf[..to_read].copy_from_slice(&image[offset..offset + to_read]);
+        Ok(to_read)
     }
 
     fn write_at(&self, _inode: InodeId, _offset: u64, _buf: &[u8]) -> VfsResult<usize> {
@@ -232,5 +260,18 @@ mod tests {
         assert_eq!(root_meta.mode, 0o755);
         let init_meta = fs.metadata_for(INIT_ID).unwrap();
         assert_eq!(init_meta.file_type, FileType::File);
+        assert_eq!(init_meta.size, 0);
+    }
+
+    #[test]
+    fn init_read_uses_image() {
+        let image = b"init";
+        let fs = MemFs::with_init_image(image);
+        let mut buf = [0u8; 8];
+        let read = fs.read_at(INIT_ID, 0, &mut buf).unwrap();
+        assert_eq!(read, 4);
+        assert_eq!(&buf[..4], image);
+        let meta = fs.metadata_for(INIT_ID).unwrap();
+        assert_eq!(meta.size, 4);
     }
 }
