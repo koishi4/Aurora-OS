@@ -27,6 +27,7 @@
 - 早期实现 `exit_group`，与 `exit` 同步关机占位。
 - 早期实现 `getcwd`，占位返回根路径。
 - 早期实现 `set_tid_address`，校验指针可写并返回 TaskId+1。
+- 早期实现 `chdir/fchdir`，仅允许切换到根目录占位。
 - 早期实现 `close`，允许关闭标准输入输出。
 - 早期实现 `getrlimit/prlimit64`，返回默认无限资源限制占位。
 - 早期实现 `ioctl(TIOCGWINSZ/TIOCSWINSZ/TIOCGPGRP/TIOCSPGRP/TIOCSCTTY/TCGETS/TCSETS*)`，为终端提供窗口大小与最小 termios 占位。

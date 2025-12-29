@@ -54,6 +54,7 @@
 - Add clock_gettime64 alias to clock_gettime stub.
 - Add getcwd stub returning root path.
 - Add set_tid_address stub returning TaskId+1.
+- Add chdir/fchdir stubs allowing root only.
 - Add close stub for stdio fds.
 - Add getrlimit/prlimit64 stubs with default limits.
 - Add ioctl stubs for TIOCGWINSZ/TIOCSWINSZ/TIOCGPGRP/TIOCSPGRP/TIOCSCTTY/TCGETS/TCSETS.

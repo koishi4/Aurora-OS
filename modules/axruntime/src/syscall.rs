@@ -87,6 +87,8 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_UNAME => sys_uname(ctx.args[0]),
         SYS_EXIT_GROUP => sys_exit_group(ctx.args[0]),
         SYS_GETCWD => sys_getcwd(ctx.args[0], ctx.args[1]),
+        SYS_CHDIR => sys_chdir(ctx.args[0]),
+        SYS_FCHDIR => sys_fchdir(ctx.args[0]),
         SYS_CLOSE => sys_close(ctx.args[0]),
         SYS_GETRLIMIT => sys_getrlimit(ctx.args[0], ctx.args[1]),
         SYS_PRLIMIT64 => sys_prlimit64(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
@@ -133,6 +135,8 @@ const SYS_NEWFSTATAT: usize = 79;
 const SYS_FACCESSAT: usize = 48;
 const SYS_STATX: usize = 291;
 const SYS_GETCWD: usize = 17;
+const SYS_CHDIR: usize = 49;
+const SYS_FCHDIR: usize = 50;
 const SYS_CLOSE: usize = 57;
 const SYS_GETRLIMIT: usize = 163;
 const SYS_PRLIMIT64: usize = 261;
@@ -207,6 +211,7 @@ const PSEUDO_FD_BASE: usize = 3;
 const PSEUDO_FD_SLOTS: usize = 4;
 const DEV_NULL_PATH: &[u8] = b"/dev/null";
 const DEV_ZERO_PATH: &[u8] = b"/dev/zero";
+const ROOT_PATH: &[u8] = b"/";
 const SIG_BLOCK: usize = 0;
 const SIG_UNBLOCK: usize = 1;
 const SIG_SETMASK: usize = 2;
@@ -909,6 +914,27 @@ fn sys_getcwd(buf: usize, size: usize) -> Result<usize, Errno> {
         .copy_from_slice(root_pa, PATH)
         .ok_or(Errno::Fault)?;
     Ok(PATH.len())
+}
+
+fn sys_chdir(pathname: usize) -> Result<usize, Errno> {
+    if pathname == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    if user_path_eq(root_pa, pathname, ROOT_PATH)? {
+        return Ok(0);
+    }
+    Err(Errno::NoEnt)
+}
+
+fn sys_fchdir(fd: usize) -> Result<usize, Errno> {
+    if fd <= 2 || pseudo_fd_kind(fd).is_some() {
+        return Err(Errno::NotDir);
+    }
+    Err(Errno::Badf)
 }
 
 fn sys_close(fd: usize) -> Result<usize, Errno> {
