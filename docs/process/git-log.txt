@@ -1,4 +1,25 @@
-* commit 888924a9acd94fb3ac9b5eabd5a66d2ad308d421 (HEAD -> bootstrap-riscv64)
+* commit a169f4294f7962e418095b76057db56b82919c2e (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:18:11 +0800
+| 
+|     feat(syscall): fill wait4 rusage placeholder
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 70 +++++++++++++++++++------------
+|  4 files changed, 46 insertions(+), 27 deletions(-)
+| 
+* commit 372c196a2564223dac98e20b0993e638bd734f73
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:14:31 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 888924a9acd94fb3ac9b5eabd5a66d2ad308d421
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 20:14:16 +0800
 | 
