@@ -10,14 +10,14 @@
 - 早期提供 `sleep_ms` 与 `WaitQueue`（阻塞 + 超时等待）辅助，等待由调度器挂起任务。
 - 引入最小 `RunQueue` 与 `TaskControlBlock` 作为调度骨架，占位 tick 驱动的轮转逻辑。
 - 增加上下文结构与 `context_switch` 汇编入口，当前仅保留接口占位。
-- 使用 `need_resched` 标志从 tick 中断发起调度请求，切换在空闲上下文执行。
+- 使用 `need_resched` 标志从 tick 中断发起调度请求，运行中任务先回到空闲上下文，再由 idle_loop 拉起下一任务。
 - 增加 `yield_now` 协作式让渡，主动入队并清理 CURRENT_TASK，再切回空闲。
 - RunQueue 维护轮转指针，实现最小 RR 顺序。
 - RunQueue 保存 `TaskId`，任务实体存放在固定大小的 TaskTable。
 - 增加 TaskWaitQueue，使用 TaskId 阻塞/唤醒任务并配合 RunQueue（状态切换由 runtime 负责）。
 - 增加 SleepQueue 与 `sleep_current_ms`，由 tick 触发唤醒并回收到 RunQueue。
 - WaitQueue 通过 TaskWaitQueue + SleepQueue 实现阻塞等待与超时，WaitReason 由任务表记录。
-- 记录 trapframe 指针（TrapFrameGuard），为后续抢占式调度做准备。
+- 记录 trapframe 指针（TrapFrameGuard），支持抢占时保存/恢复用户态现场。
 - 内核栈在早期由帧分配器分配连续页，任务栈来自固定大小的栈池（上限 `MAX_TASKS`）。
 - TaskControlBlock 支持入口函数指针与栈顶配置，早期用多 dummy task 验证轮转与睡眠唤醒。
 - dummy task 与调度日志通过 `sched-demo` feature 控制，默认构建保持安静。

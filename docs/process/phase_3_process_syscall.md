@@ -15,6 +15,7 @@
 - 增加 TaskWaitQueue 与 block/wake 接口，支撑后续阻塞系统调用。
 - 引入 SleepQueue 与 sleep_current_ms，tick 到期后唤醒任务。
 - 增加 dummy C 使用 sleep_ms 验证睡眠唤醒流程。
+- 定时器中断触发抢占：need_resched 置位后，将运行任务回收至 RunQueue 并切回 idle，由 idle_loop 完成 RR 调度。
 - 调整 TaskWaitQueue 为纯 TaskId 容器，状态切换集中在 runtime。
 - 增加 TrapFrameGuard，用于记录当前 trapframe 指针。
 - TaskControlBlock 增加 trapframe 指针字段，为抢占保存上下文做准备。

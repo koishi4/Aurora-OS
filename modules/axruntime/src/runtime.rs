@@ -204,6 +204,31 @@ pub fn maybe_schedule(ticks: u64, interval: u64) {
     }
 }
 
+pub fn preempt_current() {
+    if !NEED_RESCHED.load(Ordering::Relaxed) {
+        return;
+    }
+    // SAFETY: single-hart early use; CURRENT_TASK is only accessed in init/idle/task contexts.
+    unsafe {
+        let Some(task_id) = CURRENT_TASK else {
+            return;
+        };
+        let Some(task_ptr) = task::task_ptr(task_id) else {
+            return;
+        };
+        if !task::transition_state(task_id, TaskState::Running, TaskState::Ready) {
+            return;
+        }
+        if !RUN_QUEUE.push(task_id) {
+            let _ = task::transition_state(task_id, TaskState::Ready, TaskState::Running);
+            return;
+        }
+        CURRENT_TASK = None;
+        // 切回空闲上下文，由 idle_loop 统一拉起下一任务。
+        crate::scheduler::switch(&mut *task_ptr, &IDLE_TASK);
+    }
+}
+
 pub fn yield_if_needed() {
     while NEED_RESCHED.swap(false, Ordering::Relaxed) {
         // 调度在空闲上下文中执行，避免在 trap 中切换上下文。
