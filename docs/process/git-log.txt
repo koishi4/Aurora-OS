@@ -1,4 +1,26 @@
-* commit 1ce789cb0c7b267f7b977aa8d0e681b602ff439c (HEAD -> bootstrap-riscv64)
+* commit d6e544b2dbf5ee5eb13d9bbe9584a386c2b6bde7 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 23:02:19 +0800
+| 
+|     feat(fs): add ext4 superblock scaffold
+| 
+|  CHANGELOG.md               |   1 +
+|  docs/design/06_fs_vfs.md   |   1 +
+|  docs/process/phase_4_fs.md |   1 +
+|  modules/axfs/src/ext4.rs   | 207 +++++++++++++++++++++++++++++++++++++++++++
+|  modules/axfs/src/lib.rs    |   1 +
+|  5 files changed, 211 insertions(+)
+| 
+* commit cc91f0add22670e4fc5d5aca8dce06f8f62fd9f7
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:59:40 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 24 +++++++++++++++++++++++-
+|  1 file changed, 23 insertions(+), 1 deletion(-)
+| 
+* commit 1ce789cb0c7b267f7b977aa8d0e681b602ff439c
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 22:59:31 +0800
 | 
