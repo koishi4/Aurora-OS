@@ -1,4 +1,31 @@
-* commit 5a6d8d4b0f37ab36973399f9d84525d2a6ab6077 (HEAD -> bootstrap-riscv64)
+* commit 7c50ba2d24f41e59d4ab96a74aee95d835b1cecf (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:27:27 +0800
+| 
+|     feat(fs): add memfs scaffold and hook getdents64
+| 
+|  CHANGELOG.md                     |   1 +
+|  Cargo.lock                       |  10 +++
+|  Cargo.toml                       |   1 +
+|  docs/design/06_fs_vfs.md         |   1 +
+|  docs/process/phase_4_fs.md       |   3 +-
+|  modules/axfs/Cargo.toml          |   7 ++
+|  modules/axfs/src/lib.rs          |   3 +
+|  modules/axfs/src/memfs.rs        | 166 +++++++++++++++++++++++++++++++++++++
+|  modules/axruntime/Cargo.toml     |   1 +
+|  modules/axruntime/src/syscall.rs |  38 ++-------
+|  10 files changed, 201 insertions(+), 30 deletions(-)
+| 
+* commit 0540e5d8af23af421e308eff74ea3cc1a784a837
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:15:46 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 26 +++++++++++++++++++++++++-
+|  1 file changed, 25 insertions(+), 1 deletion(-)
+| 
+* commit 5a6d8d4b0f37ab36973399f9d84525d2a6ab6077
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 21:15:36 +0800
 | 
