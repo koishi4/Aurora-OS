@@ -21,6 +21,9 @@
 - 早期实现 `nanosleep`，优先走调度器睡眠；无任务上下文时用 timebase 忙等。
 - 早期实现 `readv/writev`，复用用户指针校验并支持分段缓冲区。
 - 早期实现 `open/openat/mkdirat/unlinkat/newfstatat/getdents64/faccessat/statx/readlinkat`，占位返回 ENOENT/ENOTDIR，并识别 `/dev/null` 与 `/dev/zero`。
+- 早期实现 `mknodat/symlinkat/linkat/renameat/renameat2`，占位仅校验指针与 AT_FDCWD，未提供真实重命名/链接能力。
+- 早期实现 `statfs/fstatfs`，占位填充基本文件系统信息。
+- 早期实现 `fchmodat/fchownat/utimensat`，占位校验参数与路径，允许根目录与 `/dev` 伪节点。
 - 早期实现 `ppoll`，占位清空 revents 并返回 0。
 - 早期实现 `uname`，返回最小可用的系统信息占位。
 - 早期实现 `getpid/getppid/getuid/geteuid/getgid/getegid/getresuid/getresgid` 等身份信息占位。

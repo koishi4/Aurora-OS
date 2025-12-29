@@ -38,6 +38,9 @@
 - 增加 clock_getres/clock_getres_time64，占位返回 timebase 精度。
 - 增加 readv/writev，占位支持分段缓冲区访问并允许 iovcnt=0。
 - 增加 open/openat/mkdirat/unlinkat/newfstatat/getdents64/faccessat/statx/readlinkat，占位返回 ENOENT/ENOTDIR 并识别 `/dev/null` 与 `/dev/zero`，同时校验 getdents64 缓冲区。
+- 增加 mknodat/symlinkat/linkat/renameat/renameat2，占位校验 AT_FDCWD 与路径指针。
+- 增加 statfs/fstatfs，占位填充基本文件系统信息。
+- 增加 fchmodat/fchownat/utimensat，占位支持根目录与 `/dev` 伪节点。
 - 增加 ppoll，占位清空 revents 并返回 0。
 - 增加 uname，占位返回内核与平台信息。
 - 增加 getppid/getuid/geteuid/getgid/getegid/getresuid/getresgid 等身份信息占位。

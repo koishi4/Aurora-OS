@@ -64,13 +64,23 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_WRITEV => sys_writev(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_OPEN => sys_open(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_OPENAT => sys_openat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_MKNODAT => sys_mknodat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_MKDIRAT => sys_mkdirat(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_UNLINKAT => sys_unlinkat(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_SYMLINKAT => sys_symlinkat(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_LINKAT => sys_linkat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
+        SYS_RENAMEAT => sys_renameat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_RENAMEAT2 => sys_renameat2(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
         SYS_GETDENTS64 => sys_getdents64(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_NEWFSTATAT => sys_newfstatat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_FACCESSAT => sys_faccessat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_STATX => sys_statx(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
         SYS_READLINKAT => sys_readlinkat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_STATFS => sys_statfs(ctx.args[0], ctx.args[1]),
+        SYS_FSTATFS => sys_fstatfs(ctx.args[0], ctx.args[1]),
+        SYS_FCHMODAT => sys_fchmodat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_FCHOWNAT => sys_fchownat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
+        SYS_UTIMENSAT => sys_utimensat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_PPOLL => sys_ppoll(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
         SYS_PPOLL_TIME64 => sys_ppoll(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
         SYS_CLOCK_GETTIME => sys_clock_gettime(ctx.args[0], ctx.args[1]),
@@ -136,13 +146,23 @@ const SYS_READV: usize = 65;
 const SYS_WRITEV: usize = 66;
 const SYS_OPEN: usize = 1024;
 const SYS_OPENAT: usize = 56;
+const SYS_MKNODAT: usize = 33;
 const SYS_MKDIRAT: usize = 34;
 const SYS_UNLINKAT: usize = 35;
+const SYS_SYMLINKAT: usize = 36;
+const SYS_LINKAT: usize = 37;
+const SYS_RENAMEAT: usize = 38;
 const SYS_GETDENTS64: usize = 61;
 const SYS_NEWFSTATAT: usize = 79;
 const SYS_READLINKAT: usize = 78;
 const SYS_FACCESSAT: usize = 48;
 const SYS_STATX: usize = 291;
+const SYS_STATFS: usize = 43;
+const SYS_FSTATFS: usize = 44;
+const SYS_FCHMODAT: usize = 53;
+const SYS_FCHOWNAT: usize = 54;
+const SYS_UTIMENSAT: usize = 88;
+const SYS_RENAMEAT2: usize = 276;
 const SYS_PPOLL: usize = 73;
 const SYS_PPOLL_TIME64: usize = 414;
 const SYS_GETCWD: usize = 17;
@@ -218,6 +238,10 @@ const O_CLOEXEC: usize = 0x80000;
 const O_RDONLY: usize = 0;
 const O_WRONLY: usize = 1;
 const O_RDWR: usize = 2;
+const AT_FDCWD: isize = -100;
+const AT_SYMLINK_NOFOLLOW: usize = 0x100;
+const AT_SYMLINK_FOLLOW: usize = 0x400;
+const AT_EMPTY_PATH: usize = 0x1000;
 const PSEUDO_FD_BASE: usize = 3;
 const PSEUDO_FD_SLOTS: usize = 4;
 const DEV_NULL_PATH: &[u8] = b"/dev/null";
@@ -335,6 +359,23 @@ struct Stat {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
+struct Statfs {
+    f_type: u64,
+    f_bsize: u64,
+    f_blocks: u64,
+    f_bfree: u64,
+    f_bavail: u64,
+    f_files: u64,
+    f_ffree: u64,
+    f_fsid: [i32; 2],
+    f_namelen: u64,
+    f_frsize: u64,
+    f_flags: u64,
+    f_spare: [u64; 4],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
 struct SigAction {
     sa_handler: usize,
     sa_flags: usize,
@@ -373,6 +414,13 @@ struct Rusage {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PseudoFdKind {
     Empty,
+    DevNull,
+    DevZero,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum KnownPath {
+    Root,
     DevNull,
     DevZero,
 }
@@ -613,6 +661,20 @@ fn sys_openat(_dirfd: usize, pathname: usize, _flags: usize, _mode: usize) -> Re
     Err(Errno::NoEnt)
 }
 
+fn sys_mknodat(dirfd: usize, pathname: usize, _mode: usize, _dev: usize) -> Result<usize, Errno> {
+    // 占位实现：仅校验目录 fd 与路径指针，拒绝真实节点创建。
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    validate_at_dirfd(dirfd)?;
+    validate_user_path(root_pa, pathname)?;
+    match classify_path(root_pa, pathname)? {
+        Some(_) => Err(Errno::Exist),
+        None => Err(Errno::NoEnt),
+    }
+}
+
 fn sys_mkdirat(_dirfd: usize, pathname: usize, _mode: usize) -> Result<usize, Errno> {
     if pathname == 0 {
         return Err(Errno::Fault);
@@ -639,6 +701,82 @@ fn sys_unlinkat(_dirfd: usize, pathname: usize, _flags: usize) -> Result<usize, 
         return Err(Errno::Inval);
     }
     Err(Errno::NoEnt)
+}
+
+fn sys_symlinkat(oldpath: usize, newdirfd: usize, newpath: usize) -> Result<usize, Errno> {
+    // 占位实现：仅验证路径指针与目标是否存在。
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    validate_at_dirfd(newdirfd)?;
+    validate_user_path(root_pa, oldpath)?;
+    validate_user_path(root_pa, newpath)?;
+    match classify_path(root_pa, newpath)? {
+        Some(_) => Err(Errno::Exist),
+        None => Err(Errno::NoEnt),
+    }
+}
+
+fn sys_linkat(
+    olddirfd: usize,
+    oldpath: usize,
+    newdirfd: usize,
+    newpath: usize,
+    flags: usize,
+) -> Result<usize, Errno> {
+    // 占位实现：旧路径必须已知，新路径不能存在，否则返回占位错误。
+    if flags & !AT_SYMLINK_FOLLOW != 0 {
+        return Err(Errno::Inval);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    validate_at_dirfd(olddirfd)?;
+    validate_at_dirfd(newdirfd)?;
+    validate_user_path(root_pa, oldpath)?;
+    validate_user_path(root_pa, newpath)?;
+    if classify_path(root_pa, oldpath)?.is_none() {
+        return Err(Errno::NoEnt);
+    }
+    if classify_path(root_pa, newpath)?.is_some() {
+        return Err(Errno::Exist);
+    }
+    Err(Errno::NoEnt)
+}
+
+fn sys_renameat(olddirfd: usize, oldpath: usize, newdirfd: usize, newpath: usize) -> Result<usize, Errno> {
+    sys_renameat2(olddirfd, oldpath, newdirfd, newpath, 0)
+}
+
+fn sys_renameat2(
+    olddirfd: usize,
+    oldpath: usize,
+    newdirfd: usize,
+    newpath: usize,
+    flags: usize,
+) -> Result<usize, Errno> {
+    // 占位实现：仅支持 flags=0，且不执行真实重命名。
+    if flags != 0 {
+        return Err(Errno::Inval);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    validate_at_dirfd(olddirfd)?;
+    validate_at_dirfd(newdirfd)?;
+    validate_user_path(root_pa, oldpath)?;
+    validate_user_path(root_pa, newpath)?;
+    let old_kind = classify_path(root_pa, oldpath)?;
+    let new_kind = classify_path(root_pa, newpath)?;
+    match (old_kind, new_kind) {
+        (Some(old), Some(new)) if old == new => Ok(0),
+        (Some(_), Some(_)) => Err(Errno::Exist),
+        (Some(_), None) => Err(Errno::NoEnt),
+        (None, _) => Err(Errno::NoEnt),
+    }
 }
 
 fn sys_getdents64(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
@@ -729,6 +867,106 @@ fn sys_readlinkat(_dirfd: usize, pathname: usize, buf: usize, len: usize) -> Res
         return Err(Errno::Inval);
     }
     Err(Errno::NoEnt)
+}
+
+fn sys_statfs(pathname: usize, buf: usize) -> Result<usize, Errno> {
+    if pathname == 0 || buf == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    // 占位实现：只允许根目录与 /dev/null,/dev/zero。
+    validate_user_path(root_pa, pathname)?;
+    match classify_path(root_pa, pathname)? {
+        Some(_) => {
+            UserPtr::new(buf)
+                .write(root_pa, default_statfs())
+                .ok_or(Errno::Fault)?;
+            Ok(0)
+        }
+        None => Err(Errno::NoEnt),
+    }
+}
+
+fn sys_fstatfs(fd: usize, buf: usize) -> Result<usize, Errno> {
+    if buf == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    // 占位实现：仅识别标准 fd 与 pseudo fd。
+    if fd > 2 && pseudo_fd_kind(fd).is_none() {
+        return Err(Errno::Badf);
+    }
+    UserPtr::new(buf)
+        .write(root_pa, default_statfs())
+        .ok_or(Errno::Fault)?;
+    Ok(0)
+}
+
+fn sys_fchmodat(dirfd: usize, pathname: usize, _mode: usize, flags: usize) -> Result<usize, Errno> {
+    // 占位实现：仅支持 AT_FDCWD 与 AT_SYMLINK_NOFOLLOW。
+    if flags & !AT_SYMLINK_NOFOLLOW != 0 {
+        return Err(Errno::Inval);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    validate_at_dirfd(dirfd)?;
+    validate_user_path(root_pa, pathname)?;
+    match classify_path(root_pa, pathname)? {
+        Some(_) => Ok(0),
+        None => Err(Errno::NoEnt),
+    }
+}
+
+fn sys_fchownat(
+    dirfd: usize,
+    pathname: usize,
+    _owner: usize,
+    _group: usize,
+    flags: usize,
+) -> Result<usize, Errno> {
+    // 占位实现：仅支持 AT_FDCWD 与 AT_SYMLINK_NOFOLLOW。
+    if flags & !AT_SYMLINK_NOFOLLOW != 0 {
+        return Err(Errno::Inval);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    validate_at_dirfd(dirfd)?;
+    validate_user_path(root_pa, pathname)?;
+    match classify_path(root_pa, pathname)? {
+        Some(_) => Ok(0),
+        None => Err(Errno::NoEnt),
+    }
+}
+
+fn sys_utimensat(dirfd: usize, pathname: usize, times: usize, flags: usize) -> Result<usize, Errno> {
+    // 占位实现：忽略时间内容，仅做指针与 flags 校验。
+    if flags & !AT_SYMLINK_NOFOLLOW != 0 {
+        return Err(Errno::Inval);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    validate_at_dirfd(dirfd)?;
+    validate_user_path(root_pa, pathname)?;
+    if times != 0 {
+        let size = size_of::<Timespec>() * 2;
+        validate_user_read(root_pa, times, size)?;
+    }
+    match classify_path(root_pa, pathname)? {
+        Some(_) => Ok(0),
+        None => Err(Errno::NoEnt),
+    }
 }
 
 fn sys_ppoll(fds: usize, nfds: usize, _tmo: usize, _sigmask: usize, _sigsetsize: usize) -> Result<usize, Errno> {
@@ -1623,6 +1861,62 @@ fn sys_getcpu(cpu: usize, node: usize) -> Result<usize, Errno> {
 fn current_pid() -> usize {
     // Single-hart early boot uses TaskId+1 as a stable placeholder PID.
     crate::runtime::current_task_id().map(|id| id + 1).unwrap_or(1)
+}
+
+fn validate_at_dirfd(dirfd: usize) -> Result<(), Errno> {
+    // 仅支持 AT_FDCWD，占位阶段不维护真实目录 fd。
+    if dirfd as isize == AT_FDCWD {
+        return Ok(());
+    }
+    if dirfd <= 2 || pseudo_fd_kind(dirfd).is_some() {
+        return Err(Errno::NotDir);
+    }
+    Err(Errno::Badf)
+}
+
+fn validate_user_path(root_pa: usize, path: usize) -> Result<(), Errno> {
+    if path == 0 {
+        return Err(Errno::Fault);
+    }
+    // 只读取首字节，确保指针可访问，避免提前扫描整条路径。
+    read_user_byte(root_pa, path)?;
+    Ok(())
+}
+
+fn classify_path(root_pa: usize, path: usize) -> Result<Option<KnownPath>, Errno> {
+    // 仅识别根目录与 /dev/null,/dev/zero，避免误判。
+    if user_path_eq(root_pa, path, ROOT_PATH)? {
+        return Ok(Some(KnownPath::Root));
+    }
+    if user_path_eq(root_pa, path, DEV_NULL_PATH)? {
+        return Ok(Some(KnownPath::DevNull));
+    }
+    if user_path_eq(root_pa, path, DEV_ZERO_PATH)? {
+        return Ok(Some(KnownPath::DevZero));
+    }
+    Ok(None)
+}
+
+fn default_statfs() -> Statfs {
+    // 使用内存容量填充占位 statfs，保证用户态工具有可读值。
+    const TMPFS_MAGIC: u64 = 0x0102_1994;
+    let bsize = 4096u64;
+    let total_bytes = mm::memory_size() as u64;
+    let blocks = total_bytes / bsize;
+    Statfs {
+        f_type: TMPFS_MAGIC,
+        f_bsize: bsize,
+        f_blocks: blocks,
+        f_bfree: blocks,
+        f_bavail: blocks,
+        f_files: 0,
+        f_ffree: 0,
+        f_fsid: [0, 0],
+        f_namelen: 255,
+        f_frsize: bsize,
+        f_flags: 0,
+        f_spare: [0; 4],
+    }
 }
 
 fn user_path_eq(root_pa: usize, ptr: usize, target: &[u8]) -> Result<bool, Errno> {
