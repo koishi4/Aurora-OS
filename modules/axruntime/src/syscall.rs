@@ -198,6 +198,8 @@ const O_CLOEXEC: usize = 0x80000;
 const O_RDONLY: usize = 0;
 const O_WRONLY: usize = 1;
 const O_RDWR: usize = 2;
+const DEV_NULL_FD: usize = 3;
+const DEV_NULL_PATH: &[u8] = b"/dev/null";
 const SIG_BLOCK: usize = 0;
 const SIG_UNBLOCK: usize = 1;
 const SIG_SETMASK: usize = 2;
@@ -379,6 +381,9 @@ fn sys_read(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     if len == 0 {
         return Ok(0);
     }
+    if fd == DEV_NULL_FD {
+        return Ok(0);
+    }
     if fd != 0 {
         return Err(Errno::Badf);
     }
@@ -394,6 +399,14 @@ fn sys_write(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     if len == 0 {
         return Ok(0);
     }
+    if fd == DEV_NULL_FD {
+        let root_pa = mm::current_root_pa();
+        if root_pa == 0 {
+            return Err(Errno::Fault);
+        }
+        validate_user_read(root_pa, buf, len)?;
+        return Ok(len);
+    }
     if fd != 1 && fd != 2 {
         return Err(Errno::Badf);
     }
@@ -406,6 +419,9 @@ fn sys_write(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
 }
 
 fn sys_readv(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
+    if fd == DEV_NULL_FD {
+        return Ok(0);
+    }
     if fd != 0 {
         return Err(Errno::Badf);
     }
@@ -448,8 +464,11 @@ fn sys_readv(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
 }
 
 fn sys_writev(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
+    let null_sink = fd == DEV_NULL_FD;
     if fd != 1 && fd != 2 {
-        return Err(Errno::Badf);
+        if !null_sink {
+            return Err(Errno::Badf);
+        }
     }
     if iovcnt == 0 {
         return Ok(0);
@@ -469,6 +488,11 @@ fn sys_writev(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> 
     for index in 0..iovcnt {
         let iov = load_iovec(root_pa, iov_ptr, index)?;
         if iov.iov_len == 0 {
+            continue;
+        }
+        if null_sink {
+            validate_user_read(root_pa, iov.iov_base, iov.iov_len)?;
+            total = total.saturating_add(iov.iov_len);
             continue;
         }
         match write_console_from(root_pa, iov.iov_base, iov.iov_len) {
@@ -496,14 +520,14 @@ fn sys_openat(_dirfd: usize, pathname: usize, _flags: usize, _mode: usize) -> Re
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    if mm::translate_user_ptr(root_pa, pathname, 1, UserAccess::Read).is_none() {
-        return Err(Errno::Fault);
+    if user_path_eq(root_pa, pathname, DEV_NULL_PATH)? {
+        return Ok(DEV_NULL_FD);
     }
     Err(Errno::NoEnt)
 }
 
 fn sys_getdents64(fd: usize, _buf: usize, _len: usize) -> Result<usize, Errno> {
-    if fd <= 2 {
+    if fd <= 2 || fd == DEV_NULL_FD {
         return Err(Errno::NotDir);
     }
     Err(Errno::Badf)
@@ -778,7 +802,7 @@ fn sys_getcwd(buf: usize, size: usize) -> Result<usize, Errno> {
 }
 
 fn sys_close(fd: usize) -> Result<usize, Errno> {
-    if fd <= 2 {
+    if fd <= 2 || fd == DEV_NULL_FD {
         return Ok(0);
     }
     Err(Errno::Badf)
@@ -993,7 +1017,7 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
     if stat_ptr == 0 {
         return Err(Errno::Fault);
     }
-    if fd > 2 {
+    if fd > 2 && fd != DEV_NULL_FD {
         return Err(Errno::Badf);
     }
     let root_pa = mm::current_root_pa();
@@ -1055,7 +1079,7 @@ fn sys_dup3(oldfd: usize, newfd: usize, flags: usize) -> Result<usize, Errno> {
 }
 
 fn sys_lseek(fd: usize, _offset: usize, _whence: usize) -> Result<usize, Errno> {
-    if fd <= 2 {
+    if fd <= 2 || fd == DEV_NULL_FD {
         return Err(Errno::Pipe);
     }
     Err(Errno::Badf)
@@ -1364,6 +1388,32 @@ fn sys_getcpu(cpu: usize, node: usize) -> Result<usize, Errno> {
 fn current_pid() -> usize {
     // Single-hart early boot uses TaskId+1 as a stable placeholder PID.
     crate::runtime::current_task_id().map(|id| id + 1).unwrap_or(1)
+}
+
+fn user_path_eq(root_pa: usize, ptr: usize, target: &[u8]) -> Result<bool, Errno> {
+    for (idx, &expected) in target.iter().enumerate() {
+        let addr = ptr.checked_add(idx).ok_or(Errno::Fault)?;
+        let ch = read_user_byte(root_pa, addr)?;
+        if ch == 0 || ch != expected {
+            return Ok(false);
+        }
+    }
+    let term_addr = ptr.checked_add(target.len()).ok_or(Errno::Fault)?;
+    Ok(read_user_byte(root_pa, term_addr)? == 0)
+}
+
+fn read_user_byte(root_pa: usize, addr: usize) -> Result<u8, Errno> {
+    let pa = mm::translate_user_ptr(root_pa, addr, 1, UserAccess::Read)
+        .ok_or(Errno::Fault)?;
+    // SAFETY: 已验证用户态权限与范围。
+    Ok(unsafe { *(pa as *const u8) })
+}
+
+fn validate_user_read(root_pa: usize, addr: usize, len: usize) -> Result<(), Errno> {
+    UserSlice::new(addr, len)
+        .for_each_chunk(root_pa, UserAccess::Read, |_, _| Some(()))
+        .ok_or(Errno::Fault)?;
+    Ok(())
 }
 
 fn load_iovec(root_pa: usize, iov_ptr: usize, index: usize) -> Result<Iovec, Errno> {
