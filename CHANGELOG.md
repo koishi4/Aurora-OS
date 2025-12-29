@@ -60,6 +60,7 @@
 - Add sysinfo stub for uptime and memory size.
 - Add getrandom stub with xorshift output.
 - Add fstat stub for stdio character device metadata.
+- Align fstat timestamps with timebase monotonic clock.
 - Add dup/dup3 stubs for stdio redirection.
 - Add lseek stub returning ESPIPE for stdio.
 - Add robust list stubs returning empty state.

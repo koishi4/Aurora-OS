@@ -816,9 +816,9 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    let now_ms = time::uptime_ms();
-    let sec = (now_ms / 1000) as isize;
-    let nsec = ((now_ms % 1000) * 1_000_000) as usize;
+    let now_ns = time::monotonic_ns();
+    let sec = (now_ns / 1_000_000_000) as isize;
+    let nsec = (now_ns % 1_000_000_000) as usize;
     let stat = Stat {
         st_dev: 0,
         st_ino: 0,

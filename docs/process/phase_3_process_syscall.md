@@ -49,6 +49,7 @@
 - 增加 sysinfo，占位返回内存与运行时间信息。
 - 增加 getrandom，占位返回伪随机数据。
 - 增加 fstat，占位返回标准输入输出元数据。
+- fstat 时间戳改为基于 timebase 的单调时间，避免 tick 精度影响。
 - 增加 dup/dup3，占位支持标准输入输出重定向。
 - 增加 lseek，占位返回 ESPIPE 避免误判可寻址。
 - 增加 set_robust_list/get_robust_list，占位返回空链表。
