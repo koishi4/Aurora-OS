@@ -12,6 +12,7 @@ use crate::trap::TrapFrame;
 #[derive(Debug, Clone, Copy)]
 pub enum Errno {
     NoEnt = 2,
+    Exist = 17,
     MFile = 24,
     NoSys = 38,
     Fault = 14,
@@ -63,6 +64,8 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_WRITEV => sys_writev(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_OPEN => sys_open(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_OPENAT => sys_openat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_MKDIRAT => sys_mkdirat(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_UNLINKAT => sys_unlinkat(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_GETDENTS64 => sys_getdents64(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_NEWFSTATAT => sys_newfstatat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_FACCESSAT => sys_faccessat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
@@ -133,6 +136,8 @@ const SYS_READV: usize = 65;
 const SYS_WRITEV: usize = 66;
 const SYS_OPEN: usize = 1024;
 const SYS_OPENAT: usize = 56;
+const SYS_MKDIRAT: usize = 34;
+const SYS_UNLINKAT: usize = 35;
 const SYS_GETDENTS64: usize = 61;
 const SYS_NEWFSTATAT: usize = 79;
 const SYS_READLINKAT: usize = 78;
@@ -604,6 +609,34 @@ fn sys_openat(_dirfd: usize, pathname: usize, _flags: usize, _mode: usize) -> Re
     }
     if user_path_eq(root_pa, pathname, DEV_ZERO_PATH)? {
         return alloc_pseudo_fd(PseudoFdKind::DevZero).ok_or(Errno::MFile);
+    }
+    Err(Errno::NoEnt)
+}
+
+fn sys_mkdirat(_dirfd: usize, pathname: usize, _mode: usize) -> Result<usize, Errno> {
+    if pathname == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    if user_path_eq(root_pa, pathname, ROOT_PATH)? {
+        return Err(Errno::Exist);
+    }
+    Err(Errno::NoEnt)
+}
+
+fn sys_unlinkat(_dirfd: usize, pathname: usize, _flags: usize) -> Result<usize, Errno> {
+    if pathname == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    if user_path_eq(root_pa, pathname, ROOT_PATH)? {
+        return Err(Errno::Inval);
     }
     Err(Errno::NoEnt)
 }
