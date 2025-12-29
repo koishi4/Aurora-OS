@@ -6,6 +6,7 @@ ARCH=${ARCH:-riscv64}
 PLATFORM=${PLATFORM:-qemu}
 FS=${FS:-}
 MODE=${MODE:-debug}
+USER_TEST=${USER_TEST:-0}
 TARGET=riscv64gc-unknown-none-elf
 CRATE=axruntime
 QEMU_BIN=${QEMU_BIN:-qemu-system-riscv64}
@@ -73,6 +74,14 @@ if ! grep -q "Aurora kernel booting" "${LOG_FILE}"; then
   echo "Smoke test failed: boot banner not found." >&2
   cat "${LOG_FILE}" >&2
   exit 1
+fi
+
+if [[ "${USER_TEST}" == "1" ]]; then
+  if ! grep -q "user: hello" "${LOG_FILE}"; then
+    echo "Smoke test failed: user-mode banner not found." >&2
+    cat "${LOG_FILE}" >&2
+    exit 1
+  fi
 fi
 
 if [[ ${STATUS} -ne 0 && ${STATUS} -ne 124 ]]; then

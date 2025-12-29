@@ -17,6 +17,8 @@ help:
 	@printf "  make test-qemu-smoke ARCH=riscv64 PLATFORM=qemu FS=path/to/ext4.img\n"
 	@printf "  make test-oscomp ARCH=riscv64 PLATFORM=qemu FS=path/to/ext4.img\n"
 	@printf "  make clean\n"
+	@printf "\nOptions:\n"
+	@printf "  USER_TEST=1  Enable minimal user-mode ecall smoke path\n"
 
 fmt:
 	@./scripts/fmt.sh

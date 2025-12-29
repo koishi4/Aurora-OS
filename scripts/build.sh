@@ -5,6 +5,7 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 ARCH=${ARCH:-riscv64}
 PLATFORM=${PLATFORM:-qemu}
 MODE=${MODE:-debug}
+USER_TEST=${USER_TEST:-0}
 TARGET=riscv64gc-unknown-none-elf
 CRATE=axruntime
 
@@ -35,6 +36,9 @@ OUT_DIR=debug
 if [[ "${MODE}" == "release" ]]; then
   CARGO_FLAGS+=(--release)
   OUT_DIR=release
+fi
+if [[ "${USER_TEST}" == "1" ]]; then
+  CARGO_FLAGS+=(--features user-test)
 fi
 
 (
