@@ -1,5 +1,6 @@
 #![no_std]
 
+pub mod block;
 pub mod devfs;
 pub mod memfs;
 pub mod mount;

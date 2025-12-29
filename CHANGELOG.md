@@ -88,6 +88,7 @@
 - Add fd offset tracking for memfs-backed reads.
 - Add memfs write support for /dev/null and /dev/zero, and route readlinkat through memfs.
 - Add VFS mount table with /, /dev, /proc reserved mounts plus devfs/procfs stubs.
+- Add BlockDevice trait and a pass-through BlockCache scaffold for future FS work.
 - Extend USER_TEST to cover getdents64 on / and /dev.
 - Extend USER_TEST to cover clone tid writeback validation.
 - Build clone_user_root from kernel mappings to avoid sharing parent page tables.

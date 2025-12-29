@@ -16,7 +16,7 @@
 - `MountTable` 预留 `/`、`/dev`、`/proc` 挂载点：/dev 使用 devfs 占位，/proc 使用 procfs 占位，路径解析按最长前缀匹配并剥离挂载前缀。
 - 路径解析走 dentry 缓存，减少重复 lookup。
 - 页缓存以页为单位缓存文件数据，写入采用 write-back + 定期刷盘。
-- 块设备通过 `BlockDevice` 抽象接入 virtio-block。
+- 块设备通过 `BlockDevice` 抽象接入 virtio-block，早期以 BlockCache 直通占位。
 - 权限与时间戳语义对齐 Linux，错误码通过 errno 映射返回。
 
 ## 关键数据结构
