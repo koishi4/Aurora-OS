@@ -13,6 +13,7 @@ mod sleep_queue;
 mod wait;
 mod wait_queue;
 mod syscall;
+mod user;
 mod task_wait_queue;
 mod task;
 mod scheduler;
@@ -61,6 +62,18 @@ pub extern "C" fn rust_main(hart_id: usize, dtb_addr: usize) -> ! {
     trap::enable_timer_interrupt(interval);
 
     runtime::init();
+
+    if config::ENABLE_USER_TEST {
+        if let Some(ctx) = user::prepare_user_test() {
+            crate::println!("user: enter user mode entry={:#x}", ctx.entry);
+            trap::set_kernel_stack(crate::trap::current_sp());
+            unsafe {
+                trap::enter_user(ctx.entry, ctx.user_sp, ctx.satp);
+            }
+        } else {
+            crate::println!("user: setup failed, continue in kernel");
+        }
+    }
 
     runtime::idle_loop();
 }

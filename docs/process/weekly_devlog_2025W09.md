@@ -19,6 +19,8 @@
 - 补录 W01-W07 周报为空缺说明，保证过程文档完整性。
 - 更新 04_task_process 设计与 phase_3 过程文档。
 - trap 处理 U-mode ecall 并接入 syscall 分发骨架。
+- trap 入口改为 sscratch 内核栈交换，提供最小 U-mode trap 支持。
+- 增加用户态测试映射与 enter_user 入口。
 - `make test-qemu-smoke ARCH=riscv64 PLATFORM=qemu` 通过。
 
 ## 问题

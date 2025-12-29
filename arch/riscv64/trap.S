@@ -39,6 +39,8 @@ __trap_vector:
     .set TF_STVAL,  33*8
     .set TF_SIZE,   34*8
 
+    # Swap to kernel stack stored in sscratch; keep user sp in sscratch.
+    csrrw sp, sscratch, sp
     addi sp, sp, -TF_SIZE
 
     sd ra, TF_RA(sp)
@@ -121,4 +123,6 @@ __trap_vector:
     ld t6, TF_T6(sp)
 
     addi sp, sp, TF_SIZE
+    # Restore the original sp (user or kernel) before returning.
+    csrrw sp, sscratch, sp
     sret

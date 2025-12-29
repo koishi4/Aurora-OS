@@ -31,4 +31,6 @@ context_switch:
     ld s9, 88(a1)
     ld s10, 96(a1)
     ld s11, 104(a1)
+    # Keep sscratch aligned with the active kernel stack pointer.
+    csrw sscratch, sp
     ret

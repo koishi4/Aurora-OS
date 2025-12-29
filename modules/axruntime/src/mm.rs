@@ -29,6 +29,8 @@ const PPN_MASK: usize = (1usize << PPN_WIDTH) - 1;
 
 const SATP_MODE_SV39: usize = 8 << 60;
 const PTE_FLAGS_KERNEL: usize = PTE_V | PTE_R | PTE_W | PTE_X | PTE_G | PTE_A | PTE_D;
+const PTE_FLAGS_USER_CODE: usize = PTE_V | PTE_R | PTE_X | PTE_U | PTE_A;
+const PTE_FLAGS_USER_DATA: usize = PTE_V | PTE_R | PTE_W | PTE_U | PTE_A | PTE_D;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct MemoryRegion {
@@ -72,6 +74,7 @@ static MEM_BASE: AtomicUsize = AtomicUsize::new(0);
 static MEM_SIZE: AtomicUsize = AtomicUsize::new(0);
 static FRAME_ALLOC_READY: AtomicBool = AtomicBool::new(false);
 static mut FRAME_ALLOC: MaybeUninit<BumpFrameAllocator> = MaybeUninit::uninit();
+static KERNEL_ROOT_PA: AtomicUsize = AtomicUsize::new(0);
 
 extern "C" {
     static ekernel: u8;
@@ -95,6 +98,7 @@ pub fn init(memory: Option<MemoryRegion>) {
         unsafe {
             if let Some(root_pa) = setup_kernel_page_table(region) {
                 enable_paging(root_pa);
+                KERNEL_ROOT_PA.store(root_pa, Ordering::Relaxed);
                 crate::println!("mm: paging enabled (sv39 identity map)");
             } else {
                 crate::println!("mm: paging not enabled");
@@ -198,6 +202,10 @@ impl PageTableEntry {
         (self.bits & PTE_V) != 0
     }
 
+    pub fn is_leaf(self) -> bool {
+        (self.bits & (PTE_R | PTE_W | PTE_X)) != 0
+    }
+
     pub fn flags(self) -> usize {
         self.bits & 0x3ff
     }
@@ -248,6 +256,28 @@ pub fn alloc_frame() -> Option<PhysPageNum> {
     unsafe { FRAME_ALLOC.assume_init_ref().alloc() }
 }
 
+pub fn kernel_root_pa() -> usize {
+    KERNEL_ROOT_PA.load(Ordering::Relaxed)
+}
+
+pub fn satp_for_root(root_pa: usize) -> usize {
+    SATP_MODE_SV39 | (root_pa >> PAGE_SHIFT)
+}
+
+pub fn flush_tlb() {
+    // Safety: sfence.vma is safe to issue after updating page tables.
+    unsafe {
+        asm!("sfence.vma");
+    }
+}
+
+pub fn flush_icache() {
+    // Safety: fence.i syncs instruction stream after writing code.
+    unsafe {
+        asm!("fence.i");
+    }
+}
+
 unsafe fn alloc_page_table() -> Option<&'static mut PageTable> {
     let frame = alloc_frame()?;
     let pa = frame.addr().as_usize();
@@ -255,6 +285,53 @@ unsafe fn alloc_page_table() -> Option<&'static mut PageTable> {
     // Safety: 早期启动阶段使用恒等映射，且帧分配器返回唯一页帧。
     core::ptr::write_bytes(table as *mut u8, 0, PAGE_SIZE);
     Some(&mut *table)
+}
+
+fn ensure_table(entry: &mut PageTableEntry) -> Option<&'static mut PageTable> {
+    if entry.is_valid() {
+        if entry.is_leaf() {
+            return None;
+        }
+        let table_pa = entry.ppn().addr().as_usize();
+        let table = table_pa as *mut PageTable;
+        // Safety: existing page table entry points to a valid table page.
+        return Some(unsafe { &mut *table });
+    }
+    // SAFETY: allocating a fresh page table during early boot.
+    let table = unsafe { alloc_page_table()? };
+    let pa = virt_to_phys(table as *const _ as usize);
+    *entry = PageTableEntry::new(PhysPageNum::new(pa >> PAGE_SHIFT), PTE_V);
+    Some(table)
+}
+
+pub fn map_user_code(root_pa: usize, va: usize, pa: usize) -> bool {
+    map_page(root_pa, va, pa, PTE_FLAGS_USER_CODE)
+}
+
+pub fn map_user_stack(root_pa: usize, va: usize, pa: usize) -> bool {
+    map_page(root_pa, va, pa, PTE_FLAGS_USER_DATA)
+}
+
+fn map_page(root_pa: usize, va: usize, pa: usize, flags: usize) -> bool {
+    if root_pa == 0 {
+        return false;
+    }
+    let l2 = unsafe { &mut *(root_pa as *mut PageTable) };
+    let [l2_idx, l1_idx, l0_idx] = VirtAddr::new(va).sv39_indexes();
+    let l1 = match ensure_table(&mut l2.entries[l2_idx]) {
+        Some(table) => table,
+        None => return false,
+    };
+    let l0 = match ensure_table(&mut l1.entries[l1_idx]) {
+        Some(table) => table,
+        None => return false,
+    };
+    let entry = &mut l0.entries[l0_idx];
+    if entry.is_valid() {
+        return false;
+    }
+    *entry = PageTableEntry::new(PhysPageNum::new(pa >> PAGE_SHIFT), flags);
+    true
 }
 
 fn init_frame_allocator(region: MemoryRegion) {

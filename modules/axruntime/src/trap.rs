@@ -96,7 +96,10 @@ pub fn current_trap_frame() -> Option<&'static mut TrapFrame> {
 }
 
 pub fn init() {
-    unsafe { write_stvec(__trap_vector as usize) };
+    unsafe {
+        write_stvec(__trap_vector as usize);
+        write_sscratch(read_sp());
+    }
 }
 
 pub fn enable_timer_interrupt(interval_ticks: u64) {
@@ -109,6 +112,8 @@ pub fn enable_timer_interrupt(interval_ticks: u64) {
     }
 }
 
+/// # Safety
+/// Caller must provide a valid user page table and user stack pointer.
 pub unsafe fn enter_user(entry: usize, user_sp: usize, satp: usize) -> ! {
     // SAFETY: caller must provide a valid user page table and user stack.
     unsafe {
@@ -129,6 +134,17 @@ pub unsafe fn enter_user(entry: usize, user_sp: usize, satp: usize) -> ! {
             options(noreturn)
         );
     }
+}
+
+pub fn set_kernel_stack(sp: usize) {
+    // SAFETY: caller provides a valid kernel stack pointer.
+    unsafe {
+        write_sscratch(sp);
+    }
+}
+
+pub fn current_sp() -> usize {
+    read_sp()
 }
 
 #[no_mangle]
@@ -194,6 +210,11 @@ unsafe fn write_sie(value: usize) {
 }
 
 #[inline]
+unsafe fn write_sscratch(value: usize) {
+    asm!("csrw sscratch, {0}", in(reg) value);
+}
+
+#[inline]
 unsafe fn read_sstatus() -> usize {
     let value: usize;
     asm!("csrr {0}, sstatus", out(reg) value);
@@ -204,5 +225,15 @@ unsafe fn read_sstatus() -> usize {
 unsafe fn read_sie() -> usize {
     let value: usize;
     asm!("csrr {0}, sie", out(reg) value);
+    value
+}
+
+#[inline]
+fn read_sp() -> usize {
+    let value: usize;
+    // Safety: reading sp does not modify machine state.
+    unsafe {
+        asm!("mv {0}, sp", out(reg) value);
+    }
     value
 }

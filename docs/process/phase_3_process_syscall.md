@@ -24,6 +24,8 @@
 - wait_timeout 返回前清理 SleepQueue 条目，避免通知后残留唤醒项。
 - 补充 syscall ABI 设计文档草案（分发入口/errno/用户态指针校验）。
 - trap 支持 U-mode ecall 分发，syscall dispatcher 骨架完成。
+- trap 入口通过 sscratch 交换内核栈，保证 U-mode trap 使用内核栈。
+- 添加用户态测试映射与 enter_user 入口，用于验证 ecall 路径。
 
 ## 问题与定位
 - 调度仍处于占位阶段，尚未引入用户态/系统调用上下文保存。
