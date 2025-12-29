@@ -13,6 +13,7 @@
 - statfs 路径解析改用 memfs，避免硬编码路径判断。
 - mknodat/mkdirat/unlinkat/linkat/renameat* 以及 fchmodat/fchownat/utimensat 改用 memfs 路径解析。
 - /init 读取改用 memfs read_at 并携带内置 ELF 镜像。
+- fstat 对伪节点改用 memfs 元数据。
 
 ## 问题与定位
 - 尚未进入实现阶段，暂无问题记录。

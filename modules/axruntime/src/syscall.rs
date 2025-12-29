@@ -1789,10 +1789,14 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
+    let fs = memfs::MemFs::with_init_image(init_memfile_image());
     let (mode, size) = match entry.kind {
         FdKind::PipeRead(_) | FdKind::PipeWrite(_) => (S_IFIFO | 0o600, 0),
-        FdKind::DirRoot | FdKind::DirDev => (S_IFDIR | 0o755, 0),
-        FdKind::InitFile => (S_IFREG | 0o444, init_memfile_image().len()),
+        FdKind::DirRoot => memfs_meta_for(&fs, memfs::ROOT_ID)?,
+        FdKind::DirDev => memfs_meta_for(&fs, memfs::DEV_ID)?,
+        FdKind::DevNull => memfs_meta_for(&fs, memfs::DEV_NULL_ID)?,
+        FdKind::DevZero => memfs_meta_for(&fs, memfs::DEV_ZERO_ID)?,
+        FdKind::InitFile => memfs_meta_for(&fs, memfs::INIT_ID)?,
         _ => (S_IFCHR | 0o666, 0),
     };
     let stat = build_stat(mode, size);
@@ -2194,6 +2198,12 @@ fn file_type_mode(file_type: FileType) -> u32 {
         FileType::Socket => 0,
         FileType::Symlink => 0,
     }
+}
+
+fn memfs_meta_for(fs: &memfs::MemFs<'_>, inode: InodeId) -> Result<(u32, usize), Errno> {
+    let meta = fs.metadata_for(inode).ok_or(Errno::Fault)?;
+    let mode = file_type_mode(meta.file_type) | meta.mode as u32;
+    Ok((mode, meta.size as usize))
 }
 
 fn current_pid() -> usize {
