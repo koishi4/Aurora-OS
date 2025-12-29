@@ -60,6 +60,7 @@
 - FUTEX_WAKE 支持 count 足够大时唤醒全部等待者。
 - futex 等待队列空闲后回收槽位地址，避免长期占用。
 - wait4 在返回子进程状态时可选写入占位 rusage，保持接口兼容。
+- getdents64 支持根目录与 /dev 的静态目录项枚举，覆盖 . / .. / dev / null / zero。
 - clone_user_root 从内核根表构建子页表，只克隆用户映射，避免共享父页表页。
 - waitpid 回收 Zombie 时释放子进程的用户页表与物理页。
 - 增加 uname，占位返回内核与平台信息。

@@ -14,6 +14,7 @@ use crate::trap::TrapFrame;
 pub enum Errno {
     NoEnt = 2,
     Exist = 17,
+    IsDir = 21,
     MFile = 24,
     NoSys = 38,
     Fault = 14,
@@ -251,11 +252,13 @@ const CLOCK_MONOTONIC_RAW: usize = 4;
 const CLOCK_BOOTTIME: usize = 7;
 const IOV_MAX: usize = 1024;
 const S_IFCHR: u32 = 0o020000;
+const S_IFDIR: u32 = 0o040000;
 const O_CLOEXEC: usize = 0x80000;
 const O_NONBLOCK: usize = 0x4000;
 const O_RDONLY: usize = 0;
 const O_WRONLY: usize = 1;
 const O_RDWR: usize = 2;
+const O_ACCMODE: usize = 3;
 const AT_FDCWD: isize = -100;
 const AT_SYMLINK_NOFOLLOW: usize = 0x100;
 const AT_SYMLINK_FOLLOW: usize = 0x400;
@@ -266,6 +269,7 @@ const PIPE_SLOTS: usize = 8;
 const PIPE_BUFFER_SIZE: usize = 512;
 const DEV_NULL_PATH: &[u8] = b"/dev/null";
 const DEV_ZERO_PATH: &[u8] = b"/dev/zero";
+const DEV_PATH: &[u8] = b"/dev";
 const ROOT_PATH: &[u8] = b"/";
 const INIT_PATH: &[u8] = b"/init";
 const SIG_BLOCK: usize = 0;
@@ -280,6 +284,8 @@ const POLLOUT: u16 = 0x004;
 const POLLERR: u16 = 0x008;
 const POLLHUP: u16 = 0x010;
 const POLLNVAL: u16 = 0x020;
+const DT_CHR: u8 = 2;
+const DT_DIR: u8 = 4;
 const PPOLL_RETRY_SLEEP_MS: u64 = 10;
 const PR_SET_NAME: usize = 15;
 const PR_GET_NAME: usize = 16;
@@ -447,6 +453,8 @@ enum FdKind {
     Stderr,
     DevNull,
     DevZero,
+    DirRoot,
+    DirDev,
     PipeRead(usize),
     PipeWrite(usize),
 }
@@ -460,6 +468,7 @@ struct FdEntry {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum KnownPath {
     Root,
+    DevDir,
     DevNull,
     DevZero,
 }
@@ -474,6 +483,25 @@ struct Pipe {
     len: usize,
     buf: [u8; PIPE_BUFFER_SIZE],
 }
+
+#[derive(Clone, Copy)]
+struct DirEntry {
+    name: &'static [u8],
+    dtype: u8,
+}
+
+const ROOT_DIRENTS: [DirEntry; 3] = [
+    DirEntry { name: b".", dtype: DT_DIR },
+    DirEntry { name: b"..", dtype: DT_DIR },
+    DirEntry { name: b"dev", dtype: DT_DIR },
+];
+
+const DEV_DIRENTS: [DirEntry; 4] = [
+    DirEntry { name: b".", dtype: DT_DIR },
+    DirEntry { name: b"..", dtype: DT_DIR },
+    DirEntry { name: b"null", dtype: DT_CHR },
+    DirEntry { name: b"zero", dtype: DT_CHR },
+];
 
 const EMPTY_PIPE: Pipe = Pipe {
     used: false,
@@ -492,6 +520,8 @@ const EMPTY_FD_ENTRY: FdEntry = FdEntry {
 
 // SAFETY: 单核早期阶段，fd 表由 syscall 串行访问。
 static mut FD_TABLE: [FdEntry; FD_TABLE_SLOTS] = [EMPTY_FD_ENTRY; FD_TABLE_SLOTS];
+// SAFETY: fd 偏移仅用于目录遍历，单核阶段顺序访问。
+static mut FD_OFFSETS: [usize; FD_TABLE_SLOTS] = [0; FD_TABLE_SLOTS];
 // SAFETY: 仅用于重定向标准 fd，单核顺序访问。
 static mut STDIO_REDIRECT: [Option<FdEntry>; 3] = [None, None, None];
 // SAFETY: 标准 fd 的状态标志在单核阶段顺序访问。
@@ -818,12 +848,27 @@ fn sys_openat(_dirfd: usize, pathname: usize, flags: usize, _mode: usize) -> Res
         return Err(Errno::Fault);
     }
     let status_flags = if (flags & O_NONBLOCK) != 0 { O_NONBLOCK } else { 0 };
+    let accmode = flags & O_ACCMODE;
     if user_path_eq(root_pa, pathname, DEV_NULL_PATH)? {
         return alloc_fd(FdEntry { kind: FdKind::DevNull, flags: status_flags })
             .ok_or(Errno::MFile);
     }
     if user_path_eq(root_pa, pathname, DEV_ZERO_PATH)? {
         return alloc_fd(FdEntry { kind: FdKind::DevZero, flags: status_flags })
+            .ok_or(Errno::MFile);
+    }
+    if user_path_eq(root_pa, pathname, ROOT_PATH)? {
+        if accmode != O_RDONLY {
+            return Err(Errno::IsDir);
+        }
+        return alloc_fd(FdEntry { kind: FdKind::DirRoot, flags: status_flags })
+            .ok_or(Errno::MFile);
+    }
+    if user_path_eq(root_pa, pathname, DEV_PATH)? {
+        if accmode != O_RDONLY {
+            return Err(Errno::IsDir);
+        }
+        return alloc_fd(FdEntry { kind: FdKind::DirDev, flags: status_flags })
             .ok_or(Errno::MFile);
     }
     Err(Errno::NoEnt)
@@ -851,7 +896,7 @@ fn sys_mkdirat(_dirfd: usize, pathname: usize, _mode: usize) -> Result<usize, Er
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    if user_path_eq(root_pa, pathname, ROOT_PATH)? {
+    if classify_path(root_pa, pathname)?.is_some() {
         return Err(Errno::Exist);
     }
     Err(Errno::NoEnt)
@@ -865,7 +910,7 @@ fn sys_unlinkat(_dirfd: usize, pathname: usize, _flags: usize) -> Result<usize, 
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    if user_path_eq(root_pa, pathname, ROOT_PATH)? {
+    if classify_path(root_pa, pathname)?.is_some() {
         return Err(Errno::Inval);
     }
     Err(Errno::NoEnt)
@@ -959,10 +1004,65 @@ fn sys_getdents64(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
         return Err(Errno::Fault);
     }
     validate_user_write(root_pa, buf, len)?;
-    if resolve_fd(fd).is_some() {
-        return Err(Errno::NotDir);
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    let entries = match entry.kind {
+        FdKind::DirRoot => &ROOT_DIRENTS[..],
+        FdKind::DirDev => &DEV_DIRENTS[..],
+        _ => return Err(Errno::NotDir),
+    };
+    let index = fd_offset(fd).ok_or(Errno::Badf)?;
+    if index >= entries.len() {
+        return Ok(0);
     }
-    Err(Errno::Badf)
+    let (written, next) = write_dirents(root_pa, buf, len, entries, index)?;
+    set_fd_offset(fd, next);
+    Ok(written)
+}
+
+fn write_dirents(
+    root_pa: usize,
+    buf: usize,
+    len: usize,
+    entries: &[DirEntry],
+    mut index: usize,
+) -> Result<(usize, usize), Errno> {
+    const HDR_LEN: usize = 19;
+    const RECORD_MAX: usize = 64;
+    let mut written = 0usize;
+    while index < entries.len() {
+        let entry = entries[index];
+        let name_len = entry.name.len();
+        let base_len = HDR_LEN + name_len + 1;
+        let reclen = align_up(base_len, 8);
+        if reclen > RECORD_MAX {
+            return Err(Errno::Inval);
+        }
+        if written == 0 && reclen > len {
+            return Err(Errno::Inval);
+        }
+        if written + reclen > len {
+            break;
+        }
+        let mut record = [0u8; RECORD_MAX];
+        let ino = (index + 1) as u64;
+        let off = (index + 1) as i64;
+        record[0..8].copy_from_slice(&ino.to_le_bytes());
+        record[8..16].copy_from_slice(&off.to_le_bytes());
+        record[16..18].copy_from_slice(&(reclen as u16).to_le_bytes());
+        record[18] = entry.dtype;
+        record[19..19 + name_len].copy_from_slice(entry.name);
+        let dst = buf.checked_add(written).ok_or(Errno::Fault)?;
+        UserSlice::new(dst, reclen)
+            .copy_from_slice(root_pa, &record[..reclen])
+            .ok_or(Errno::Fault)?;
+        written += reclen;
+        index += 1;
+    }
+    Ok((written, index))
+}
+
+fn align_up(value: usize, align: usize) -> usize {
+    (value + align - 1) & !(align - 1)
 }
 
 fn sys_newfstatat(_dirfd: usize, pathname: usize, stat_ptr: usize, _flags: usize) -> Result<usize, Errno> {
@@ -980,7 +1080,15 @@ fn sys_newfstatat(_dirfd: usize, pathname: usize, stat_ptr: usize, _flags: usize
     if mm::translate_user_ptr(root_pa, stat_ptr, size, UserAccess::Write).is_none() {
         return Err(Errno::Fault);
     }
-    Err(Errno::NoEnt)
+    let mode = match classify_path(root_pa, pathname)? {
+        Some(KnownPath::Root | KnownPath::DevDir) => S_IFDIR | 0o755,
+        Some(KnownPath::DevNull | KnownPath::DevZero) => S_IFCHR | 0o666,
+        None => return Err(Errno::NoEnt),
+    };
+    UserPtr::new(stat_ptr)
+        .write(root_pa, build_stat(mode))
+        .ok_or(Errno::Fault)?;
+    Ok(0)
 }
 
 fn sys_faccessat(_dirfd: usize, pathname: usize, _mode: usize, _flags: usize) -> Result<usize, Errno> {
@@ -991,7 +1099,7 @@ fn sys_faccessat(_dirfd: usize, pathname: usize, _mode: usize, _flags: usize) ->
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    if user_path_eq(root_pa, pathname, DEV_NULL_PATH)? || user_path_eq(root_pa, pathname, DEV_ZERO_PATH)? {
+    if classify_path(root_pa, pathname)?.is_some() {
         return Ok(0);
     }
     Err(Errno::NoEnt)
@@ -1011,7 +1119,7 @@ fn sys_statx(
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    if user_path_eq(root_pa, pathname, DEV_NULL_PATH)? || user_path_eq(root_pa, pathname, DEV_ZERO_PATH)? {
+    if classify_path(root_pa, pathname)?.is_some() {
         const STATX_SIZE: usize = 256;
         zero_user_write(root_pa, statxbuf, STATX_SIZE)?;
         return Ok(0);
@@ -1031,7 +1139,7 @@ fn sys_readlinkat(_dirfd: usize, pathname: usize, buf: usize, len: usize) -> Res
         return Ok(0);
     }
     validate_user_write(root_pa, buf, len)?;
-    if user_path_eq(root_pa, pathname, DEV_NULL_PATH)? || user_path_eq(root_pa, pathname, DEV_ZERO_PATH)? {
+    if classify_path(root_pa, pathname)?.is_some() {
         return Err(Errno::Inval);
     }
     Err(Errno::NoEnt)
@@ -1045,7 +1153,7 @@ fn sys_statfs(pathname: usize, buf: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    // 占位实现：只允许根目录与 /dev/null,/dev/zero。
+    // 占位实现：仅支持根目录与 /dev 伪节点。
     validate_user_path(root_pa, pathname)?;
     match classify_path(root_pa, pathname)? {
         Some(_) => {
@@ -1706,35 +1814,12 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    let now_ns = time::monotonic_ns();
-    let sec = (now_ns / 1_000_000_000) as isize;
-    let nsec = (now_ns % 1_000_000_000) as usize;
     let mode = match entry.kind {
         FdKind::PipeRead(_) | FdKind::PipeWrite(_) => S_IFIFO | 0o600,
+        FdKind::DirRoot | FdKind::DirDev => S_IFDIR | 0o755,
         _ => S_IFCHR | 0o666,
     };
-    let stat = Stat {
-        st_dev: 0,
-        st_ino: 0,
-        st_mode: mode,
-        st_nlink: 1,
-        st_uid: 0,
-        st_gid: 0,
-        st_rdev: 0,
-        __pad1: 0,
-        st_size: 0,
-        st_blksize: 4096,
-        __pad2: 0,
-        st_blocks: 0,
-        st_atime: sec,
-        st_atime_nsec: nsec,
-        st_mtime: sec,
-        st_mtime_nsec: nsec,
-        st_ctime: sec,
-        st_ctime_nsec: nsec,
-        __unused4: 0,
-        __unused5: 0,
-    };
+    let stat = build_stat(mode);
     UserPtr::new(stat_ptr)
         .write(root_pa, stat)
         .ok_or(Errno::Fault)?;
@@ -1743,7 +1828,11 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
 
 fn sys_dup(oldfd: usize) -> Result<usize, Errno> {
     let entry = resolve_fd(oldfd).ok_or(Errno::Badf)?;
-    alloc_fd(entry).ok_or(Errno::MFile)
+    let newfd = alloc_fd(entry).ok_or(Errno::MFile)?;
+    if let Some(offset) = fd_offset(oldfd) {
+        set_fd_offset(newfd, offset);
+    }
+    Ok(newfd)
 }
 
 fn sys_dup3(oldfd: usize, newfd: usize, flags: usize) -> Result<usize, Errno> {
@@ -1754,7 +1843,11 @@ fn sys_dup3(oldfd: usize, newfd: usize, flags: usize) -> Result<usize, Errno> {
     if oldfd == newfd {
         return if flags == 0 { Ok(newfd) } else { Err(Errno::Inval) };
     }
-    dup_to_fd(newfd, entry)
+    let newfd = dup_to_fd(newfd, entry)?;
+    if let Some(offset) = fd_offset(oldfd) {
+        set_fd_offset(newfd, offset);
+    }
+    Ok(newfd)
 }
 
 fn sys_lseek(fd: usize, _offset: usize, _whence: usize) -> Result<usize, Errno> {
@@ -1848,6 +1941,7 @@ fn sys_fcntl(fd: usize, cmd: usize, arg: usize) -> Result<usize, Errno> {
             let mode = match entry.kind {
                 FdKind::Stdin | FdKind::PipeRead(_) => O_RDONLY,
                 FdKind::Stdout | FdKind::Stderr | FdKind::PipeWrite(_) => O_WRONLY,
+                FdKind::DirRoot | FdKind::DirDev => O_RDONLY,
                 _ => O_RDWR,
             };
             Ok(mode | entry.flags)
@@ -2085,6 +2179,34 @@ fn default_rusage() -> Rusage {
     }
 }
 
+fn build_stat(mode: u32) -> Stat {
+    let now_ns = time::monotonic_ns();
+    let sec = (now_ns / 1_000_000_000) as isize;
+    let nsec = (now_ns % 1_000_000_000) as usize;
+    Stat {
+        st_dev: 0,
+        st_ino: 0,
+        st_mode: mode,
+        st_nlink: 1,
+        st_uid: 0,
+        st_gid: 0,
+        st_rdev: 0,
+        __pad1: 0,
+        st_size: 0,
+        st_blksize: 4096,
+        __pad2: 0,
+        st_blocks: 0,
+        st_atime: sec,
+        st_atime_nsec: nsec,
+        st_mtime: sec,
+        st_mtime_nsec: nsec,
+        st_ctime: sec,
+        st_ctime_nsec: nsec,
+        __unused4: 0,
+        __unused5: 0,
+    }
+}
+
 fn current_pid() -> usize {
     // Single-hart early boot uses TaskId+1 as a stable placeholder PID.
     crate::process::current_pid()
@@ -2134,9 +2256,12 @@ fn map_futex_err(err: futex::FutexError) -> Errno {
 }
 
 fn classify_path(root_pa: usize, path: usize) -> Result<Option<KnownPath>, Errno> {
-    // 仅识别根目录与 /dev/null,/dev/zero，避免误判。
+    // 仅识别根目录与 /dev 伪节点，避免误判。
     if user_path_eq(root_pa, path, ROOT_PATH)? {
         return Ok(Some(KnownPath::Root));
+    }
+    if user_path_eq(root_pa, path, DEV_PATH)? {
+        return Ok(Some(KnownPath::DevDir));
     }
     if user_path_eq(root_pa, path, DEV_NULL_PATH)? {
         return Ok(Some(KnownPath::DevNull));
@@ -2225,19 +2350,50 @@ fn resolve_fd(fd: usize) -> Option<FdEntry> {
     if let Some(entry) = stdio_entry(fd) {
         return Some(entry);
     }
-    if fd < FD_TABLE_BASE {
-        return None;
-    }
-    let idx = fd - FD_TABLE_BASE;
-    if idx >= FD_TABLE_SLOTS {
-        return None;
-    }
+    let idx = fd_table_index(fd)?;
     // SAFETY: 单核早期阶段，fd 表无并发访问。
     let entry = unsafe { FD_TABLE[idx] };
     if entry.kind == FdKind::Empty {
         None
     } else {
         Some(entry)
+    }
+}
+
+fn fd_table_index(fd: usize) -> Option<usize> {
+    if fd < FD_TABLE_BASE {
+        return None;
+    }
+    let idx = fd - FD_TABLE_BASE;
+    if idx >= FD_TABLE_SLOTS {
+        None
+    } else {
+        Some(idx)
+    }
+}
+
+fn fd_offset(fd: usize) -> Option<usize> {
+    let idx = fd_table_index(fd)?;
+    // SAFETY: 单核早期阶段，fd 表无并发访问。
+    let entry = unsafe { FD_TABLE[idx] };
+    if entry.kind == FdKind::Empty {
+        None
+    } else {
+        // SAFETY: 单核早期阶段，偏移顺序访问。
+        Some(unsafe { FD_OFFSETS[idx] })
+    }
+}
+
+fn set_fd_offset(fd: usize, offset: usize) {
+    let Some(idx) = fd_table_index(fd) else {
+        return;
+    };
+    // SAFETY: 单核早期阶段，偏移顺序访问。
+    unsafe {
+        if FD_TABLE[idx].kind == FdKind::Empty {
+            return;
+        }
+        FD_OFFSETS[idx] = offset;
     }
 }
 
@@ -2250,6 +2406,7 @@ fn alloc_fd(entry: FdEntry) -> Option<usize> {
         for (idx, slot) in FD_TABLE.iter_mut().enumerate() {
             if slot.kind == FdKind::Empty {
                 *slot = entry;
+                FD_OFFSETS[idx] = 0;
                 pipe_acquire(entry.kind);
                 return Some(FD_TABLE_BASE + idx);
             }
@@ -2262,13 +2419,7 @@ fn dup_to_fd(newfd: usize, entry: FdEntry) -> Result<usize, Errno> {
     if stdio_kind(newfd).is_some() {
         return set_stdio_redirect(newfd, entry);
     }
-    if newfd < FD_TABLE_BASE {
-        return Err(Errno::Badf);
-    }
-    let idx = newfd - FD_TABLE_BASE;
-    if idx >= FD_TABLE_SLOTS {
-        return Err(Errno::Badf);
-    }
+    let idx = fd_table_index(newfd).ok_or(Errno::Badf)?;
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
         let old = FD_TABLE[idx];
@@ -2276,6 +2427,7 @@ fn dup_to_fd(newfd: usize, entry: FdEntry) -> Result<usize, Errno> {
             pipe_release(old.kind);
         }
         FD_TABLE[idx] = entry;
+        FD_OFFSETS[idx] = 0;
     }
     pipe_acquire(entry.kind);
     Ok(newfd)
@@ -2292,13 +2444,7 @@ fn close_fd(fd: usize) -> Result<usize, Errno> {
         }
         return Ok(0);
     }
-    if fd < FD_TABLE_BASE {
-        return Err(Errno::Badf);
-    }
-    let idx = fd - FD_TABLE_BASE;
-    if idx >= FD_TABLE_SLOTS {
-        return Err(Errno::Badf);
-    }
+    let idx = fd_table_index(fd).ok_or(Errno::Badf)?;
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
         let old = FD_TABLE[idx];
@@ -2306,6 +2452,7 @@ fn close_fd(fd: usize) -> Result<usize, Errno> {
             return Err(Errno::Badf);
         }
         FD_TABLE[idx] = EMPTY_FD_ENTRY;
+        FD_OFFSETS[idx] = 0;
         pipe_release(old.kind);
     }
     Ok(0)
@@ -2340,13 +2487,7 @@ fn set_fd_flags(fd: usize, flags: usize) -> Result<(), Errno> {
         }
         return Ok(());
     }
-    if fd < FD_TABLE_BASE {
-        return Err(Errno::Badf);
-    }
-    let idx = fd - FD_TABLE_BASE;
-    if idx >= FD_TABLE_SLOTS {
-        return Err(Errno::Badf);
-    }
+    let idx = fd_table_index(fd).ok_or(Errno::Badf)?;
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
         if FD_TABLE[idx].kind == FdKind::Empty {
@@ -2788,6 +2929,7 @@ fn read_from_entry(entry: FdEntry, root_pa: usize, buf: usize, len: usize) -> Re
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             pipe_read(pipe_id, root_pa, buf, len, nonblock)
         }
+        FdKind::DirRoot | FdKind::DirDev => Err(Errno::IsDir),
         FdKind::Stdout | FdKind::Stderr | FdKind::PipeWrite(_) => Err(Errno::Badf),
         FdKind::Empty => Err(Errno::Badf),
     }
@@ -2804,6 +2946,7 @@ fn write_to_entry(entry: FdEntry, root_pa: usize, buf: usize, len: usize) -> Res
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             pipe_write(pipe_id, root_pa, buf, len, nonblock)
         }
+        FdKind::DirRoot | FdKind::DirDev => Err(Errno::IsDir),
         FdKind::Stdin | FdKind::PipeRead(_) => Err(Errno::Badf),
         FdKind::Empty => Err(Errno::Badf),
     }
