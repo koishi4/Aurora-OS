@@ -1,4 +1,25 @@
-* commit d2b4bb245f178d2ff1ba5c3eb625aafe51da1dc5 (HEAD -> bootstrap-riscv64)
+* commit e17d7751886d1202ed3ca74ed536ee2ca15a2c47 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:20:33 +0800
+| 
+|     feat(syscall): add /dev/zero pseudo fds
+| 
+|  CHANGELOG.md                            |   2 +-
+|  docs/design/05_syscall_abi.md           |   2 +-
+|  docs/process/phase_3_process_syscall.md |   2 +-
+|  modules/axruntime/src/syscall.rs        | 169 ++++++++++++++++++++++++++----
+|  4 files changed, 149 insertions(+), 26 deletions(-)
+| 
+* commit 9d1b1a9bc88fd5080d82acce95c507eaaa7ed10d
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:13:15 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit d2b4bb245f178d2ff1ba5c3eb625aafe51da1dc5
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 12:13:00 +0800
 | 
