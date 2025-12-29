@@ -48,6 +48,7 @@ pub struct TrapFrame {
 
 extern "C" {
     fn __trap_vector();
+    fn __trap_return();
 }
 
 const SSTATUS_SIE: usize = 1 << 1;
@@ -150,8 +151,25 @@ pub fn set_user_stack(sp: usize) {
     }
 }
 
+pub fn return_to_user(trap_frame: usize) -> ! {
+    // SAFETY: caller provides a valid trap frame pointer on the kernel stack.
+    unsafe {
+        asm!(
+            "mv sp, {0}",
+            "j __trap_return",
+            in(reg) trap_frame,
+            options(noreturn)
+        );
+    }
+}
+
 pub fn current_sp() -> usize {
     read_sp()
+}
+
+pub fn read_user_stack() -> usize {
+    // SAFETY: reading sscratch does not modify machine state.
+    unsafe { read_sscratch() }
 }
 
 #[no_mangle]
@@ -226,6 +244,13 @@ unsafe fn write_sscratch(value: usize) {
 unsafe fn read_sstatus() -> usize {
     let value: usize;
     asm!("csrr {0}, sstatus", out(reg) value);
+    value
+}
+
+#[inline]
+unsafe fn read_sscratch() -> usize {
+    let value: usize;
+    asm!("csrr {0}, sscratch", out(reg) value);
     value
 }
 

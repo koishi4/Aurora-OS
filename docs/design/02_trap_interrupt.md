@@ -8,7 +8,8 @@
 - 使用 S-mode trap 向量 `stvec` 指向汇编入口 `__trap_vector`。
 - 汇编入口保存通用寄存器与关键 CSR（sstatus/sepc/scause/stval），再进入 Rust 处理函数。
 - Rust handler 解析 scause，支持 U-mode ecall 分发与 S-mode ecall 跳过。
-- 当前阶段仅提供用户态 ecall 入口，切换/用户态执行仍为后续工作。
+- 增加 `__trap_return` 汇编入口，用于从保存的 trapframe 恢复用户态现场并 sret。
+- 任务切换时记录 trapframe 指针与用户栈指针，恢复后可继续返回到用户态。
 - 定时器中断使用 SBI set_timer 重新编程，实现周期性 tick。
 - tick 计数在 time 模块中维护，供后续调度与超时使用。
 - tick 中断设置调度请求标志，并在有运行任务时切回空闲上下文，由 idle_loop 执行调度，避免在 trap 中直接选取下个任务。
@@ -38,3 +39,4 @@ trap_entry (__trap_vector)
 - QEMU 启动后触发 U/S 态 ecall 并返回。
 - 打开定时器中断并观察 handler 被调用。
 - 启动日志打印 timebase 频率与 tick 间隔。
+- USER_TEST=1 冒烟覆盖用户态 ecall + execve 后返回路径。

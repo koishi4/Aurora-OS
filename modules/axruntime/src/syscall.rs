@@ -23,6 +23,7 @@ pub enum Errno {
     NotDir = 20,
     Range = 34,
     Again = 11,
+    Child = 10,
 }
 
 impl Errno {
@@ -138,6 +139,7 @@ fn dispatch(tf: &mut TrapFrame, ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_GETGROUPS => sys_getgroups(ctx.args[0], ctx.args[1]),
         SYS_SETGROUPS => sys_setgroups(ctx.args[0], ctx.args[1]),
         SYS_GETCPU => sys_getcpu(ctx.args[0], ctx.args[1]),
+        SYS_WAIT4 => sys_wait4(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         _ => Err(Errno::NoSys),
     }
 }
@@ -203,6 +205,7 @@ const SYS_SETPGRP: usize = 112;
 const SYS_GETGROUPS: usize = 158;
 const SYS_SETGROUPS: usize = 159;
 const SYS_GETCPU: usize = 309;
+const SYS_WAIT4: usize = 260;
 
 const TIOCGWINSZ: usize = 0x5413;
 const TIOCSWINSZ: usize = 0x5414;
@@ -545,6 +548,13 @@ struct PollFd {
 }
 
 fn sys_exit(_code: usize) -> Result<usize, Errno> {
+    let pid = crate::process::current_pid().unwrap_or(1);
+    if pid == 1 {
+        crate::sbi::shutdown();
+    }
+    if crate::process::exit_current(_code as i32) {
+        crate::runtime::exit_current();
+    }
     crate::sbi::shutdown();
 }
 
@@ -566,13 +576,18 @@ fn sys_execve(tf: &mut TrapFrame, pathname: usize, argv: usize, envp: usize) -> 
     if !user_path_eq(root_pa, pathname, INIT_PATH)? {
         return Err(Errno::NoEnt);
     }
-    let ctx = crate::user::load_user_image(root_pa).ok_or(Errno::NoEnt)?;
+    let image = crate::user::init_exec_elf_image();
+    let ctx = crate::user::load_exec_elf(root_pa, image, argv, envp)?;
     // execve 成功后不返回，更新入口与用户栈并清理参数寄存器。
     tf.sepc = ctx.entry.wrapping_sub(4);
-    tf.a0 = 0;
-    tf.a1 = 0;
-    tf.a2 = 0;
+    tf.a0 = ctx.argc;
+    tf.a1 = ctx.argv;
+    tf.a2 = ctx.envp;
+    mm::switch_root(ctx.root_pa);
     crate::trap::set_user_stack(ctx.user_sp);
+    if let Some(task_id) = crate::runtime::current_task_id() {
+        let _ = crate::task::set_user_context(task_id, ctx.root_pa, ctx.entry, ctx.user_sp);
+    }
     Ok(0)
 }
 
@@ -1923,9 +1938,15 @@ fn sys_getcpu(cpu: usize, node: usize) -> Result<usize, Errno> {
     Ok(0)
 }
 
+fn sys_wait4(pid: usize, status: usize, options: usize, _rusage: usize) -> Result<usize, Errno> {
+    crate::process::waitpid(pid as isize, status, options)
+}
+
 fn current_pid() -> usize {
     // Single-hart early boot uses TaskId+1 as a stable placeholder PID.
-    crate::runtime::current_task_id().map(|id| id + 1).unwrap_or(1)
+    crate::process::current_pid()
+        .or_else(|| crate::runtime::current_task_id().map(|id| id + 1))
+        .unwrap_or(1)
 }
 
 fn validate_at_dirfd(dirfd: usize) -> Result<(), Errno> {
@@ -1973,7 +1994,7 @@ fn classify_path(root_pa: usize, path: usize) -> Result<Option<KnownPath>, Errno
     Ok(None)
 }
 
-fn can_block_current() -> bool {
+pub fn can_block_current() -> bool {
     crate::runtime::current_task_id().is_some()
 }
 

@@ -15,7 +15,8 @@
 - 兼容层为关键 syscall 提供 Linux 语义对齐（如 `getdents64`/`ioctl`/`pipe2`/`dup3`）。
 - 早期实现 `write` 的用户指针翻译与控制台输出，用于验证 U-mode ecall 链路。
 - 早期实现 `read`（fd=0）对接 SBI getchar，非阻塞无数据返回 EAGAIN。
-- 早期实现 `execve`：仅识别 `/init` 内置镜像，重置用户栈并忽略 argv/envp 占位。
+- 早期实现 `execve`：仅识别 `/init` 内置 ELF 镜像，完成最小 ELF 解析与段映射，并构建 argv/envp 栈布局。
+- 早期实现 `wait4/waitpid`：使用最小进程表与父进程等待队列，支持 WNOHANG 与退出码回收。
 - 早期实现 `clock_gettime/gettimeofday/getpid`，支持 MONOTONIC/RAW/BOOTTIME/COARSE 并返回 timebase 时间。
 - 早期实现 `clock_gettime64`，与 `clock_gettime` 共用时间源。
 - 早期实现 `clock_getres/clock_getres_time64`，返回 timebase 精度占位。
@@ -58,6 +59,7 @@
 - `SyscallTable`：以 syscall 号为索引的处理函数表（`fn(SyscallCtx) -> Result<usize, Errno>`）。
 - `Errno`：错误码枚举与 Linux 对齐映射（用于转换为 `-errno`）。
 - `SyscallCtx`：保存 syscall 号、参数切片、调用进程/线程上下文引用。
+- `ProcessTable`：最小进程状态表（state/ppid/exit_code），为 waitpid 提供回收与父子关系。
 
 ## 关键流程图或伪代码
 ```text

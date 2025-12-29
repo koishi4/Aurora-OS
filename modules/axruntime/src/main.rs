@@ -21,6 +21,7 @@ mod runtime;
 mod context;
 mod stack;
 mod config;
+mod process;
 
 use core::panic::PanicInfo;
 
@@ -65,10 +66,9 @@ pub extern "C" fn rust_main(hart_id: usize, dtb_addr: usize) -> ! {
 
     if config::ENABLE_USER_TEST {
         if let Some(ctx) = user::prepare_user_test() {
-            crate::println!("user: enter user mode entry={:#x}", ctx.entry);
-            trap::set_kernel_stack(crate::trap::current_sp());
-            unsafe {
-                trap::enter_user(ctx.entry, ctx.user_sp, ctx.satp);
+            crate::println!("user: spawn user task entry={:#x}", ctx.entry);
+            if runtime::spawn_user(ctx).is_none() {
+                crate::println!("user: spawn failed");
             }
         } else {
             crate::println!("user: setup failed, continue in kernel");

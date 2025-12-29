@@ -34,6 +34,13 @@ const PTE_FLAGS_KERNEL: usize = PTE_V | PTE_R | PTE_W | PTE_X | PTE_G | PTE_A | 
 const PTE_FLAGS_USER_CODE: usize = PTE_V | PTE_R | PTE_X | PTE_U | PTE_A;
 const PTE_FLAGS_USER_DATA: usize = PTE_V | PTE_R | PTE_W | PTE_U | PTE_A | PTE_D;
 
+#[derive(Clone, Copy)]
+pub struct UserMapFlags {
+    pub read: bool,
+    pub write: bool,
+    pub exec: bool,
+}
+
 #[derive(Copy, Clone, Debug, Default)]
 pub struct MemoryRegion {
     pub base: u64,
@@ -509,6 +516,44 @@ pub fn map_user_data(root_pa: usize, va: usize, pa: usize) -> bool {
 
 pub fn map_user_stack(root_pa: usize, va: usize, pa: usize) -> bool {
     map_page(root_pa, va, pa, PTE_FLAGS_USER_DATA)
+}
+
+pub fn map_user_page(root_pa: usize, va: usize, pa: usize, flags: UserMapFlags) -> bool {
+    let mut pte_flags = PTE_V | PTE_U | PTE_A;
+    if flags.read {
+        pte_flags |= PTE_R;
+    }
+    if flags.write {
+        pte_flags |= PTE_W | PTE_D;
+    }
+    if flags.exec {
+        pte_flags |= PTE_X;
+    }
+    map_page(root_pa, va, pa, pte_flags)
+}
+
+pub fn alloc_user_root() -> Option<usize> {
+    let kernel_root_pa = kernel_root_pa();
+    if kernel_root_pa == 0 {
+        return None;
+    }
+    // SAFETY: allocate a fresh root page table and copy kernel mappings.
+    let root = unsafe { alloc_page_table()? };
+    let kernel_root = unsafe { &*(kernel_root_pa as *const PageTable) };
+    root.entries = kernel_root.entries;
+    Some(virt_to_phys(root as *const _ as usize))
+}
+
+pub fn switch_root(root_pa: usize) {
+    if root_pa == 0 {
+        return;
+    }
+    let satp_value = satp_for_root(root_pa);
+    // SAFETY: switching satp requires sfence.vma to synchronize TLB.
+    unsafe {
+        asm!("csrw satp, {0}", in(reg) satp_value);
+        asm!("sfence.vma");
+    }
 }
 
 fn map_page(root_pa: usize, va: usize, pa: usize, flags: usize) -> bool {

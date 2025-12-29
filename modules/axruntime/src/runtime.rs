@@ -3,10 +3,12 @@
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::config;
+use crate::mm;
 use crate::scheduler::RunQueue;
 use crate::sleep_queue::SleepQueue;
 use crate::stack;
 use crate::task::{self, TaskControlBlock, TaskId, TaskState, WaitReason};
+use crate::user::UserContext;
 use crate::task_wait_queue::TaskWaitQueue;
 use crate::time;
 use crate::wait::WaitResult;
@@ -98,6 +100,8 @@ pub fn on_trap_entry(tf: &mut crate::trap::TrapFrame) {
     unsafe {
         if let Some(task_id) = CURRENT_TASK {
             let _ = task::set_trap_frame(task_id, tf as *mut _ as usize);
+            let user_sp = crate::trap::read_user_stack();
+            let _ = task::set_user_sp(task_id, user_sp);
         }
     }
 }
@@ -168,6 +172,57 @@ pub fn init() {
     }
 }
 
+pub fn spawn_user(ctx: UserContext) -> Option<TaskId> {
+    let stack = stack::alloc_task_stack()?;
+    let task_id = task::alloc_task(user_task_entry, stack.top())?;
+    let ok = task::set_user_context(task_id, ctx.root_pa, ctx.entry, ctx.user_sp);
+    if !ok {
+        return None;
+    }
+    let _ = crate::process::init_process(task_id, 0);
+    let _ = task::set_user_sp(task_id, ctx.user_sp);
+    let _ = RUN_QUEUE.push(task_id);
+    NEED_RESCHED.store(true, Ordering::Relaxed);
+    Some(task_id)
+}
+
+fn user_task_entry() -> ! {
+    let Some(task_id) = current_task_id() else {
+        crate::println!("user: no current task");
+        crate::sbi::shutdown();
+    };
+    let entry = task::user_entry(task_id).unwrap_or(0);
+    let user_sp = task::user_sp(task_id).unwrap_or(0);
+    let root_pa = task::user_root_pa(task_id).unwrap_or(0);
+    let kernel_sp = task::kernel_sp(task_id).unwrap_or(0);
+    if entry == 0 || user_sp == 0 || root_pa == 0 || kernel_sp == 0 {
+        crate::println!("user: missing context");
+        crate::sbi::shutdown();
+    }
+    mm::switch_root(root_pa);
+    crate::trap::set_kernel_stack(kernel_sp);
+    unsafe {
+        crate::trap::enter_user(entry, user_sp, mm::satp_for_root(root_pa));
+    }
+}
+
+fn resume_user_from_trap() -> ! {
+    let Some(task_id) = current_task_id() else {
+        crate::println!("user: resume with no task");
+        crate::sbi::shutdown();
+    };
+    let trap_frame = task::trap_frame_ptr(task_id).unwrap_or(0);
+    let user_sp = task::user_sp(task_id).unwrap_or(0);
+    let root_pa = task::user_root_pa(task_id).unwrap_or(0);
+    if trap_frame == 0 || user_sp == 0 || root_pa == 0 {
+        crate::println!("user: resume missing context");
+        crate::sbi::shutdown();
+    }
+    mm::switch_root(root_pa);
+    crate::trap::set_user_stack(user_sp);
+    crate::trap::return_to_user(trap_frame);
+}
+
 pub fn schedule_once() {
     let next_id = match RUN_QUEUE.pop_ready() {
         Some(task_id) => task_id,
@@ -213,6 +268,9 @@ pub fn preempt_current() {
         let Some(task_id) = CURRENT_TASK else {
             return;
         };
+        if task::user_root_pa(task_id).unwrap_or(0) != 0 {
+            return;
+        }
         let Some(task_ptr) = task::task_ptr(task_id) else {
             return;
         };
@@ -226,6 +284,16 @@ pub fn preempt_current() {
         CURRENT_TASK = None;
         // 切回空闲上下文，由 idle_loop 统一拉起下一任务。
         crate::scheduler::switch(&mut *task_ptr, &IDLE_TASK);
+        if let (Some(kernel_sp), Some(root_pa), Some(trap_frame)) = (
+            task::kernel_sp(task_id),
+            task::user_root_pa(task_id),
+            task::trap_frame_ptr(task_id),
+        ) {
+            if root_pa != 0 && trap_frame != 0 {
+                let _ = task::set_context(task_id, resume_user_from_trap as usize, kernel_sp);
+            }
+        }
+        crate::trap::set_kernel_stack(crate::trap::current_sp());
     }
 }
 
@@ -257,6 +325,16 @@ pub fn yield_now() {
         NEED_RESCHED.store(true, Ordering::Relaxed);
         CURRENT_TASK = None;
         crate::scheduler::switch(&mut *task_ptr, &IDLE_TASK);
+        if let (Some(kernel_sp), Some(root_pa), Some(trap_frame)) = (
+            task::kernel_sp(task_id),
+            task::user_root_pa(task_id),
+            task::trap_frame_ptr(task_id),
+        ) {
+            if root_pa != 0 && trap_frame != 0 {
+                let _ = task::set_context(task_id, resume_user_from_trap as usize, kernel_sp);
+            }
+        }
+        crate::trap::set_kernel_stack(crate::trap::current_sp());
     }
 }
 
@@ -296,6 +374,24 @@ pub fn sleep_current_ms(ms: u64) -> bool {
         crate::scheduler::switch(&mut *task_ptr, &IDLE_TASK);
     }
     true
+}
+
+pub fn exit_current() -> ! {
+    // SAFETY: single-hart early use; CURRENT_TASK is only accessed in init/idle/task contexts.
+    unsafe {
+        let Some(task_id) = CURRENT_TASK else {
+            crate::sbi::shutdown();
+        };
+        let Some(task_ptr) = task::task_ptr(task_id) else {
+            crate::sbi::shutdown();
+        };
+        let _ = task::transition_state(task_id, TaskState::Running, TaskState::Blocked);
+        CURRENT_TASK = None;
+        crate::scheduler::switch(&mut *task_ptr, &IDLE_TASK);
+    }
+    loop {
+        crate::cpu::wait_for_interrupt();
+    }
 }
 
 /// Block the current task on a wait queue until notified or the timeout elapses.

@@ -14,12 +14,15 @@
 - 增加 `yield_now` 协作式让渡，主动入队并清理 CURRENT_TASK，再切回空闲。
 - RunQueue 维护轮转指针，实现最小 RR 顺序。
 - RunQueue 保存 `TaskId`，任务实体存放在固定大小的 TaskTable。
+- 引入最小进程表（state/ppid/exit_code），以 TaskId+1 作为早期 PID 占位。
+- waitpid 使用“父进程专属等待队列”，子进程 exit 进入 Zombie 后唤醒父进程。
 - 增加 TaskWaitQueue，使用 TaskId 阻塞/唤醒任务并配合 RunQueue（状态切换由 runtime 负责）。
 - 增加 SleepQueue 与 `sleep_current_ms`，由 tick 触发唤醒并回收到 RunQueue。
 - WaitQueue 通过 TaskWaitQueue + SleepQueue 实现阻塞等待与超时，WaitReason 由任务表记录。
 - 记录 trapframe 指针（TrapFrameGuard），支持抢占时保存/恢复用户态现场。
 - 内核栈在早期由帧分配器分配连续页，任务栈来自固定大小的栈池（上限 `MAX_TASKS`）。
 - TaskControlBlock 支持入口函数指针与栈顶配置，早期用多 dummy task 验证轮转与睡眠唤醒。
+- TaskControlBlock 记录用户态 root/entry/sp 与 trapframe 指针，用于 execve 后切换地址空间与从 trap 返回。
 - dummy task 与调度日志通过 `sched-demo` feature 控制，默认构建保持安静。
 - 调度触发周期可配置（`SCHED_INTERVAL_TICKS`），避免频繁切换。
 - 引入 `transition_state` 校验任务状态转换，避免过期队列项覆盖运行态。
@@ -32,6 +35,7 @@
 - Context：保存 callee-saved 寄存器的最小上下文结构。
 - KernelStack：基于连续页的内核栈占位实现。
 - TaskEntry：任务入口函数类型，占位启动路径。
+- ProcState / ProcessTable：最小进程表状态与父子关系，用于 waitpid 回收。
 
 ## 关键流程图或伪代码
 ```text
@@ -50,12 +54,22 @@ block_current(waitq)
 wake_one(waitq)
   -> dequeue + mark Ready
   -> enqueue run queue
+
+exit_current(code)
+  -> mark Zombie + record exit_code
+  -> wake parent wait queue
+
+waitpid(pid)
+  -> scan children -> reap Zombie
+  -> no zombie + WNOHANG -> return 0
+  -> block on parent wait queue
 ```
 
 ## 风险与权衡
 - WaitQueue 超时依赖 tick 频率，分辨率受限。
 - Tick 频率与调度粒度需要平衡延迟与开销。
 - RunQueue/WaitQueue 目前无锁，仅用于单核启动阶段。
+- 进程表为固定大小数组，需与 MAX_TASKS 同步扩展。
 
 ## 测试点
 - tick 计数增长与 `sleep_ms` / `wait_timeout_ms` 行为。

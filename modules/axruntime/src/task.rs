@@ -30,6 +30,11 @@ pub struct TaskControlBlock {
     pub state: TaskState,
     pub context: Context,
     pub entry: Option<TaskEntry>,
+    pub kernel_sp: usize,
+    pub user_root_pa: usize,
+    pub user_entry: usize,
+    pub user_sp: usize,
+    pub is_user: bool,
     // Pointer to the active trap frame on this task's kernel stack.
     // Valid only during trap handling; cleared on trap exit.
     pub trap_frame: Option<usize>,
@@ -48,6 +53,11 @@ impl TaskControlBlock {
             state: TaskState::Ready,
             context: Context::zero(),
             entry: None,
+            kernel_sp: 0,
+            user_root_pa: 0,
+            user_entry: 0,
+            user_sp: 0,
+            is_user: false,
             trap_frame: None,
             wait_reason: AtomicU8::new(WaitReason::None as u8),
         }
@@ -58,6 +68,7 @@ impl TaskControlBlock {
         task.entry = Some(entry);
         task.context.ra = entry as usize;
         task.context.sp = stack_top;
+        task.kernel_sp = stack_top;
         task
     }
 }
@@ -69,6 +80,11 @@ pub const fn idle_task() -> TaskControlBlock {
         state: TaskState::Running,
         context: Context::zero(),
         entry: None,
+        kernel_sp: 0,
+        user_root_pa: 0,
+        user_entry: 0,
+        user_sp: 0,
+        is_user: false,
         trap_frame: None,
         wait_reason: AtomicU8::new(WaitReason::None as u8),
     }
@@ -87,6 +103,102 @@ pub fn alloc_task(entry: TaskEntry, stack_top: usize) -> Option<TaskId> {
         }
     }
     None
+}
+
+pub fn set_user_context(id: TaskId, root_pa: usize, entry: usize, user_sp: usize) -> bool {
+    // SAFETY: single-hart early boot; task slots are stable.
+    unsafe {
+        if id >= MAX_TASKS || !TASK_USED[id] {
+            return false;
+        }
+        let task = &mut *TASK_TABLE[id].as_mut_ptr();
+        task.user_root_pa = root_pa;
+        task.user_entry = entry;
+        task.user_sp = user_sp;
+        task.is_user = true;
+        true
+    }
+}
+
+pub fn update_user_root(id: TaskId, root_pa: usize) -> bool {
+    // SAFETY: single-hart early boot; task slots are stable.
+    unsafe {
+        if id >= MAX_TASKS || !TASK_USED[id] {
+            return false;
+        }
+        let task = &mut *TASK_TABLE[id].as_mut_ptr();
+        task.user_root_pa = root_pa;
+        true
+    }
+}
+
+pub fn user_root_pa(id: TaskId) -> Option<usize> {
+    // SAFETY: read-only access to task slots during early boot.
+    unsafe {
+        if id >= MAX_TASKS || !TASK_USED[id] {
+            return None;
+        }
+        let task = &*TASK_TABLE[id].as_ptr();
+        Some(task.user_root_pa)
+    }
+}
+
+pub fn user_entry(id: TaskId) -> Option<usize> {
+    // SAFETY: read-only access to task slots during early boot.
+    unsafe {
+        if id >= MAX_TASKS || !TASK_USED[id] {
+            return None;
+        }
+        let task = &*TASK_TABLE[id].as_ptr();
+        Some(task.user_entry)
+    }
+}
+
+pub fn user_sp(id: TaskId) -> Option<usize> {
+    // SAFETY: read-only access to task slots during early boot.
+    unsafe {
+        if id >= MAX_TASKS || !TASK_USED[id] {
+            return None;
+        }
+        let task = &*TASK_TABLE[id].as_ptr();
+        Some(task.user_sp)
+    }
+}
+
+pub fn set_user_sp(id: TaskId, user_sp: usize) -> bool {
+    // SAFETY: single-hart early boot; task slots are stable.
+    unsafe {
+        if id >= MAX_TASKS || !TASK_USED[id] {
+            return false;
+        }
+        let task = &mut *TASK_TABLE[id].as_mut_ptr();
+        task.user_sp = user_sp;
+        true
+    }
+}
+
+pub fn kernel_sp(id: TaskId) -> Option<usize> {
+    // SAFETY: read-only access to task slots during early boot.
+    unsafe {
+        if id >= MAX_TASKS || !TASK_USED[id] {
+            return None;
+        }
+        let task = &*TASK_TABLE[id].as_ptr();
+        Some(task.kernel_sp)
+    }
+}
+
+pub fn set_context(id: TaskId, ra: usize, sp: usize) -> bool {
+    // SAFETY: single-hart early boot; task slots are stable.
+    unsafe {
+        if id >= MAX_TASKS || !TASK_USED[id] {
+            return false;
+        }
+        let task = &mut *TASK_TABLE[id].as_mut_ptr();
+        task.context.ra = ra;
+        task.context.sp = sp;
+        true
+    }
 }
 
 pub fn is_ready(id: TaskId) -> bool {
@@ -179,6 +291,17 @@ pub fn clear_trap_frame(id: TaskId) -> bool {
         let task = &mut *TASK_TABLE[id].as_mut_ptr();
         task.trap_frame = None;
         true
+    }
+}
+
+pub fn trap_frame_ptr(id: TaskId) -> Option<usize> {
+    // SAFETY: read-only access to task slots during early boot.
+    unsafe {
+        if id >= MAX_TASKS || !TASK_USED[id] {
+            return None;
+        }
+        let task = &*TASK_TABLE[id].as_ptr();
+        task.trap_frame
     }
 }
 
