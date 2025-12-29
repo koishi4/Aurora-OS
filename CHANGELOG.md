@@ -42,3 +42,4 @@
 - Add a user-test feature flag and USER_TEST=1 smoke validation for U-mode ecall.
 - Add UserPtr/UserSlice helpers to validate and copy user buffers.
 - Add minimal sys_read for fd=0 using SBI getchar (non-blocking placeholder).
+- Make user-mode smoke buffer cross-page to exercise UserSlice chunking.
