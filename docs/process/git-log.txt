@@ -1,4 +1,25 @@
-* commit 3e884f88bebdbb1fdd34754ae55b9058399d2a4b (HEAD -> bootstrap-riscv64)
+* commit 2b87620afb71fbbecba146b91e06f1996c5de635 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:41:34 +0800
+| 
+|     feat(syscall): add statx stub
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 24 ++++++++++++++++++++++++
+|  4 files changed, 27 insertions(+), 3 deletions(-)
+| 
+* commit a65a45bc8277c55c1002bdde7967f626fdb44c12
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:39:48 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 3e884f88bebdbb1fdd34754ae55b9058399d2a4b
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 12:39:32 +0800
 | 
