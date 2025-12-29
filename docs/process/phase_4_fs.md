@@ -21,6 +21,7 @@
 - 引入 MountTable 挂载表，预留 `/`、`/dev`、`/proc` 挂载点，路径解析改为最长前缀匹配。
 - 新增 devfs/procfs 占位实现，/dev 路径解析与元数据读取走 devfs。
 - 新增 BlockDevice trait 与 BlockCache 直通占位，作为后续块设备与缓存接入骨架。
+- 增加 FAT32 BPB 解析与根簇定位骨架，预留目录与数据读取实现入口。
 
 ## 问题与定位
 - 尚未进入实现阶段，暂无问题记录。

@@ -2,6 +2,7 @@
 
 pub mod block;
 pub mod devfs;
+pub mod fat32;
 pub mod memfs;
 pub mod mount;
 pub mod procfs;
