@@ -2847,9 +2847,7 @@ fn ppoll_wait(root_pa: usize, fds: usize, nfds: usize, timeout_ms: Option<u64>) 
         if sleep_ms == 0 {
             return Ok(0);
         }
-        if !crate::runtime::sleep_current_ms(sleep_ms) {
-            return Ok(0);
-        }
+        ppoll_sleep_ms(sleep_ms);
         if let Some(ms) = remaining_ms {
             remaining_ms = Some(ms.saturating_sub(sleep_ms));
         }
@@ -2881,12 +2879,25 @@ fn ppoll_sleep_only(timeout_ms: Option<u64>) -> Result<usize, Errno> {
         if sleep_ms == 0 {
             return Ok(0);
         }
-        if !crate::runtime::sleep_current_ms(sleep_ms) {
-            return Ok(0);
-        }
+        ppoll_sleep_ms(sleep_ms);
         if let Some(ms) = remaining_ms {
             remaining_ms = Some(ms.saturating_sub(sleep_ms));
         }
+    }
+}
+
+fn ppoll_sleep_ms(sleep_ms: u64) {
+    if sleep_ms == 0 {
+        return;
+    }
+    if crate::runtime::sleep_current_ms(sleep_ms) {
+        return;
+    }
+    // 调度器不可用时，回退到 timebase 忙等避免超时过早结束。
+    let deadline = time::monotonic_ns()
+        .saturating_add(sleep_ms.saturating_mul(1_000_000));
+    while time::monotonic_ns() < deadline {
+        crate::cpu::wait_for_interrupt();
     }
 }
 

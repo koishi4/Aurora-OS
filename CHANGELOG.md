@@ -51,6 +51,7 @@
 - Add statfs/fstatfs stubs returning placeholder filesystem stats.
 - Add fchmodat/fchownat/utimensat stubs for root and /dev pseudo paths.
 - Add poll/ppoll stubs that report pipe readiness, block on a single pipe fd, and use a sleep-retry loop for multi-fd waits.
+- Make ppoll sleep-retry fall back to timebase waiting when scheduler sleep is unavailable.
 - Add console input stash and polling readiness for stdin; USER_TEST now covers pipe poll readiness.
 - Enable timer-driven preemption by returning running tasks to the run queue and scheduling from idle.
 - Allow user tasks to be preempted by timer ticks and resume via trapframe-backed paths.
