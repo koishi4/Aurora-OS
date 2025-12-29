@@ -64,6 +64,7 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_WRITEV => sys_writev(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_OPEN => sys_open(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_OPENAT => sys_openat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_PIPE2 => sys_pipe2(ctx.args[0], ctx.args[1]),
         SYS_MKNODAT => sys_mknodat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_MKDIRAT => sys_mkdirat(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_UNLINKAT => sys_unlinkat(ctx.args[0], ctx.args[1], ctx.args[2]),
@@ -146,6 +147,7 @@ const SYS_READV: usize = 65;
 const SYS_WRITEV: usize = 66;
 const SYS_OPEN: usize = 1024;
 const SYS_OPENAT: usize = 56;
+const SYS_PIPE2: usize = 59;
 const SYS_MKNODAT: usize = 33;
 const SYS_MKDIRAT: usize = 34;
 const SYS_UNLINKAT: usize = 35;
@@ -235,6 +237,7 @@ const CLOCK_BOOTTIME: usize = 7;
 const IOV_MAX: usize = 1024;
 const S_IFCHR: u32 = 0o020000;
 const O_CLOEXEC: usize = 0x80000;
+const O_NONBLOCK: usize = 0x4000;
 const O_RDONLY: usize = 0;
 const O_WRONLY: usize = 1;
 const O_RDWR: usize = 2;
@@ -242,8 +245,10 @@ const AT_FDCWD: isize = -100;
 const AT_SYMLINK_NOFOLLOW: usize = 0x100;
 const AT_SYMLINK_FOLLOW: usize = 0x400;
 const AT_EMPTY_PATH: usize = 0x1000;
-const PSEUDO_FD_BASE: usize = 3;
-const PSEUDO_FD_SLOTS: usize = 4;
+const FD_TABLE_BASE: usize = 3;
+const FD_TABLE_SLOTS: usize = 16;
+const PIPE_SLOTS: usize = 8;
+const PIPE_BUFFER_SIZE: usize = 512;
 const DEV_NULL_PATH: &[u8] = b"/dev/null";
 const DEV_ZERO_PATH: &[u8] = b"/dev/zero";
 const ROOT_PATH: &[u8] = b"/";
@@ -261,6 +266,7 @@ const GRND_RANDOM: usize = 0x2;
 const RUSAGE_SELF: isize = 0;
 const RUSAGE_CHILDREN: isize = -1;
 const RUSAGE_THREAD: isize = 1;
+const S_IFIFO: u32 = 0o010000;
 
 static RNG_STATE: AtomicU64 = AtomicU64::new(0);
 static UMASK: AtomicU64 = AtomicU64::new(0);
@@ -412,10 +418,15 @@ struct Rusage {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum PseudoFdKind {
+enum FdKind {
     Empty,
+    Stdin,
+    Stdout,
+    Stderr,
     DevNull,
     DevZero,
+    PipeRead(usize),
+    PipeWrite(usize),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -425,7 +436,33 @@ enum KnownPath {
     DevZero,
 }
 
-static mut PSEUDO_FDS: [PseudoFdKind; PSEUDO_FD_SLOTS] = [PseudoFdKind::Empty; PSEUDO_FD_SLOTS];
+#[derive(Clone, Copy)]
+struct Pipe {
+    used: bool,
+    readers: usize,
+    writers: usize,
+    read_pos: usize,
+    write_pos: usize,
+    len: usize,
+    buf: [u8; PIPE_BUFFER_SIZE],
+}
+
+const EMPTY_PIPE: Pipe = Pipe {
+    used: false,
+    readers: 0,
+    writers: 0,
+    read_pos: 0,
+    write_pos: 0,
+    len: 0,
+    buf: [0; PIPE_BUFFER_SIZE],
+};
+
+// SAFETY: 单核早期阶段，fd 表由 syscall 串行访问。
+static mut FD_TABLE: [FdKind; FD_TABLE_SLOTS] = [FdKind::Empty; FD_TABLE_SLOTS];
+// SAFETY: 仅用于重定向标准 fd，单核顺序访问。
+static mut STDIO_REDIRECT: [Option<FdKind>; 3] = [None, None, None];
+// SAFETY: pipe 表在早期阶段串行访问。
+static mut PIPES: [Pipe; PIPE_SLOTS] = [EMPTY_PIPE; PIPE_SLOTS];
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -469,94 +506,27 @@ fn sys_read(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     if len == 0 {
         return Ok(0);
     }
-    if let Some(kind) = pseudo_fd_kind(fd) {
-        return match kind {
-            PseudoFdKind::DevNull => Ok(0),
-            PseudoFdKind::DevZero => {
-                let root_pa = mm::current_root_pa();
-                if root_pa == 0 {
-                    return Err(Errno::Fault);
-                }
-                zero_user_write(root_pa, buf, len)?;
-                Ok(len)
-            }
-            PseudoFdKind::Empty => Err(Errno::Badf),
-        };
-    }
-    if fd != 0 {
-        return Err(Errno::Badf);
-    }
     let root_pa = mm::current_root_pa();
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-
-    read_console_into(root_pa, buf, len)
+    let kind = resolve_fd(fd).ok_or(Errno::Badf)?;
+    read_from_kind(kind, root_pa, buf, len)
 }
 
 fn sys_write(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     if len == 0 {
         return Ok(0);
     }
-    if pseudo_fd_kind(fd).is_some() {
-        let root_pa = mm::current_root_pa();
-        if root_pa == 0 {
-            return Err(Errno::Fault);
-        }
-        validate_user_read(root_pa, buf, len)?;
-        return Ok(len);
-    }
-    if fd != 1 && fd != 2 {
-        return Err(Errno::Badf);
-    }
     let root_pa = mm::current_root_pa();
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-
-    write_console_from(root_pa, buf, len)
+    let kind = resolve_fd(fd).ok_or(Errno::Badf)?;
+    write_to_kind(kind, root_pa, buf, len)
 }
 
 fn sys_readv(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
-    if fd != 0 {
-        if let Some(kind) = pseudo_fd_kind(fd) {
-            if iovcnt == 0 {
-                return Ok(0);
-            }
-            if iovcnt > IOV_MAX {
-                return Err(Errno::Inval);
-            }
-            if iov_ptr == 0 {
-                return Err(Errno::Fault);
-            }
-            let root_pa = mm::current_root_pa();
-            if root_pa == 0 {
-                return Err(Errno::Fault);
-            }
-            let mut total = 0usize;
-            for index in 0..iovcnt {
-                let iov = load_iovec(root_pa, iov_ptr, index)?;
-                if iov.iov_len == 0 {
-                    continue;
-                }
-                match kind {
-                    PseudoFdKind::DevNull => return Ok(0),
-                    PseudoFdKind::DevZero => match zero_user_write(root_pa, iov.iov_base, iov.iov_len) {
-                        Ok(()) => total += iov.iov_len,
-                        Err(err) => {
-                            if total > 0 {
-                                return Ok(total);
-                            }
-                            return Err(err);
-                        }
-                    },
-                    PseudoFdKind::Empty => return Err(Errno::Badf),
-                }
-            }
-            return Ok(total);
-        }
-        return Err(Errno::Badf);
-    }
     if iovcnt == 0 {
         return Ok(0);
     }
@@ -570,6 +540,7 @@ fn sys_readv(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
+    let kind = resolve_fd(fd).ok_or(Errno::Badf)?;
 
     let mut total = 0usize;
     for index in 0..iovcnt {
@@ -577,11 +548,12 @@ fn sys_readv(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
         if iov.iov_len == 0 {
             continue;
         }
-        match read_console_into(root_pa, iov.iov_base, iov.iov_len) {
+        match read_from_kind(kind, root_pa, iov.iov_base, iov.iov_len) {
+            Ok(0) => return Ok(total),
             Ok(read) => {
                 total += read;
                 if read < iov.iov_len {
-                    break;
+                    return Ok(total);
                 }
             }
             Err(err) => {
@@ -596,12 +568,6 @@ fn sys_readv(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
 }
 
 fn sys_writev(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
-    let pseudo_kind = pseudo_fd_kind(fd);
-    if fd != 1 && fd != 2 {
-        if pseudo_kind.is_none() {
-            return Err(Errno::Badf);
-        }
-    }
     if iovcnt == 0 {
         return Ok(0);
     }
@@ -615,6 +581,7 @@ fn sys_writev(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> 
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
+    let kind = resolve_fd(fd).ok_or(Errno::Badf)?;
 
     let mut total = 0usize;
     for index in 0..iovcnt {
@@ -622,13 +589,13 @@ fn sys_writev(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> 
         if iov.iov_len == 0 {
             continue;
         }
-        if pseudo_kind.is_some() {
-            validate_user_read(root_pa, iov.iov_base, iov.iov_len)?;
-            total = total.saturating_add(iov.iov_len);
-            continue;
-        }
-        match write_console_from(root_pa, iov.iov_base, iov.iov_len) {
-            Ok(written) => total += written,
+        match write_to_kind(kind, root_pa, iov.iov_base, iov.iov_len) {
+            Ok(written) => {
+                total += written;
+                if written < iov.iov_len {
+                    return Ok(total);
+                }
+            }
             Err(err) => {
                 if total > 0 {
                     return Ok(total);
@@ -644,6 +611,42 @@ fn sys_open(pathname: usize, flags: usize, mode: usize) -> Result<usize, Errno> 
     sys_openat(usize::MAX, pathname, flags, mode)
 }
 
+fn sys_pipe2(pipefd: usize, flags: usize) -> Result<usize, Errno> {
+    if pipefd == 0 {
+        return Err(Errno::Fault);
+    }
+    if flags & !(O_CLOEXEC | O_NONBLOCK) != 0 {
+        return Err(Errno::Inval);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    // 占位 pipe：固定缓冲区，满/空时返回 EAGAIN。
+    let pipe_id = alloc_pipe().ok_or(Errno::MFile)?;
+    let read_fd = match alloc_fd(FdKind::PipeRead(pipe_id)) {
+        Some(fd) => fd,
+        None => {
+            free_pipe(pipe_id);
+            return Err(Errno::MFile);
+        }
+    };
+    let write_fd = match alloc_fd(FdKind::PipeWrite(pipe_id)) {
+        Some(fd) => fd,
+        None => {
+            let _ = close_fd(read_fd);
+            return Err(Errno::MFile);
+        }
+    };
+    let fds = [read_fd as i32, write_fd as i32];
+    if UserPtr::new(pipefd).write(root_pa, fds).is_none() {
+        let _ = close_fd(read_fd);
+        let _ = close_fd(write_fd);
+        return Err(Errno::Fault);
+    }
+    Ok(0)
+}
+
 fn sys_openat(_dirfd: usize, pathname: usize, _flags: usize, _mode: usize) -> Result<usize, Errno> {
     if pathname == 0 {
         return Err(Errno::Fault);
@@ -653,10 +656,10 @@ fn sys_openat(_dirfd: usize, pathname: usize, _flags: usize, _mode: usize) -> Re
         return Err(Errno::Fault);
     }
     if user_path_eq(root_pa, pathname, DEV_NULL_PATH)? {
-        return alloc_pseudo_fd(PseudoFdKind::DevNull).ok_or(Errno::MFile);
+        return alloc_fd(FdKind::DevNull).ok_or(Errno::MFile);
     }
     if user_path_eq(root_pa, pathname, DEV_ZERO_PATH)? {
-        return alloc_pseudo_fd(PseudoFdKind::DevZero).ok_or(Errno::MFile);
+        return alloc_fd(FdKind::DevZero).ok_or(Errno::MFile);
     }
     Err(Errno::NoEnt)
 }
@@ -791,7 +794,7 @@ fn sys_getdents64(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
         return Err(Errno::Fault);
     }
     validate_user_write(root_pa, buf, len)?;
-    if fd <= 2 || pseudo_fd_kind(fd).is_some() {
+    if resolve_fd(fd).is_some() {
         return Err(Errno::NotDir);
     }
     Err(Errno::Badf)
@@ -898,8 +901,8 @@ fn sys_fstatfs(fd: usize, buf: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    // 占位实现：仅识别标准 fd 与 pseudo fd。
-    if fd > 2 && pseudo_fd_kind(fd).is_none() {
+    // 占位实现：识别标准 fd / pseudo fd / pipe。
+    if resolve_fd(fd).is_none() {
         return Err(Errno::Badf);
     }
     UserPtr::new(buf)
@@ -1265,20 +1268,14 @@ fn sys_chdir(pathname: usize) -> Result<usize, Errno> {
 }
 
 fn sys_fchdir(fd: usize) -> Result<usize, Errno> {
-    if fd <= 2 || pseudo_fd_kind(fd).is_some() {
+    if resolve_fd(fd).is_some() {
         return Err(Errno::NotDir);
     }
     Err(Errno::Badf)
 }
 
 fn sys_close(fd: usize) -> Result<usize, Errno> {
-    if fd <= 2 {
-        return Ok(0);
-    }
-    if free_pseudo_fd(fd) {
-        return Ok(0);
-    }
-    Err(Errno::Badf)
+    close_fd(fd)
 }
 
 fn sys_getrlimit(_resource: usize, rlim: usize) -> Result<usize, Errno> {
@@ -1315,8 +1312,9 @@ fn sys_prlimit64(_pid: usize, _resource: usize, new_rlim: usize, old_rlim: usize
 }
 
 fn sys_ioctl(fd: usize, cmd: usize, arg: usize) -> Result<usize, Errno> {
-    if fd > 2 && pseudo_fd_kind(fd).is_none() {
-        return Err(Errno::Badf);
+    let kind = resolve_fd(fd).ok_or(Errno::Badf)?;
+    if matches!(kind, FdKind::PipeRead(_) | FdKind::PipeWrite(_)) {
+        return Err(Errno::Inval);
     }
     match cmd {
         TIOCGWINSZ => {
@@ -1490,9 +1488,7 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
     if stat_ptr == 0 {
         return Err(Errno::Fault);
     }
-    if fd > 2 && pseudo_fd_kind(fd).is_none() {
-        return Err(Errno::Badf);
-    }
+    let kind = resolve_fd(fd).ok_or(Errno::Badf)?;
     let root_pa = mm::current_root_pa();
     if root_pa == 0 {
         return Err(Errno::Fault);
@@ -1500,10 +1496,14 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
     let now_ns = time::monotonic_ns();
     let sec = (now_ns / 1_000_000_000) as isize;
     let nsec = (now_ns % 1_000_000_000) as usize;
+    let mode = match kind {
+        FdKind::PipeRead(_) | FdKind::PipeWrite(_) => S_IFIFO | 0o600,
+        _ => S_IFCHR | 0o666,
+    };
     let stat = Stat {
         st_dev: 0,
         st_ino: 0,
-        st_mode: S_IFCHR | 0o666,
+        st_mode: mode,
         st_nlink: 1,
         st_uid: 0,
         st_gid: 0,
@@ -1529,30 +1529,23 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
 }
 
 fn sys_dup(oldfd: usize) -> Result<usize, Errno> {
-    if oldfd <= 2 || pseudo_fd_kind(oldfd).is_some() {
-        return Ok(oldfd);
-    }
-    Err(Errno::Badf)
+    let kind = resolve_fd(oldfd).ok_or(Errno::Badf)?;
+    alloc_fd(kind).ok_or(Errno::MFile)
 }
 
 fn sys_dup3(oldfd: usize, newfd: usize, flags: usize) -> Result<usize, Errno> {
-    if oldfd > 2 && pseudo_fd_kind(oldfd).is_none() {
-        return Err(Errno::Badf);
-    }
-    if oldfd == newfd {
-        return Err(Errno::Inval);
-    }
+    let kind = resolve_fd(oldfd).ok_or(Errno::Badf)?;
     if flags != 0 && flags != O_CLOEXEC {
         return Err(Errno::Inval);
     }
-    if newfd <= 2 {
-        return Ok(newfd);
+    if oldfd == newfd {
+        return if flags == 0 { Ok(newfd) } else { Err(Errno::Inval) };
     }
-    Err(Errno::Badf)
+    dup_to_fd(newfd, kind)
 }
 
 fn sys_lseek(fd: usize, _offset: usize, _whence: usize) -> Result<usize, Errno> {
-    if fd <= 2 || pseudo_fd_kind(fd).is_some() {
+    if resolve_fd(fd).is_some() {
         return Err(Errno::Pipe);
     }
     Err(Errno::Badf)
@@ -1634,16 +1627,14 @@ fn sys_rt_sigprocmask(how: usize, set: usize, oldset: usize, sigsetsize: usize) 
 }
 
 fn sys_fcntl(fd: usize, cmd: usize, _arg: usize) -> Result<usize, Errno> {
-    if fd > 2 && pseudo_fd_kind(fd).is_none() {
-        return Err(Errno::Badf);
-    }
+    let kind = resolve_fd(fd).ok_or(Errno::Badf)?;
     match cmd {
         F_GETFD => Ok(0),
         F_SETFD => Ok(0),
         F_GETFL => {
-            let mode = match fd {
-                0 => O_RDONLY,
-                1 | 2 => O_WRONLY,
+            let mode = match kind {
+                FdKind::Stdin | FdKind::PipeRead(_) => O_RDONLY,
+                FdKind::Stdout | FdKind::Stderr | FdKind::PipeWrite(_) => O_WRONLY,
                 _ => O_RDWR,
             };
             Ok(mode)
@@ -1868,7 +1859,7 @@ fn validate_at_dirfd(dirfd: usize) -> Result<(), Errno> {
     if dirfd as isize == AT_FDCWD {
         return Ok(());
     }
-    if dirfd <= 2 || pseudo_fd_kind(dirfd).is_some() {
+    if resolve_fd(dirfd).is_some() {
         return Err(Errno::NotDir);
     }
     Err(Errno::Badf)
@@ -1931,52 +1922,302 @@ fn user_path_eq(root_pa: usize, ptr: usize, target: &[u8]) -> Result<bool, Errno
     Ok(read_user_byte(root_pa, term_addr)? == 0)
 }
 
-fn alloc_pseudo_fd(kind: PseudoFdKind) -> Option<usize> {
-    // SAFETY: single-hart early boot; pseudo fd table is mutated sequentially.
-    unsafe {
-        for (idx, slot) in PSEUDO_FDS.iter_mut().enumerate() {
-            if *slot == PseudoFdKind::Empty {
-                *slot = kind;
-                return Some(PSEUDO_FD_BASE + idx);
-            }
-        }
+fn stdio_kind(fd: usize) -> Option<FdKind> {
+    match fd {
+        0 => Some(FdKind::Stdin),
+        1 => Some(FdKind::Stdout),
+        2 => Some(FdKind::Stderr),
+        _ => None,
     }
-    None
 }
 
-fn pseudo_fd_kind(fd: usize) -> Option<PseudoFdKind> {
-    if fd < PSEUDO_FD_BASE {
+fn resolve_fd(fd: usize) -> Option<FdKind> {
+    if let Some(kind) = stdio_kind(fd) {
+        // SAFETY: 单核早期阶段访问重定向表。
+        let redirect = unsafe { STDIO_REDIRECT[fd] };
+        return Some(redirect.unwrap_or(kind));
+    }
+    if fd < FD_TABLE_BASE {
         return None;
     }
-    let idx = fd - PSEUDO_FD_BASE;
-    if idx >= PSEUDO_FD_SLOTS {
+    let idx = fd - FD_TABLE_BASE;
+    if idx >= FD_TABLE_SLOTS {
         return None;
     }
-    // SAFETY: single-hart early boot; pseudo fd table is read without races.
-    let kind = unsafe { PSEUDO_FDS[idx] };
-    if kind == PseudoFdKind::Empty {
+    // SAFETY: 单核早期阶段，fd 表无并发访问。
+    let kind = unsafe { FD_TABLE[idx] };
+    if kind == FdKind::Empty {
         None
     } else {
         Some(kind)
     }
 }
 
-fn free_pseudo_fd(fd: usize) -> bool {
-    if fd < PSEUDO_FD_BASE {
-        return false;
+fn alloc_fd(kind: FdKind) -> Option<usize> {
+    if kind == FdKind::Empty {
+        return None;
     }
-    let idx = fd - PSEUDO_FD_BASE;
-    if idx >= PSEUDO_FD_SLOTS {
-        return false;
-    }
-    // SAFETY: single-hart early boot; pseudo fd table is mutated sequentially.
+    // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
-        if PSEUDO_FDS[idx] == PseudoFdKind::Empty {
-            return false;
+        for (idx, slot) in FD_TABLE.iter_mut().enumerate() {
+            if *slot == FdKind::Empty {
+                *slot = kind;
+                pipe_acquire(kind);
+                return Some(FD_TABLE_BASE + idx);
+            }
         }
-        PSEUDO_FDS[idx] = PseudoFdKind::Empty;
     }
-    true
+    None
+}
+
+fn dup_to_fd(newfd: usize, kind: FdKind) -> Result<usize, Errno> {
+    if stdio_kind(newfd).is_some() {
+        return set_stdio_redirect(newfd, kind);
+    }
+    if newfd < FD_TABLE_BASE {
+        return Err(Errno::Badf);
+    }
+    let idx = newfd - FD_TABLE_BASE;
+    if idx >= FD_TABLE_SLOTS {
+        return Err(Errno::Badf);
+    }
+    // SAFETY: 单核早期阶段，fd 表串行更新。
+    unsafe {
+        let old = FD_TABLE[idx];
+        if old != FdKind::Empty {
+            pipe_release(old);
+        }
+        FD_TABLE[idx] = kind;
+    }
+    pipe_acquire(kind);
+    Ok(newfd)
+}
+
+fn close_fd(fd: usize) -> Result<usize, Errno> {
+    if stdio_kind(fd).is_some() {
+        // SAFETY: 单核早期阶段访问重定向表。
+        unsafe {
+            if let Some(old) = STDIO_REDIRECT[fd] {
+                pipe_release(old);
+                STDIO_REDIRECT[fd] = None;
+            }
+        }
+        return Ok(0);
+    }
+    if fd < FD_TABLE_BASE {
+        return Err(Errno::Badf);
+    }
+    let idx = fd - FD_TABLE_BASE;
+    if idx >= FD_TABLE_SLOTS {
+        return Err(Errno::Badf);
+    }
+    // SAFETY: 单核早期阶段，fd 表串行更新。
+    unsafe {
+        let old = FD_TABLE[idx];
+        if old == FdKind::Empty {
+            return Err(Errno::Badf);
+        }
+        FD_TABLE[idx] = FdKind::Empty;
+        pipe_release(old);
+    }
+    Ok(0)
+}
+
+fn set_stdio_redirect(fd: usize, kind: FdKind) -> Result<usize, Errno> {
+    if stdio_kind(fd).is_none() {
+        return Err(Errno::Badf);
+    }
+    // SAFETY: 单核早期阶段访问重定向表。
+    unsafe {
+        if let Some(old) = STDIO_REDIRECT[fd] {
+            pipe_release(old);
+        }
+        STDIO_REDIRECT[fd] = Some(kind);
+    }
+    pipe_acquire(kind);
+    Ok(fd)
+}
+
+fn alloc_pipe() -> Option<usize> {
+    // SAFETY: 单核早期阶段串行更新 pipe 表。
+    unsafe {
+        for (idx, pipe) in PIPES.iter_mut().enumerate() {
+            if !pipe.used {
+                *pipe = Pipe {
+                    used: true,
+                    readers: 0,
+                    writers: 0,
+                    read_pos: 0,
+                    write_pos: 0,
+                    len: 0,
+                    buf: [0; PIPE_BUFFER_SIZE],
+                };
+                return Some(idx);
+            }
+        }
+    }
+    None
+}
+
+fn free_pipe(pipe_id: usize) {
+    if pipe_id >= PIPE_SLOTS {
+        return;
+    }
+    // SAFETY: 单核早期阶段串行更新 pipe 表。
+    unsafe {
+        PIPES[pipe_id] = EMPTY_PIPE;
+    }
+}
+
+fn pipe_acquire(kind: FdKind) {
+    let (pipe_id, is_read) = match kind {
+        FdKind::PipeRead(id) => (id, true),
+        FdKind::PipeWrite(id) => (id, false),
+        _ => return,
+    };
+    if pipe_id >= PIPE_SLOTS {
+        return;
+    }
+    // SAFETY: 单核早期阶段串行更新 pipe 表。
+    unsafe {
+        if !PIPES[pipe_id].used {
+            return;
+        }
+        if is_read {
+            PIPES[pipe_id].readers += 1;
+        } else {
+            PIPES[pipe_id].writers += 1;
+        }
+    }
+}
+
+fn pipe_release(kind: FdKind) {
+    let (pipe_id, is_read) = match kind {
+        FdKind::PipeRead(id) => (id, true),
+        FdKind::PipeWrite(id) => (id, false),
+        _ => return,
+    };
+    if pipe_id >= PIPE_SLOTS {
+        return;
+    }
+    // SAFETY: 单核早期阶段串行更新 pipe 表。
+    unsafe {
+        if !PIPES[pipe_id].used {
+            return;
+        }
+        if is_read {
+            if PIPES[pipe_id].readers > 0 {
+                PIPES[pipe_id].readers -= 1;
+            }
+        } else if PIPES[pipe_id].writers > 0 {
+            PIPES[pipe_id].writers -= 1;
+        }
+        if PIPES[pipe_id].readers == 0 && PIPES[pipe_id].writers == 0 {
+            PIPES[pipe_id] = EMPTY_PIPE;
+        }
+    }
+}
+
+fn pipe_read(pipe_id: usize, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
+    if pipe_id >= PIPE_SLOTS {
+        return Err(Errno::Badf);
+    }
+    if len == 0 {
+        return Ok(0);
+    }
+    // SAFETY: 单核早期阶段串行访问 pipe。
+    let pipe = unsafe { &mut PIPES[pipe_id] };
+    if !pipe.used {
+        return Err(Errno::Badf);
+    }
+    if pipe.len == 0 {
+        if pipe.writers == 0 {
+            return Ok(0);
+        }
+        return Err(Errno::Again);
+    }
+    let to_read = min(len, pipe.len);
+    let mut remaining = to_read;
+    let mut offset = 0usize;
+    while remaining > 0 {
+        let chunk = min(remaining, PIPE_BUFFER_SIZE - pipe.read_pos);
+        let dst = buf.checked_add(offset).ok_or(Errno::Fault)?;
+        let src = &pipe.buf[pipe.read_pos..pipe.read_pos + chunk];
+        UserSlice::new(dst, chunk)
+            .copy_from_slice(root_pa, src)
+            .ok_or(Errno::Fault)?;
+        pipe.read_pos = (pipe.read_pos + chunk) % PIPE_BUFFER_SIZE;
+        pipe.len -= chunk;
+        remaining -= chunk;
+        offset += chunk;
+    }
+    Ok(to_read)
+}
+
+fn pipe_write(pipe_id: usize, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
+    if pipe_id >= PIPE_SLOTS {
+        return Err(Errno::Badf);
+    }
+    if len == 0 {
+        return Ok(0);
+    }
+    // SAFETY: 单核早期阶段串行访问 pipe。
+    let pipe = unsafe { &mut PIPES[pipe_id] };
+    if !pipe.used {
+        return Err(Errno::Badf);
+    }
+    if pipe.readers == 0 {
+        // 无读端时丢弃数据，避免早期管道阻塞。
+        validate_user_read(root_pa, buf, len)?;
+        return Ok(len);
+    }
+    let avail = PIPE_BUFFER_SIZE.saturating_sub(pipe.len);
+    if avail == 0 {
+        return Err(Errno::Again);
+    }
+    let to_write = min(len, avail);
+    let mut remaining = to_write;
+    let mut offset = 0usize;
+    while remaining > 0 {
+        let chunk = min(remaining, PIPE_BUFFER_SIZE - pipe.write_pos);
+        let src = buf.checked_add(offset).ok_or(Errno::Fault)?;
+        let dst = &mut pipe.buf[pipe.write_pos..pipe.write_pos + chunk];
+        UserSlice::new(src, chunk)
+            .copy_to_slice(root_pa, dst)
+            .ok_or(Errno::Fault)?;
+        pipe.write_pos = (pipe.write_pos + chunk) % PIPE_BUFFER_SIZE;
+        pipe.len += chunk;
+        remaining -= chunk;
+        offset += chunk;
+    }
+    Ok(to_write)
+}
+
+fn read_from_kind(kind: FdKind, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
+    match kind {
+        FdKind::Stdin => read_console_into(root_pa, buf, len),
+        FdKind::DevNull => Ok(0),
+        FdKind::DevZero => {
+            zero_user_write(root_pa, buf, len)?;
+            Ok(len)
+        }
+        FdKind::PipeRead(pipe_id) => pipe_read(pipe_id, root_pa, buf, len),
+        FdKind::Stdout | FdKind::Stderr | FdKind::PipeWrite(_) => Err(Errno::Badf),
+        FdKind::Empty => Err(Errno::Badf),
+    }
+}
+
+fn write_to_kind(kind: FdKind, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
+    match kind {
+        FdKind::Stdout | FdKind::Stderr => write_console_from(root_pa, buf, len),
+        FdKind::DevNull | FdKind::DevZero => {
+            validate_user_read(root_pa, buf, len)?;
+            Ok(len)
+        }
+        FdKind::PipeWrite(pipe_id) => pipe_write(pipe_id, root_pa, buf, len),
+        FdKind::Stdin | FdKind::PipeRead(_) => Err(Errno::Badf),
+        FdKind::Empty => Err(Errno::Badf),
+    }
 }
 
 fn read_user_byte(root_pa: usize, addr: usize) -> Result<u8, Errno> {
