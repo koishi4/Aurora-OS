@@ -1,4 +1,25 @@
-* commit e530ca51b3c80efa16665fef919adfde1cb3ba9a (HEAD -> bootstrap-riscv64)
+* commit 92035cb03e442477e69c26ae178839fff5af32f8 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 15:29:26 +0800
+| 
+|     test(user): add poll sleep smoke
+| 
+|  CHANGELOG.md                            | 2 +-
+|  docs/design/10_testing_benchmark.md     | 2 +-
+|  docs/process/phase_3_process_syscall.md | 2 +-
+|  modules/axruntime/src/user.rs           | 8 +++++++-
+|  4 files changed, 10 insertions(+), 4 deletions(-)
+| 
+* commit 4a54d933a93e3d3835366bfce574b810877710e4
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 15:19:59 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit e530ca51b3c80efa16665fef919adfde1cb3ba9a
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 15:19:49 +0800
 | 
