@@ -1,4 +1,27 @@
-* commit b3bbaccced45202f017b04530f6723d529fb1322 (HEAD -> bootstrap-riscv64)
+* commit c8d4bfa120d721737fc619cfefe5548c5684418e (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 18:57:29 +0800
+| 
+|     feat(trap): enable idle interrupts for blocking
+| 
+|  CHANGELOG.md                            |  3 ++-
+|  docs/design/10_testing_benchmark.md     |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/runtime.rs        |  1 +
+|  modules/axruntime/src/trap.rs           |  7 +++++++
+|  modules/axruntime/src/user.rs           | 16 ++++++++--------
+|  6 files changed, 20 insertions(+), 11 deletions(-)
+| 
+* commit 349c4b4696abfe4ae1f8093ff2f8b6c7f392116d
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 18:51:21 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit b3bbaccced45202f017b04530f6723d529fb1322
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 18:51:04 +0800
 | 
