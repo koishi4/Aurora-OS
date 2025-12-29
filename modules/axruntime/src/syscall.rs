@@ -137,6 +137,7 @@ const SYS_GETPGRP: usize = 111;
 const SYS_SETPGRP: usize = 112;
 
 const TIOCGWINSZ: usize = 0x5413;
+const TIOCSWINSZ: usize = 0x5414;
 const TCGETS: usize = 0x5401;
 const TCSETS: usize = 0x5402;
 const TCSETSW: usize = 0x5403;
@@ -715,6 +716,19 @@ fn sys_ioctl(fd: usize, cmd: usize, arg: usize) -> Result<usize, Errno> {
                 ws_ypixel: 0,
             };
             UserPtr::new(arg).write(root_pa, winsz).ok_or(Errno::Fault)?;
+            Ok(0)
+        }
+        TIOCSWINSZ => {
+            if arg == 0 {
+                return Err(Errno::Fault);
+            }
+            let root_pa = mm::current_root_pa();
+            if root_pa == 0 {
+                return Err(Errno::Fault);
+            }
+            UserPtr::<Winsize>::new(arg)
+                .read(root_pa)
+                .ok_or(Errno::Fault)?;
             Ok(0)
         }
         TCGETS => {
