@@ -58,3 +58,4 @@
 - Add nanosleep stub using tick-based busy wait.
 - Add sysinfo stub for uptime and memory size.
 - Add getrandom stub with xorshift output.
+- Add fstat stub for stdio character device metadata.

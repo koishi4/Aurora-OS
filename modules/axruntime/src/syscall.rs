@@ -78,6 +78,7 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_IOCTL => sys_ioctl(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_SYSINFO => sys_sysinfo(ctx.args[0]),
         SYS_GETRANDOM => sys_getrandom(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_FSTAT => sys_fstat(ctx.args[0], ctx.args[1]),
         _ => Err(Errno::NoSys),
     }
 }
@@ -94,6 +95,7 @@ const SYS_GETRLIMIT: usize = 163;
 const SYS_PRLIMIT64: usize = 261;
 const SYS_IOCTL: usize = 29;
 const SYS_GETRANDOM: usize = 278;
+const SYS_FSTAT: usize = 80;
 
 const TIOCGWINSZ: usize = 0x5413;
 const SYS_CLOCK_GETTIME: usize = 113;
@@ -115,6 +117,7 @@ const SYS_UNAME: usize = 160;
 const CLOCK_REALTIME: usize = 0;
 const CLOCK_MONOTONIC: usize = 1;
 const IOV_MAX: usize = 1024;
+const S_IFCHR: u32 = 0o020000;
 
 static RNG_STATE: AtomicU64 = AtomicU64::new(0);
 
@@ -181,6 +184,31 @@ struct Sysinfo {
     freehigh: u64,
     mem_unit: u32,
     _pad2: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Stat {
+    st_dev: usize,
+    st_ino: usize,
+    st_mode: u32,
+    st_nlink: u32,
+    st_uid: u32,
+    st_gid: u32,
+    st_rdev: usize,
+    __pad1: usize,
+    st_size: isize,
+    st_blksize: i32,
+    __pad2: i32,
+    st_blocks: isize,
+    st_atime: isize,
+    st_atime_nsec: usize,
+    st_mtime: isize,
+    st_mtime_nsec: usize,
+    st_ctime: isize,
+    st_ctime_nsec: usize,
+    __unused4: u32,
+    __unused5: u32,
 }
 
 #[repr(C)]
@@ -605,6 +633,48 @@ fn sys_getrandom(buf: usize, len: usize, _flags: usize) -> Result<usize, Errno> 
         })
         .ok_or(Errno::Fault)?;
     Ok(written)
+}
+
+fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
+    if stat_ptr == 0 {
+        return Err(Errno::Fault);
+    }
+    if fd > 2 {
+        return Err(Errno::Badf);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let now_ms = time::uptime_ms();
+    let sec = (now_ms / 1000) as isize;
+    let nsec = ((now_ms % 1000) * 1_000_000) as usize;
+    let stat = Stat {
+        st_dev: 0,
+        st_ino: 0,
+        st_mode: S_IFCHR | 0o666,
+        st_nlink: 1,
+        st_uid: 0,
+        st_gid: 0,
+        st_rdev: 0,
+        __pad1: 0,
+        st_size: 0,
+        st_blksize: 4096,
+        __pad2: 0,
+        st_blocks: 0,
+        st_atime: sec,
+        st_atime_nsec: nsec,
+        st_mtime: sec,
+        st_mtime_nsec: nsec,
+        st_ctime: sec,
+        st_ctime_nsec: nsec,
+        __unused4: 0,
+        __unused5: 0,
+    };
+    UserPtr::new(stat_ptr)
+        .write(root_pa, stat)
+        .ok_or(Errno::Fault)?;
+    Ok(0)
 }
 
 fn load_iovec(root_pa: usize, iov_ptr: usize, index: usize) -> Result<Iovec, Errno> {
