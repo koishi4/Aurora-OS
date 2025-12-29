@@ -83,6 +83,8 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_DUP3 => sys_dup3(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_SET_ROBUST_LIST => sys_set_robust_list(ctx.args[0], ctx.args[1]),
         SYS_GET_ROBUST_LIST => sys_get_robust_list(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_RT_SIGACTION => sys_rt_sigaction(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_RT_SIGPROCMASK => sys_rt_sigprocmask(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         _ => Err(Errno::NoSys),
     }
 }
@@ -104,6 +106,8 @@ const SYS_DUP: usize = 23;
 const SYS_DUP3: usize = 24;
 const SYS_SET_ROBUST_LIST: usize = 99;
 const SYS_GET_ROBUST_LIST: usize = 100;
+const SYS_RT_SIGACTION: usize = 134;
+const SYS_RT_SIGPROCMASK: usize = 135;
 
 const TIOCGWINSZ: usize = 0x5413;
 const SYS_CLOCK_GETTIME: usize = 113;
@@ -127,6 +131,9 @@ const CLOCK_MONOTONIC: usize = 1;
 const IOV_MAX: usize = 1024;
 const S_IFCHR: u32 = 0o020000;
 const O_CLOEXEC: usize = 0x80000;
+const SIG_BLOCK: usize = 0;
+const SIG_UNBLOCK: usize = 1;
+const SIG_SETMASK: usize = 2;
 
 static RNG_STATE: AtomicU64 = AtomicU64::new(0);
 
@@ -218,6 +225,15 @@ struct Stat {
     st_ctime_nsec: usize,
     __unused4: u32,
     __unused5: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct SigAction {
+    sa_handler: usize,
+    sa_flags: usize,
+    sa_restorer: usize,
+    sa_mask: usize,
 }
 
 #[repr(C)]
@@ -725,6 +741,59 @@ fn sys_get_robust_list(_pid: usize, head_ptr: usize, len_ptr: usize) -> Result<u
     }
     if len_ptr != 0 {
         UserPtr::<usize>::new(len_ptr)
+            .write(root_pa, 0)
+            .ok_or(Errno::Fault)?;
+    }
+    Ok(0)
+}
+
+fn sys_rt_sigaction(_sig: usize, act: usize, oldact: usize, sigsetsize: usize) -> Result<usize, Errno> {
+    if sigsetsize != size_of::<usize>() {
+        return Err(Errno::Inval);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    if act != 0 {
+        let size = size_of::<SigAction>();
+        if mm::translate_user_ptr(root_pa, act, size, UserAccess::Read).is_none() {
+            return Err(Errno::Fault);
+        }
+    }
+    if oldact != 0 {
+        let zero = SigAction {
+            sa_handler: 0,
+            sa_flags: 0,
+            sa_restorer: 0,
+            sa_mask: 0,
+        };
+        UserPtr::new(oldact)
+            .write(root_pa, zero)
+            .ok_or(Errno::Fault)?;
+    }
+    Ok(0)
+}
+
+fn sys_rt_sigprocmask(how: usize, set: usize, oldset: usize, sigsetsize: usize) -> Result<usize, Errno> {
+    if sigsetsize != size_of::<usize>() {
+        return Err(Errno::Inval);
+    }
+    if how != SIG_BLOCK && how != SIG_UNBLOCK && how != SIG_SETMASK {
+        return Err(Errno::Inval);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    if set != 0 {
+        let size = size_of::<usize>();
+        if mm::translate_user_ptr(root_pa, set, size, UserAccess::Read).is_none() {
+            return Err(Errno::Fault);
+        }
+    }
+    if oldset != 0 {
+        UserPtr::<usize>::new(oldset)
             .write(root_pa, 0)
             .ok_or(Errno::Fault)?;
     }
