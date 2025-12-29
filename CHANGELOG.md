@@ -47,3 +47,4 @@
 - Add readv/writev helpers and route the user smoke through writev.
 - Add uname syscall stub with minimal utsname fields.
 - Add minimal getppid/getuid/geteuid/getgid/getegid stubs.
+- Add gettid and sched_yield stubs.

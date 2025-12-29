@@ -61,6 +61,8 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_GETEUID => sys_geteuid(),
         SYS_GETGID => sys_getgid(),
         SYS_GETEGID => sys_getegid(),
+        SYS_GETTID => sys_gettid(),
+        SYS_SCHED_YIELD => sys_sched_yield(),
         SYS_UNAME => sys_uname(ctx.args[0]),
         _ => Err(Errno::NoSys),
     }
@@ -79,6 +81,8 @@ const SYS_GETUID: usize = 174;
 const SYS_GETEUID: usize = 175;
 const SYS_GETGID: usize = 176;
 const SYS_GETEGID: usize = 177;
+const SYS_GETTID: usize = 178;
+const SYS_SCHED_YIELD: usize = 124;
 const SYS_UNAME: usize = 160;
 
 const CLOCK_REALTIME: usize = 0;
@@ -301,6 +305,15 @@ fn sys_getgid() -> Result<usize, Errno> {
 }
 
 fn sys_getegid() -> Result<usize, Errno> {
+    Ok(0)
+}
+
+fn sys_gettid() -> Result<usize, Errno> {
+    Ok(1)
+}
+
+fn sys_sched_yield() -> Result<usize, Errno> {
+    crate::runtime::yield_now();
     Ok(0)
 }
 
