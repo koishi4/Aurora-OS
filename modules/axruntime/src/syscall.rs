@@ -527,6 +527,17 @@ fn sys_openat(_dirfd: usize, pathname: usize, _flags: usize, _mode: usize) -> Re
 }
 
 fn sys_getdents64(fd: usize, _buf: usize, _len: usize) -> Result<usize, Errno> {
+    if _len == 0 {
+        return Ok(0);
+    }
+    if _buf == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    validate_user_write(root_pa, _buf, _len)?;
     if fd <= 2 || fd == DEV_NULL_FD {
         return Err(Errno::NotDir);
     }
@@ -1412,6 +1423,13 @@ fn read_user_byte(root_pa: usize, addr: usize) -> Result<u8, Errno> {
 fn validate_user_read(root_pa: usize, addr: usize, len: usize) -> Result<(), Errno> {
     UserSlice::new(addr, len)
         .for_each_chunk(root_pa, UserAccess::Read, |_, _| Some(()))
+        .ok_or(Errno::Fault)?;
+    Ok(())
+}
+
+fn validate_user_write(root_pa: usize, addr: usize, len: usize) -> Result<(), Errno> {
+    UserSlice::new(addr, len)
+        .for_each_chunk(root_pa, UserAccess::Write, |_, _| Some(()))
         .ok_or(Errno::Fault)?;
     Ok(())
 }
