@@ -271,11 +271,7 @@ const FD_TABLE_BASE: usize = 3;
 const FD_TABLE_SLOTS: usize = 16;
 const PIPE_SLOTS: usize = 8;
 const PIPE_BUFFER_SIZE: usize = 512;
-const DEV_NULL_PATH: &[u8] = b"/dev/null";
-const DEV_ZERO_PATH: &[u8] = b"/dev/zero";
-const DEV_PATH: &[u8] = b"/dev";
 const ROOT_PATH: &[u8] = b"/";
-const INIT_PATH: &[u8] = b"/init";
 const MAX_PATH_LEN: usize = 128;
 const SIG_BLOCK: usize = 0;
 const SIG_UNBLOCK: usize = 1;
@@ -469,15 +465,6 @@ struct FdEntry {
     flags: usize,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum KnownPath {
-    Root,
-    DevDir,
-    DevNull,
-    DevZero,
-    Init,
-}
-
 #[derive(Clone, Copy)]
 struct Pipe {
     used: bool,
@@ -617,9 +604,11 @@ fn sys_execve(tf: &mut TrapFrame, pathname: usize, argv: usize, envp: usize) -> 
 }
 
 fn execve_memfile_image(root_pa: usize, pathname: usize) -> Result<&'static [u8], Errno> {
-    match classify_path(root_pa, pathname)? {
-        Some(KnownPath::Init) => Ok(init_memfile_image()),
-        _ => Err(Errno::NoEnt),
+    let inode = memfs_lookup_inode(root_pa, pathname)?;
+    if inode == memfs::INIT_ID {
+        Ok(init_memfile_image())
+    } else {
+        Err(Errno::NoEnt)
     }
 }
 
@@ -873,9 +862,9 @@ fn sys_mknodat(dirfd: usize, pathname: usize, _mode: usize, _dev: usize) -> Resu
     }
     validate_at_dirfd(dirfd)?;
     validate_user_path(root_pa, pathname)?;
-    match classify_path(root_pa, pathname)? {
-        Some(_) => Err(Errno::Exist),
-        None => Err(Errno::NoEnt),
+    match memfs_lookup_inode(root_pa, pathname) {
+        Ok(_) => Err(Errno::Exist),
+        Err(err) => Err(err),
     }
 }
 
@@ -887,10 +876,10 @@ fn sys_mkdirat(_dirfd: usize, pathname: usize, _mode: usize) -> Result<usize, Er
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    if classify_path(root_pa, pathname)?.is_some() {
-        return Err(Errno::Exist);
+    match memfs_lookup_inode(root_pa, pathname) {
+        Ok(_) => Err(Errno::Exist),
+        Err(err) => Err(err),
     }
-    Err(Errno::NoEnt)
 }
 
 fn sys_unlinkat(_dirfd: usize, pathname: usize, _flags: usize) -> Result<usize, Errno> {
@@ -901,10 +890,10 @@ fn sys_unlinkat(_dirfd: usize, pathname: usize, _flags: usize) -> Result<usize, 
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    if classify_path(root_pa, pathname)?.is_some() {
-        return Err(Errno::Inval);
+    match memfs_lookup_inode(root_pa, pathname) {
+        Ok(_) => Err(Errno::Inval),
+        Err(err) => Err(err),
     }
-    Err(Errno::NoEnt)
 }
 
 fn sys_symlinkat(oldpath: usize, newdirfd: usize, newpath: usize) -> Result<usize, Errno> {
@@ -916,9 +905,9 @@ fn sys_symlinkat(oldpath: usize, newdirfd: usize, newpath: usize) -> Result<usiz
     validate_at_dirfd(newdirfd)?;
     validate_user_path(root_pa, oldpath)?;
     validate_user_path(root_pa, newpath)?;
-    match classify_path(root_pa, newpath)? {
-        Some(_) => Err(Errno::Exist),
-        None => Err(Errno::NoEnt),
+    match memfs_lookup_inode(root_pa, newpath) {
+        Ok(_) => Err(Errno::Exist),
+        Err(err) => Err(err),
     }
 }
 
@@ -941,10 +930,10 @@ fn sys_linkat(
     validate_at_dirfd(newdirfd)?;
     validate_user_path(root_pa, oldpath)?;
     validate_user_path(root_pa, newpath)?;
-    if classify_path(root_pa, oldpath)?.is_none() {
-        return Err(Errno::NoEnt);
+    if let Err(err) = memfs_lookup_inode(root_pa, oldpath) {
+        return Err(err);
     }
-    if classify_path(root_pa, newpath)?.is_some() {
+    if memfs_lookup_inode(root_pa, newpath).is_ok() {
         return Err(Errno::Exist);
     }
     Err(Errno::NoEnt)
@@ -973,13 +962,19 @@ fn sys_renameat2(
     validate_at_dirfd(newdirfd)?;
     validate_user_path(root_pa, oldpath)?;
     validate_user_path(root_pa, newpath)?;
-    let old_kind = classify_path(root_pa, oldpath)?;
-    let new_kind = classify_path(root_pa, newpath)?;
-    match (old_kind, new_kind) {
-        (Some(old), Some(new)) if old == new => Ok(0),
-        (Some(_), Some(_)) => Err(Errno::Exist),
-        (Some(_), None) => Err(Errno::NoEnt),
-        (None, _) => Err(Errno::NoEnt),
+    let old_inode = match memfs_lookup_inode(root_pa, oldpath) {
+        Ok(inode) => inode,
+        Err(err) => return Err(err),
+    };
+    match memfs_lookup_inode(root_pa, newpath) {
+        Ok(new_inode) => {
+            if new_inode == old_inode {
+                Ok(0)
+            } else {
+                Err(Errno::Exist)
+            }
+        }
+        Err(err) => Err(err),
     }
 }
 
@@ -1184,10 +1179,8 @@ fn sys_fchmodat(dirfd: usize, pathname: usize, _mode: usize, flags: usize) -> Re
     }
     validate_at_dirfd(dirfd)?;
     validate_user_path(root_pa, pathname)?;
-    match classify_path(root_pa, pathname)? {
-        Some(_) => Ok(0),
-        None => Err(Errno::NoEnt),
-    }
+    let _ = memfs_lookup_inode(root_pa, pathname)?;
+    Ok(0)
 }
 
 fn sys_fchownat(
@@ -1207,10 +1200,8 @@ fn sys_fchownat(
     }
     validate_at_dirfd(dirfd)?;
     validate_user_path(root_pa, pathname)?;
-    match classify_path(root_pa, pathname)? {
-        Some(_) => Ok(0),
-        None => Err(Errno::NoEnt),
-    }
+    let _ = memfs_lookup_inode(root_pa, pathname)?;
+    Ok(0)
 }
 
 fn sys_utimensat(dirfd: usize, pathname: usize, times: usize, flags: usize) -> Result<usize, Errno> {
@@ -1228,10 +1219,8 @@ fn sys_utimensat(dirfd: usize, pathname: usize, times: usize, flags: usize) -> R
         let size = size_of::<Timespec>() * 2;
         validate_user_read(root_pa, times, size)?;
     }
-    match classify_path(root_pa, pathname)? {
-        Some(_) => Ok(0),
-        None => Err(Errno::NoEnt),
-    }
+    let _ = memfs_lookup_inode(root_pa, pathname)?;
+    Ok(0)
 }
 
 fn sys_poll(fds: usize, nfds: usize, timeout: usize) -> Result<usize, Errno> {
@@ -2259,7 +2248,7 @@ fn map_memfs_err(err: memfs::ResolveError) -> Errno {
     match err {
         memfs::ResolveError::NotFound => Errno::NoEnt,
         memfs::ResolveError::NotDir => Errno::NotDir,
-        memfs::ResolveError::Invalid => Errno::Inval,
+        memfs::ResolveError::Invalid => Errno::NoEnt,
     }
 }
 
@@ -2282,26 +2271,6 @@ fn map_futex_err(err: futex::FutexError) -> Errno {
         futex::FutexError::NoMem => Errno::NoMem,
         futex::FutexError::TimedOut => Errno::TimedOut,
     }
-}
-
-fn classify_path(root_pa: usize, path: usize) -> Result<Option<KnownPath>, Errno> {
-    // 仅识别根目录与 /dev 伪节点，避免误判。
-    if user_path_eq(root_pa, path, ROOT_PATH)? {
-        return Ok(Some(KnownPath::Root));
-    }
-    if user_path_eq(root_pa, path, DEV_PATH)? {
-        return Ok(Some(KnownPath::DevDir));
-    }
-    if user_path_eq(root_pa, path, DEV_NULL_PATH)? {
-        return Ok(Some(KnownPath::DevNull));
-    }
-    if user_path_eq(root_pa, path, DEV_ZERO_PATH)? {
-        return Ok(Some(KnownPath::DevZero));
-    }
-    if user_path_eq(root_pa, path, INIT_PATH)? {
-        return Ok(Some(KnownPath::Init));
-    }
-    Ok(None)
 }
 
 pub fn can_block_current() -> bool {

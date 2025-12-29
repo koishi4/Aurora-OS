@@ -11,6 +11,7 @@
 - 增加 memfs 的基础解析/元数据单元测试，验证 `/dev/null` 等路径解析。
 - faccessat/statx/readlinkat 改用 memfs 路径解析，统一早期路径行为。
 - statfs 路径解析改用 memfs，避免硬编码路径判断。
+- mknodat/mkdirat/unlinkat/linkat/renameat* 以及 fchmodat/fchownat/utimensat 改用 memfs 路径解析。
 
 ## 问题与定位
 - 尚未进入实现阶段，暂无问题记录。
