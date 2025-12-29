@@ -55,6 +55,12 @@ impl TaskWaitQueue {
         }
         None
     }
+
+    pub fn is_empty(&self) -> bool {
+        // Safety: single-hart early use; no concurrent access yet.
+        let slots = unsafe { &*self.slots.get() };
+        slots.iter().all(|slot| slot.is_none())
+    }
 }
 
 unsafe impl Sync for TaskWaitQueue {}

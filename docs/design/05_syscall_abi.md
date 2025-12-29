@@ -37,6 +37,7 @@
 - 早期实现 `getcwd`，占位返回根路径。
 - 早期实现 `set_tid_address`，校验指针可写并记录 clear_tid，返回 TaskId+1。
 - 早期实现 `futex`：仅支持 FUTEX_WAIT/FUTEX_WAKE，timeout 返回 ETIMEDOUT，value 不匹配返回 EAGAIN，用于 cleartid 唤醒路径。
+- futex 等待队列使用固定槽位表，等待队列清空后释放地址占用，允许后续地址重用。
 - 早期实现 `chdir/fchdir`，仅允许切换到根目录占位。
 - 早期实现 `close`，允许关闭标准输入输出。
 - 早期实现 `getrlimit/prlimit64`，返回默认无限资源限制占位。

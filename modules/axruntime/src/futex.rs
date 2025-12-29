@@ -68,6 +68,16 @@ fn slot_for_wake(uaddr: usize) -> Option<usize> {
     None
 }
 
+fn clear_slot_if_empty(slot: usize) {
+    if !FUTEX_WAITERS[slot].is_empty() {
+        return;
+    }
+    // SAFETY: single-hart early use; futex table writes are serialized.
+    unsafe {
+        FUTEX_ADDRS[slot] = 0;
+    }
+}
+
 pub fn wait(
     root_pa: usize,
     uaddr: usize,
@@ -88,11 +98,18 @@ pub fn wait(
     match timeout_ms {
         Some(0) => Err(FutexError::TimedOut),
         Some(ms) => match runtime::wait_timeout_ms(&FUTEX_WAITERS[slot], ms) {
-            crate::wait::WaitResult::Notified => Ok(()),
-            crate::wait::WaitResult::Timeout => Err(FutexError::TimedOut),
+            crate::wait::WaitResult::Notified => {
+                clear_slot_if_empty(slot);
+                Ok(())
+            }
+            crate::wait::WaitResult::Timeout => {
+                clear_slot_if_empty(slot);
+                Err(FutexError::TimedOut)
+            }
         },
         None => {
             runtime::block_current(&FUTEX_WAITERS[slot]);
+            clear_slot_if_empty(slot);
             Ok(())
         }
     }
@@ -114,5 +131,6 @@ pub fn wake(uaddr: usize, count: usize) -> Result<usize, FutexError> {
             break;
         }
     }
+    clear_slot_if_empty(slot);
     Ok(woke)
 }
