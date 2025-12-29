@@ -51,6 +51,7 @@
 - Add statfs/fstatfs stubs returning placeholder filesystem stats.
 - Add fchmodat/fchownat/utimensat stubs for root and /dev pseudo paths.
 - Add ppoll stub that reports pipe readiness and can block for a single pipe fd.
+- Track O_NONBLOCK via fcntl and honor it for pipe reads/writes.
 - Add uname syscall stub with minimal utsname fields.
 - Add minimal getppid/getuid/geteuid/getgid/getegid/getresuid/getresgid stubs.
 - Add gettid and sched_yield stubs (TaskId+1 when available).

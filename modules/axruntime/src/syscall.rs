@@ -436,6 +436,12 @@ enum FdKind {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+struct FdEntry {
+    kind: FdKind,
+    flags: usize,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum KnownPath {
     Root,
     DevNull,
@@ -463,10 +469,17 @@ const EMPTY_PIPE: Pipe = Pipe {
     buf: [0; PIPE_BUFFER_SIZE],
 };
 
+const EMPTY_FD_ENTRY: FdEntry = FdEntry {
+    kind: FdKind::Empty,
+    flags: 0,
+};
+
 // SAFETY: 单核早期阶段，fd 表由 syscall 串行访问。
-static mut FD_TABLE: [FdKind; FD_TABLE_SLOTS] = [FdKind::Empty; FD_TABLE_SLOTS];
+static mut FD_TABLE: [FdEntry; FD_TABLE_SLOTS] = [EMPTY_FD_ENTRY; FD_TABLE_SLOTS];
 // SAFETY: 仅用于重定向标准 fd，单核顺序访问。
-static mut STDIO_REDIRECT: [Option<FdKind>; 3] = [None, None, None];
+static mut STDIO_REDIRECT: [Option<FdEntry>; 3] = [None, None, None];
+// SAFETY: 标准 fd 的状态标志在单核阶段顺序访问。
+static mut STDIO_FLAGS: [usize; 3] = [0; 3];
 // SAFETY: pipe 表在早期阶段串行访问。
 static mut PIPES: [Pipe; PIPE_SLOTS] = [EMPTY_PIPE; PIPE_SLOTS];
 // SAFETY: pipe 等待队列只在单核早期阶段访问。
@@ -537,8 +550,8 @@ fn sys_read(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    let kind = resolve_fd(fd).ok_or(Errno::Badf)?;
-    read_from_kind(kind, root_pa, buf, len)
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    read_from_entry(entry, root_pa, buf, len)
 }
 
 fn sys_write(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
@@ -549,8 +562,8 @@ fn sys_write(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    let kind = resolve_fd(fd).ok_or(Errno::Badf)?;
-    write_to_kind(kind, root_pa, buf, len)
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    write_to_entry(entry, root_pa, buf, len)
 }
 
 fn sys_readv(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
@@ -567,7 +580,7 @@ fn sys_readv(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    let kind = resolve_fd(fd).ok_or(Errno::Badf)?;
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
 
     let mut total = 0usize;
     for index in 0..iovcnt {
@@ -575,7 +588,7 @@ fn sys_readv(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
         if iov.iov_len == 0 {
             continue;
         }
-        match read_from_kind(kind, root_pa, iov.iov_base, iov.iov_len) {
+        match read_from_entry(entry, root_pa, iov.iov_base, iov.iov_len) {
             Ok(0) => return Ok(total),
             Ok(read) => {
                 total += read;
@@ -608,7 +621,7 @@ fn sys_writev(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> 
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    let kind = resolve_fd(fd).ok_or(Errno::Badf)?;
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
 
     let mut total = 0usize;
     for index in 0..iovcnt {
@@ -616,7 +629,7 @@ fn sys_writev(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> 
         if iov.iov_len == 0 {
             continue;
         }
-        match write_to_kind(kind, root_pa, iov.iov_base, iov.iov_len) {
+        match write_to_entry(entry, root_pa, iov.iov_base, iov.iov_len) {
             Ok(written) => {
                 total += written;
                 if written < iov.iov_len {
@@ -651,14 +664,15 @@ fn sys_pipe2(pipefd: usize, flags: usize) -> Result<usize, Errno> {
     }
     // 占位 pipe：固定缓冲区，空/满时阻塞或返回 EAGAIN。
     let pipe_id = alloc_pipe().ok_or(Errno::MFile)?;
-    let read_fd = match alloc_fd(FdKind::PipeRead(pipe_id)) {
+    let status_flags = if (flags & O_NONBLOCK) != 0 { O_NONBLOCK } else { 0 };
+    let read_fd = match alloc_fd(FdEntry { kind: FdKind::PipeRead(pipe_id), flags: status_flags }) {
         Some(fd) => fd,
         None => {
             free_pipe(pipe_id);
             return Err(Errno::MFile);
         }
     };
-    let write_fd = match alloc_fd(FdKind::PipeWrite(pipe_id)) {
+    let write_fd = match alloc_fd(FdEntry { kind: FdKind::PipeWrite(pipe_id), flags: status_flags }) {
         Some(fd) => fd,
         None => {
             let _ = close_fd(read_fd);
@@ -674,7 +688,7 @@ fn sys_pipe2(pipefd: usize, flags: usize) -> Result<usize, Errno> {
     Ok(0)
 }
 
-fn sys_openat(_dirfd: usize, pathname: usize, _flags: usize, _mode: usize) -> Result<usize, Errno> {
+fn sys_openat(_dirfd: usize, pathname: usize, flags: usize, _mode: usize) -> Result<usize, Errno> {
     if pathname == 0 {
         return Err(Errno::Fault);
     }
@@ -682,11 +696,14 @@ fn sys_openat(_dirfd: usize, pathname: usize, _flags: usize, _mode: usize) -> Re
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
+    let status_flags = if (flags & O_NONBLOCK) != 0 { O_NONBLOCK } else { 0 };
     if user_path_eq(root_pa, pathname, DEV_NULL_PATH)? {
-        return alloc_fd(FdKind::DevNull).ok_or(Errno::MFile);
+        return alloc_fd(FdEntry { kind: FdKind::DevNull, flags: status_flags })
+            .ok_or(Errno::MFile);
     }
     if user_path_eq(root_pa, pathname, DEV_ZERO_PATH)? {
-        return alloc_fd(FdKind::DevZero).ok_or(Errno::MFile);
+        return alloc_fd(FdEntry { kind: FdKind::DevZero, flags: status_flags })
+            .ok_or(Errno::MFile);
     }
     Err(Errno::NoEnt)
 }
@@ -1378,8 +1395,8 @@ fn sys_prlimit64(_pid: usize, _resource: usize, new_rlim: usize, old_rlim: usize
 }
 
 fn sys_ioctl(fd: usize, cmd: usize, arg: usize) -> Result<usize, Errno> {
-    let kind = resolve_fd(fd).ok_or(Errno::Badf)?;
-    if matches!(kind, FdKind::PipeRead(_) | FdKind::PipeWrite(_)) {
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    if matches!(entry.kind, FdKind::PipeRead(_) | FdKind::PipeWrite(_)) {
         return Err(Errno::Inval);
     }
     match cmd {
@@ -1554,7 +1571,7 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
     if stat_ptr == 0 {
         return Err(Errno::Fault);
     }
-    let kind = resolve_fd(fd).ok_or(Errno::Badf)?;
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
     let root_pa = mm::current_root_pa();
     if root_pa == 0 {
         return Err(Errno::Fault);
@@ -1562,7 +1579,7 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
     let now_ns = time::monotonic_ns();
     let sec = (now_ns / 1_000_000_000) as isize;
     let nsec = (now_ns % 1_000_000_000) as usize;
-    let mode = match kind {
+    let mode = match entry.kind {
         FdKind::PipeRead(_) | FdKind::PipeWrite(_) => S_IFIFO | 0o600,
         _ => S_IFCHR | 0o666,
     };
@@ -1595,19 +1612,19 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
 }
 
 fn sys_dup(oldfd: usize) -> Result<usize, Errno> {
-    let kind = resolve_fd(oldfd).ok_or(Errno::Badf)?;
-    alloc_fd(kind).ok_or(Errno::MFile)
+    let entry = resolve_fd(oldfd).ok_or(Errno::Badf)?;
+    alloc_fd(entry).ok_or(Errno::MFile)
 }
 
 fn sys_dup3(oldfd: usize, newfd: usize, flags: usize) -> Result<usize, Errno> {
-    let kind = resolve_fd(oldfd).ok_or(Errno::Badf)?;
+    let entry = resolve_fd(oldfd).ok_or(Errno::Badf)?;
     if flags != 0 && flags != O_CLOEXEC {
         return Err(Errno::Inval);
     }
     if oldfd == newfd {
         return if flags == 0 { Ok(newfd) } else { Err(Errno::Inval) };
     }
-    dup_to_fd(newfd, kind)
+    dup_to_fd(newfd, entry)
 }
 
 fn sys_lseek(fd: usize, _offset: usize, _whence: usize) -> Result<usize, Errno> {
@@ -1692,20 +1709,23 @@ fn sys_rt_sigprocmask(how: usize, set: usize, oldset: usize, sigsetsize: usize) 
     Ok(0)
 }
 
-fn sys_fcntl(fd: usize, cmd: usize, _arg: usize) -> Result<usize, Errno> {
-    let kind = resolve_fd(fd).ok_or(Errno::Badf)?;
+fn sys_fcntl(fd: usize, cmd: usize, arg: usize) -> Result<usize, Errno> {
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
     match cmd {
         F_GETFD => Ok(0),
         F_SETFD => Ok(0),
         F_GETFL => {
-            let mode = match kind {
+            let mode = match entry.kind {
                 FdKind::Stdin | FdKind::PipeRead(_) => O_RDONLY,
                 FdKind::Stdout | FdKind::Stderr | FdKind::PipeWrite(_) => O_WRONLY,
                 _ => O_RDWR,
             };
-            Ok(mode)
+            Ok(mode | entry.flags)
         }
-        F_SETFL => Ok(0),
+        F_SETFL => {
+            set_fd_flags(fd, arg)?;
+            Ok(0)
+        }
         _ => Err(Errno::Inval),
     }
 }
@@ -2009,11 +2029,24 @@ fn stdio_kind(fd: usize) -> Option<FdKind> {
     }
 }
 
-fn resolve_fd(fd: usize) -> Option<FdKind> {
-    if let Some(kind) = stdio_kind(fd) {
-        // SAFETY: 单核早期阶段访问重定向表。
-        let redirect = unsafe { STDIO_REDIRECT[fd] };
-        return Some(redirect.unwrap_or(kind));
+fn stdio_entry(fd: usize) -> Option<FdEntry> {
+    let kind = stdio_kind(fd)?;
+    // SAFETY: 单核早期阶段访问重定向表/标志。
+    unsafe {
+        if let Some(entry) = STDIO_REDIRECT[fd] {
+            Some(entry)
+        } else {
+            Some(FdEntry {
+                kind,
+                flags: STDIO_FLAGS[fd],
+            })
+        }
+    }
+}
+
+fn resolve_fd(fd: usize) -> Option<FdEntry> {
+    if let Some(entry) = stdio_entry(fd) {
+        return Some(entry);
     }
     if fd < FD_TABLE_BASE {
         return None;
@@ -2023,24 +2056,24 @@ fn resolve_fd(fd: usize) -> Option<FdKind> {
         return None;
     }
     // SAFETY: 单核早期阶段，fd 表无并发访问。
-    let kind = unsafe { FD_TABLE[idx] };
-    if kind == FdKind::Empty {
+    let entry = unsafe { FD_TABLE[idx] };
+    if entry.kind == FdKind::Empty {
         None
     } else {
-        Some(kind)
+        Some(entry)
     }
 }
 
-fn alloc_fd(kind: FdKind) -> Option<usize> {
-    if kind == FdKind::Empty {
+fn alloc_fd(entry: FdEntry) -> Option<usize> {
+    if entry.kind == FdKind::Empty {
         return None;
     }
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
         for (idx, slot) in FD_TABLE.iter_mut().enumerate() {
-            if *slot == FdKind::Empty {
-                *slot = kind;
-                pipe_acquire(kind);
+            if slot.kind == FdKind::Empty {
+                *slot = entry;
+                pipe_acquire(entry.kind);
                 return Some(FD_TABLE_BASE + idx);
             }
         }
@@ -2048,9 +2081,9 @@ fn alloc_fd(kind: FdKind) -> Option<usize> {
     None
 }
 
-fn dup_to_fd(newfd: usize, kind: FdKind) -> Result<usize, Errno> {
+fn dup_to_fd(newfd: usize, entry: FdEntry) -> Result<usize, Errno> {
     if stdio_kind(newfd).is_some() {
-        return set_stdio_redirect(newfd, kind);
+        return set_stdio_redirect(newfd, entry);
     }
     if newfd < FD_TABLE_BASE {
         return Err(Errno::Badf);
@@ -2062,12 +2095,12 @@ fn dup_to_fd(newfd: usize, kind: FdKind) -> Result<usize, Errno> {
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
         let old = FD_TABLE[idx];
-        if old != FdKind::Empty {
-            pipe_release(old);
+        if old.kind != FdKind::Empty {
+            pipe_release(old.kind);
         }
-        FD_TABLE[idx] = kind;
+        FD_TABLE[idx] = entry;
     }
-    pipe_acquire(kind);
+    pipe_acquire(entry.kind);
     Ok(newfd)
 }
 
@@ -2076,7 +2109,7 @@ fn close_fd(fd: usize) -> Result<usize, Errno> {
         // SAFETY: 单核早期阶段访问重定向表。
         unsafe {
             if let Some(old) = STDIO_REDIRECT[fd] {
-                pipe_release(old);
+                pipe_release(old.kind);
                 STDIO_REDIRECT[fd] = None;
             }
         }
@@ -2092,28 +2125,59 @@ fn close_fd(fd: usize) -> Result<usize, Errno> {
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
         let old = FD_TABLE[idx];
-        if old == FdKind::Empty {
+        if old.kind == FdKind::Empty {
             return Err(Errno::Badf);
         }
-        FD_TABLE[idx] = FdKind::Empty;
-        pipe_release(old);
+        FD_TABLE[idx] = EMPTY_FD_ENTRY;
+        pipe_release(old.kind);
     }
     Ok(0)
 }
 
-fn set_stdio_redirect(fd: usize, kind: FdKind) -> Result<usize, Errno> {
+fn set_stdio_redirect(fd: usize, entry: FdEntry) -> Result<usize, Errno> {
     if stdio_kind(fd).is_none() {
         return Err(Errno::Badf);
     }
     // SAFETY: 单核早期阶段访问重定向表。
     unsafe {
         if let Some(old) = STDIO_REDIRECT[fd] {
-            pipe_release(old);
+            pipe_release(old.kind);
         }
-        STDIO_REDIRECT[fd] = Some(kind);
+        STDIO_REDIRECT[fd] = Some(entry);
     }
-    pipe_acquire(kind);
+    pipe_acquire(entry.kind);
     Ok(fd)
+}
+
+fn set_fd_flags(fd: usize, flags: usize) -> Result<(), Errno> {
+    let flags = flags & O_NONBLOCK;
+    if stdio_kind(fd).is_some() {
+        // SAFETY: 单核早期阶段访问重定向表/标志。
+        unsafe {
+            if let Some(mut entry) = STDIO_REDIRECT[fd] {
+                entry.flags = flags;
+                STDIO_REDIRECT[fd] = Some(entry);
+            } else {
+                STDIO_FLAGS[fd] = flags;
+            }
+        }
+        return Ok(());
+    }
+    if fd < FD_TABLE_BASE {
+        return Err(Errno::Badf);
+    }
+    let idx = fd - FD_TABLE_BASE;
+    if idx >= FD_TABLE_SLOTS {
+        return Err(Errno::Badf);
+    }
+    // SAFETY: 单核早期阶段，fd 表串行更新。
+    unsafe {
+        if FD_TABLE[idx].kind == FdKind::Empty {
+            return Err(Errno::Badf);
+        }
+        FD_TABLE[idx].flags = flags;
+    }
+    Ok(())
 }
 
 fn alloc_pipe() -> Option<usize> {
@@ -2204,7 +2268,7 @@ fn pipe_release(kind: FdKind) {
     }
 }
 
-fn pipe_read(pipe_id: usize, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
+fn pipe_read(pipe_id: usize, root_pa: usize, buf: usize, len: usize, nonblock: bool) -> Result<usize, Errno> {
     if pipe_id >= PIPE_SLOTS {
         return Err(Errno::Badf);
     }
@@ -2223,7 +2287,7 @@ fn pipe_read(pipe_id: usize, root_pa: usize, buf: usize, len: usize) -> Result<u
             if writers == 0 {
                 return Ok(0);
             }
-            if !can_block_current() {
+            if nonblock || !can_block_current() {
                 return Err(Errno::Again);
             }
             crate::runtime::block_current(pipe_read_queue(pipe_id));
@@ -2252,7 +2316,7 @@ fn pipe_read(pipe_id: usize, root_pa: usize, buf: usize, len: usize) -> Result<u
     Ok(to_read)
 }
 
-fn pipe_write(pipe_id: usize, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
+fn pipe_write(pipe_id: usize, root_pa: usize, buf: usize, len: usize, nonblock: bool) -> Result<usize, Errno> {
     if pipe_id >= PIPE_SLOTS {
         return Err(Errno::Badf);
     }
@@ -2272,7 +2336,7 @@ fn pipe_write(pipe_id: usize, root_pa: usize, buf: usize, len: usize) -> Result<
         }
         let avail = PIPE_BUFFER_SIZE.saturating_sub(used_len);
         if avail == 0 {
-            if !can_block_current() {
+            if nonblock || !can_block_current() {
                 return Err(Errno::Again);
             }
             crate::runtime::block_current(pipe_write_queue(pipe_id));
@@ -2319,11 +2383,11 @@ fn poll_revents_for_fd(fd: i32, events: u16) -> u16 {
         return POLLNVAL;
     }
     let fd = fd as usize;
-    let kind = match resolve_fd(fd) {
-        Some(kind) => kind,
+    let entry = match resolve_fd(fd) {
+        Some(entry) => entry,
         None => return POLLNVAL,
     };
-    match kind {
+    match entry.kind {
         FdKind::PipeRead(pipe_id) => {
             let (len, _readers, writers) = match pipe_snapshot(pipe_id) {
                 Some(state) => state,
@@ -2399,36 +2463,42 @@ fn ppoll_single_waiter_queue(fd: i32, events: u16) -> Option<&'static crate::tas
     if fd < 0 {
         return None;
     }
-    let kind = resolve_fd(fd as usize)?;
-    match kind {
+    let entry = resolve_fd(fd as usize)?;
+    match entry.kind {
         FdKind::PipeRead(pipe_id) if (events & POLLIN) != 0 => Some(pipe_read_queue(pipe_id)),
         FdKind::PipeWrite(pipe_id) if (events & POLLOUT) != 0 => Some(pipe_write_queue(pipe_id)),
         _ => None,
     }
 }
 
-fn read_from_kind(kind: FdKind, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
-    match kind {
+fn read_from_entry(entry: FdEntry, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
+    match entry.kind {
         FdKind::Stdin => read_console_into(root_pa, buf, len),
         FdKind::DevNull => Ok(0),
         FdKind::DevZero => {
             zero_user_write(root_pa, buf, len)?;
             Ok(len)
         }
-        FdKind::PipeRead(pipe_id) => pipe_read(pipe_id, root_pa, buf, len),
+        FdKind::PipeRead(pipe_id) => {
+            let nonblock = (entry.flags & O_NONBLOCK) != 0;
+            pipe_read(pipe_id, root_pa, buf, len, nonblock)
+        }
         FdKind::Stdout | FdKind::Stderr | FdKind::PipeWrite(_) => Err(Errno::Badf),
         FdKind::Empty => Err(Errno::Badf),
     }
 }
 
-fn write_to_kind(kind: FdKind, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
-    match kind {
+fn write_to_entry(entry: FdEntry, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
+    match entry.kind {
         FdKind::Stdout | FdKind::Stderr => write_console_from(root_pa, buf, len),
         FdKind::DevNull | FdKind::DevZero => {
             validate_user_read(root_pa, buf, len)?;
             Ok(len)
         }
-        FdKind::PipeWrite(pipe_id) => pipe_write(pipe_id, root_pa, buf, len),
+        FdKind::PipeWrite(pipe_id) => {
+            let nonblock = (entry.flags & O_NONBLOCK) != 0;
+            pipe_write(pipe_id, root_pa, buf, len, nonblock)
+        }
         FdKind::Stdin | FdKind::PipeRead(_) => Err(Errno::Badf),
         FdKind::Empty => Err(Errno::Badf),
     }
