@@ -1,4 +1,25 @@
-* commit 91765d545b4a28969ca35efb629508d110b4afd3 (HEAD -> bootstrap-riscv64)
+* commit 5e108534c6ab99661842bede4f3b8f3106fa8aff (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:25:50 +0800
+| 
+|     feat(syscall): store prctl name
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 27 +++++++++++++++++++--------
+|  4 files changed, 22 insertions(+), 11 deletions(-)
+| 
+* commit 12c92cced6a836e714b95e5847c405730c2a5d35
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:24:24 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 91765d545b4a28969ca35efb629508d110b4afd3
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 11:24:11 +0800
 | 
