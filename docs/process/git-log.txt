@@ -1,4 +1,26 @@
-* commit d12dea8f530cc22b0265c283f8e967637ea52e82 (HEAD -> bootstrap-riscv64)
+* commit d1fabd1b7168cd900bd5141e884175f60169192c (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:56:38 +0800
+| 
+|     feat(fs): add block device scaffold
+| 
+|  CHANGELOG.md               |  1 +
+|  docs/design/06_fs_vfs.md   |  2 +-
+|  docs/process/phase_4_fs.md |  1 +
+|  modules/axfs/src/block.rs  | 99 ++++++++++++++++++++++++++++++++++++++++++++
+|  modules/axfs/src/lib.rs    |  1 +
+|  5 files changed, 103 insertions(+), 1 deletion(-)
+| 
+* commit 59c912ac6626d92ff2310100b30b784c61d374d2
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:53:52 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 28 +++++++++++++++++++++++++++-
+|  1 file changed, 27 insertions(+), 1 deletion(-)
+| 
+* commit d12dea8f530cc22b0265c283f8e967637ea52e82
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 22:53:40 +0800
 | 
