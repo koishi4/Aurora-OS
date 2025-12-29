@@ -1096,10 +1096,8 @@ fn sys_faccessat(_dirfd: usize, pathname: usize, _mode: usize, _flags: usize) ->
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    if classify_path(root_pa, pathname)?.is_some() {
-        return Ok(0);
-    }
-    Err(Errno::NoEnt)
+    let _ = memfs_lookup_inode(root_pa, pathname)?;
+    Ok(0)
 }
 
 fn sys_statx(
@@ -1116,12 +1114,10 @@ fn sys_statx(
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    if classify_path(root_pa, pathname)?.is_some() {
-        const STATX_SIZE: usize = 256;
-        zero_user_write(root_pa, statxbuf, STATX_SIZE)?;
-        return Ok(0);
-    }
-    Err(Errno::NoEnt)
+    let _ = memfs_lookup_inode(root_pa, pathname)?;
+    const STATX_SIZE: usize = 256;
+    zero_user_write(root_pa, statxbuf, STATX_SIZE)?;
+    Ok(0)
 }
 
 fn sys_readlinkat(_dirfd: usize, pathname: usize, buf: usize, len: usize) -> Result<usize, Errno> {
@@ -1136,10 +1132,10 @@ fn sys_readlinkat(_dirfd: usize, pathname: usize, buf: usize, len: usize) -> Res
         return Ok(0);
     }
     validate_user_write(root_pa, buf, len)?;
-    if classify_path(root_pa, pathname)?.is_some() {
-        return Err(Errno::Inval);
+    match memfs_lookup_inode(root_pa, pathname) {
+        Ok(_) => Err(Errno::Inval),
+        Err(err) => Err(err),
     }
-    Err(Errno::NoEnt)
 }
 
 fn sys_statfs(pathname: usize, buf: usize) -> Result<usize, Errno> {
