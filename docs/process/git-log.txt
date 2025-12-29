@@ -1,4 +1,27 @@
-* commit 7c50ba2d24f41e59d4ab96a74aee95d835b1cecf (HEAD -> bootstrap-riscv64)
+* commit af67408c348acb16207383d0e5fccec81f45e5ce (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:44:30 +0800
+| 
+|     feat(fs): resolve openat/newfstatat via memfs
+| 
+|  CHANGELOG.md                     |  1 +
+|  docs/design/06_fs_vfs.md         |  1 +
+|  docs/process/phase_4_fs.md       |  1 +
+|  modules/axfs/src/lib.rs          |  2 +
+|  modules/axfs/src/memfs.rs        | 48 +++++++++++++++++++-
+|  modules/axruntime/src/syscall.rs | 89 +++++++++++++++++++++++++++-----------
+|  6 files changed, 114 insertions(+), 28 deletions(-)
+| 
+* commit 7fb693deb71b3019dcd5654d95c55b14380de015
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:27:39 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 29 ++++++++++++++++++++++++++++-
+|  1 file changed, 28 insertions(+), 1 deletion(-)
+| 
+* commit 7c50ba2d24f41e59d4ab96a74aee95d835b1cecf
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 21:27:27 +0800
 | 
