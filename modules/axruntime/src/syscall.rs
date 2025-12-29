@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::mm::{self, UserAccess, UserSlice};
+use crate::mm::{self, UserAccess, UserPtr, UserSlice};
 use crate::sbi;
 use crate::trap::TrapFrame;
 
@@ -47,16 +47,47 @@ pub fn handle_syscall(tf: &mut TrapFrame) {
 fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
     match ctx.nr {
         SYS_EXIT => sys_exit(ctx.args[0]),
+        SYS_READ => sys_read(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_WRITE => sys_write(ctx.args[0], ctx.args[1], ctx.args[2]),
         _ => Err(Errno::NoSys),
     }
 }
 
 const SYS_EXIT: usize = 93;
+const SYS_READ: usize = 63;
 const SYS_WRITE: usize = 64;
 
 fn sys_exit(_code: usize) -> Result<usize, Errno> {
     crate::sbi::shutdown();
+}
+
+fn sys_read(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
+    if len == 0 {
+        return Ok(0);
+    }
+    if fd != 0 {
+        return Err(Errno::Badf);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+
+    let mut read = 0usize;
+    while read < len {
+        match sbi::console_getchar() {
+            Some(ch) => {
+                let ptr = UserPtr::<u8>::new(buf.wrapping_add(read));
+                ptr.write(root_pa, ch).ok_or(Errno::Fault)?;
+                read += 1;
+            }
+            None => {
+                // 早期阶段无阻塞控制台输入；无数据则立即返回已读取字节数。
+                break;
+            }
+        }
+    }
+    Ok(read)
 }
 
 fn sys_write(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {

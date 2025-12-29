@@ -1,6 +1,7 @@
 use core::arch::asm;
 
 const SBI_CONSOLE_PUTCHAR: usize = 1;
+const SBI_CONSOLE_GETCHAR: usize = 2;
 const SBI_SHUTDOWN: usize = 8;
 
 const SBI_LEGACY_SET_TIMER: usize = 0;
@@ -46,6 +47,15 @@ fn sbi_call(eid: usize, fid: usize, arg0: usize, arg1: usize, arg2: usize) -> (u
 
 pub fn console_putchar(ch: u8) {
     let _ = sbi_call_legacy(SBI_CONSOLE_PUTCHAR, ch as usize, 0, 0);
+}
+
+pub fn console_getchar() -> Option<u8> {
+    let ret = sbi_call_legacy(SBI_CONSOLE_GETCHAR, 0, 0, 0);
+    if ret == usize::MAX {
+        // Legacy SBI returns -1 when no input is available.
+        return None;
+    }
+    Some(ret as u8)
 }
 
 pub fn set_timer(stime_value: u64) {
