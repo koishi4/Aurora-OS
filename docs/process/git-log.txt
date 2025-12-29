@@ -1,4 +1,26 @@
-* commit ce54db6d72499281928e7a620aea389351fb7439 (HEAD -> bootstrap-riscv64)
+* commit 9df1a16a73ce91930af0b77b9a2220fc2fa29229 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:04:45 +0800
+| 
+|     feat(syscall): add termios ioctl stubs
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 87 +++++++++++++++++++++++++------
+|  4 files changed, 73 insertions(+), 20 deletions(-)
+| 
+* commit ba01ba55bbc934c99fc6c031ebab01ea5c31c4e5
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:01:58 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt      | 1041 ++++++++++++++++++++++++++++++++++++++-
+|  docs/process/git-shortlog.txt |    1 -
+|  2 files changed, 1040 insertions(+), 2 deletions(-)
+| 
+* commit ce54db6d72499281928e7a620aea389351fb7439
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 11:00:29 +0800
 | 
