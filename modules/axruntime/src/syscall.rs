@@ -57,6 +57,7 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_CLOCK_GETTIME => sys_clock_gettime(ctx.args[0], ctx.args[1]),
         SYS_CLOCK_GETTIME64 => sys_clock_gettime(ctx.args[0], ctx.args[1]),
         SYS_GETTIMEOFDAY => sys_gettimeofday(ctx.args[0], ctx.args[1]),
+        SYS_NANOSLEEP => sys_nanosleep(ctx.args[0], ctx.args[1]),
         SYS_GETPID => sys_getpid(),
         SYS_GETPPID => sys_getppid(),
         SYS_GETUID => sys_getuid(),
@@ -93,6 +94,7 @@ const TIOCGWINSZ: usize = 0x5413;
 const SYS_CLOCK_GETTIME: usize = 113;
 const SYS_CLOCK_GETTIME64: usize = 403;
 const SYS_GETTIMEOFDAY: usize = 169;
+const SYS_NANOSLEEP: usize = 101;
 const SYS_GETPID: usize = 172;
 const SYS_GETPPID: usize = 173;
 const SYS_GETUID: usize = 174;
@@ -319,6 +321,35 @@ fn sys_gettimeofday(tv: usize, tz: usize) -> Result<usize, Errno> {
         UserPtr::new(tz)
             .write(root_pa, tz_val)
             .ok_or(Errno::Fault)?;
+    }
+    Ok(0)
+}
+
+fn sys_nanosleep(req: usize, rem: usize) -> Result<usize, Errno> {
+    if req == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let ts = UserPtr::<Timespec>::new(req)
+        .read(root_pa)
+        .ok_or(Errno::Fault)?;
+    if ts.tv_sec < 0 || ts.tv_nsec < 0 || ts.tv_nsec >= 1_000_000_000 {
+        return Err(Errno::Inval);
+    }
+    let total_ns = (ts.tv_sec as u64)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(ts.tv_nsec as u64);
+    let sleep_ms = total_ns.saturating_add(999_999) / 1_000_000;
+    let deadline = time::uptime_ms().saturating_add(sleep_ms);
+    while time::uptime_ms() < deadline {
+        crate::cpu::wait_for_interrupt();
+    }
+    if rem != 0 {
+        let zero = Timespec { tv_sec: 0, tv_nsec: 0 };
+        UserPtr::new(rem).write(root_pa, zero).ok_or(Errno::Fault)?;
     }
     Ok(0)
 }
