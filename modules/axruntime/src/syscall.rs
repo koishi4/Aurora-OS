@@ -195,6 +195,8 @@ const F_GETFL: usize = 3;
 const F_SETFL: usize = 4;
 const PR_SET_NAME: usize = 15;
 const PR_GET_NAME: usize = 16;
+const GRND_NONBLOCK: usize = 0x1;
+const GRND_RANDOM: usize = 0x2;
 const RUSAGE_SELF: isize = 0;
 const RUSAGE_CHILDREN: isize = -1;
 const RUSAGE_THREAD: isize = 1;
@@ -882,9 +884,12 @@ fn sys_sysinfo(info: usize) -> Result<usize, Errno> {
     Ok(0)
 }
 
-fn sys_getrandom(buf: usize, len: usize, _flags: usize) -> Result<usize, Errno> {
+fn sys_getrandom(buf: usize, len: usize, flags: usize) -> Result<usize, Errno> {
     if len == 0 {
         return Ok(0);
+    }
+    if flags & !(GRND_NONBLOCK | GRND_RANDOM) != 0 {
+        return Err(Errno::Inval);
     }
     if buf == 0 {
         return Err(Errno::Fault);

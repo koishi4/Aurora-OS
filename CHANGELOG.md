@@ -58,7 +58,7 @@
 - Add ioctl stubs for TIOCGWINSZ/TIOCSWINSZ/TIOCGPGRP/TIOCSPGRP/TIOCSCTTY/TCGETS/TCSETS.
 - Add nanosleep stub using scheduler sleep when available.
 - Add sysinfo stub for uptime and memory size.
-- Add getrandom stub with xorshift output.
+- Add getrandom stub with xorshift output and flag validation.
 - Add fstat stub for stdio character device metadata.
 - Align fstat timestamps with timebase monotonic clock.
 - Add dup/dup3 stubs for stdio redirection.
