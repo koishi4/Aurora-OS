@@ -1,4 +1,24 @@
-* commit fd71427f65cb18884249dea2a383ebb5bf3ea2b0 (HEAD -> bootstrap-riscv64)
+* commit a2722aae2c8978ddbe2ad6a0ccc2b54b2223b7bc (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:10:11 +0800
+| 
+|     fix(syscall): align fstat timestamps
+| 
+|  CHANGELOG.md                            | 1 +
+|  docs/process/phase_3_process_syscall.md | 1 +
+|  modules/axruntime/src/syscall.rs        | 6 +++---
+|  3 files changed, 5 insertions(+), 3 deletions(-)
+| 
+* commit dffb060df33c79efff8bb192c88f5ebec72eca00
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:07:05 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit fd71427f65cb18884249dea2a383ebb5bf3ea2b0
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 11:06:53 +0800
 | 
