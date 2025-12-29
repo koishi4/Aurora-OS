@@ -1,4 +1,28 @@
-* commit 3f8757bea93644bb1e254741c963d9ab498fe061 (HEAD -> bootstrap-riscv64)
+* commit 5a6d8d4b0f37ab36973399f9d84525d2a6ab6077 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:15:36 +0800
+| 
+|     feat(vfs): add axvfs trait scaffold
+| 
+|  CHANGELOG.md               |  1 +
+|  Cargo.lock                 |  4 +++
+|  Cargo.toml                 |  1 +
+|  crates/axvfs/Cargo.toml    |  6 ++++
+|  crates/axvfs/src/lib.rs    | 69 ++++++++++++++++++++++++++++++++++++++++++++
+|  docs/design/06_fs_vfs.md   |  1 +
+|  docs/process/phase_4_fs.md |  1 +
+|  7 files changed, 83 insertions(+)
+| 
+* commit 5600a5aa25e6fb56b1b7a2d4ce6a8d4d0446514f
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:08:06 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit 3f8757bea93644bb1e254741c963d9ab498fe061
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 21:07:57 +0800
 | 
