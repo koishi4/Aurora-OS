@@ -1,4 +1,17 @@
-* commit b245d7034433dd70c6f4efc49facfafb6e4af923 (HEAD -> bootstrap-riscv64)
+* commit 03db7758939f5eaf695a8af92aef10dc0cf5866f (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 13:02:12 +0800
+| 
+|     feat(syscall): add path metadata stubs
+| 
+|  CHANGELOG.md                            |   3 +
+|  docs/design/05_syscall_abi.md           |   3 +
+|  docs/process/git-log.txt                |  11 +-
+|  docs/process/phase_3_process_syscall.md |   3 +
+|  modules/axruntime/src/syscall.rs        | 294 ++++++++++++++++++++++++++++++
+|  5 files changed, 313 insertions(+), 1 deletion(-)
+| 
+* commit b245d7034433dd70c6f4efc49facfafb6e4af923
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 12:50:12 +0800
 | 
