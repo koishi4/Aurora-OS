@@ -44,7 +44,7 @@
 - 增加 statfs/fstatfs，占位填充基本文件系统信息。
 - 增加 fchmodat/fchownat/utimensat，占位支持根目录与 `/dev` 伪节点。
 - 增加 poll/ppoll，支持 pipe 可读/可写事件、单 fd 阻塞等待；多 fd 使用 sleep-retry 轮询重扫，pipe 读写/关闭唤醒等待者，同时保留 `nfds=0` 睡眠路径。
-- stdin 读取加入控制台缓存与睡眠重试，poll 增加 stdin 就绪判断；USER_TEST 覆盖 pipe poll 就绪、ppoll 多 fd sleep-retry 超时与 futex cleartid 唤醒路径。
+- stdin 读取加入控制台缓存与睡眠重试，poll 增加 stdin 就绪判断；USER_TEST 覆盖 pipe poll 就绪、ppoll 多 fd sleep-retry 超时与 futex cleartid 唤醒/timeout/EAGAIN 路径。
 - 增加 execve `/init` 内置 ELF 镜像：解析 PT_LOAD 段并映射，构建 argv/envp 栈布局后切换入口。
 - execve 失败路径补充地址空间释放，避免页表与用户页泄漏。
 - 增加最小进程表（state/ppid/exit_code），以 TaskId+1 作为早期 PID 占位。
@@ -55,7 +55,7 @@
 - 增加 clone：复制 trapframe 并创建子任务，结合 CoW 页表返回子 PID。
 - clone 支持 CLONE_PARENT_SETTID/CLONE_CHILD_SETTID/CLONE_CHILD_CLEARTID 写回/清零，其他 flags 早期返回 EINVAL。
 - set_tid_address 记录 clear_tid，进程退出时清零 child_tid 并唤醒 futex 等待者。
-- 增加 futex 最小实现：支持 FUTEX_WAIT/FUTEX_WAKE，timeout 返回 EINVAL。
+- 增加 futex 最小实现：支持 FUTEX_WAIT/FUTEX_WAKE，timeout 返回 ETIMEDOUT，value 不匹配返回 EAGAIN。
 - clone_user_root 从内核根表构建子页表，只克隆用户映射，避免共享父页表页。
 - waitpid 回收 Zombie 时释放子进程的用户页表与物理页。
 - 增加 uname，占位返回内核与平台信息。
@@ -92,7 +92,7 @@
 
 ## 解决与验证
 - 通过 `make test-qemu-smoke ARCH=riscv64 PLATFORM=qemu` 验证启动与 tick 日志。
-- 通过 `USER_TEST=1 make test-qemu-smoke ARCH=riscv64 PLATFORM=qemu` 覆盖 execve/pipe/poll/ppoll/futex/clone tid 写回/cleartid/wait4 的用户态路径。
+- 通过 `USER_TEST=1 make test-qemu-smoke ARCH=riscv64 PLATFORM=qemu` 覆盖 execve/pipe/poll/ppoll/futex 超时/cleartid/wait4 的用户态路径。
 
 ## 下一步
 - 补齐任务切换的 trapframe 保存/恢复与最小用户态切入。

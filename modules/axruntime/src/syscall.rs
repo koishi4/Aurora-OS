@@ -26,6 +26,7 @@ pub enum Errno {
     Again = 11,
     NoMem = 12,
     Child = 10,
+    TimedOut = 110,
 }
 
 impl Errno {
@@ -1385,11 +1386,31 @@ fn sys_futex(
             if root_pa == 0 {
                 return Err(Errno::Fault);
             }
-            futex::wait(root_pa, uaddr, val as u32, timeout).map(|_| 0).map_err(map_futex_err)
+            let timeout_ms = futex_timeout_ms(root_pa, timeout)?;
+            futex::wait(root_pa, uaddr, val as u32, timeout_ms)
+                .map(|_| 0)
+                .map_err(map_futex_err)
         }
         FUTEX_WAKE => futex::wake(uaddr, val).map_err(map_futex_err),
         _ => Err(Errno::Inval),
     }
+}
+
+fn futex_timeout_ms(root_pa: usize, timeout: usize) -> Result<Option<u64>, Errno> {
+    if timeout == 0 {
+        return Ok(None);
+    }
+    let ts = UserPtr::<Timespec>::new(timeout)
+        .read(root_pa)
+        .ok_or(Errno::Fault)?;
+    if ts.tv_sec < 0 || ts.tv_nsec < 0 || ts.tv_nsec >= 1_000_000_000 {
+        return Err(Errno::Inval);
+    }
+    let total_ns = (ts.tv_sec as u64)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(ts.tv_nsec as u64);
+    let timeout_ms = total_ns.saturating_add(999_999) / 1_000_000;
+    Ok(Some(timeout_ms))
 }
 
 fn sys_uname(buf: usize) -> Result<usize, Errno> {
@@ -2084,6 +2105,7 @@ fn map_futex_err(err: futex::FutexError) -> Errno {
         futex::FutexError::Again => Errno::Again,
         futex::FutexError::Inval => Errno::Inval,
         futex::FutexError::NoMem => Errno::NoMem,
+        futex::FutexError::TimedOut => Errno::TimedOut,
     }
 }
 

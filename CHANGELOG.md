@@ -63,6 +63,7 @@
 - Support CLONE_PARENT_SETTID/CLONE_CHILD_SETTID in clone and reject other flags.
 - Add CLONE_CHILD_CLEARTID handling and clear_tid tracking on exit.
 - Add minimal futex wait/wake to support cleartid wakeups.
+- Support futex timeout with ETIMEDOUT and EAGAIN semantics.
 - Extend USER_TEST to cover clone tid writeback validation.
 - Build clone_user_root from kernel mappings to avoid sharing parent page tables.
 - Add PTE_COW and page-fault handling to copy pages on first write.

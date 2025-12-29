@@ -25,6 +25,7 @@ pub enum FutexError {
     Again,
     Inval,
     NoMem,
+    TimedOut,
 }
 
 fn validate_uaddr(uaddr: usize) -> Result<(), FutexError> {
@@ -67,11 +68,13 @@ fn slot_for_wake(uaddr: usize) -> Option<usize> {
     None
 }
 
-pub fn wait(root_pa: usize, uaddr: usize, expected: u32, timeout: usize) -> Result<(), FutexError> {
+pub fn wait(
+    root_pa: usize,
+    uaddr: usize,
+    expected: u32,
+    timeout_ms: Option<u64>,
+) -> Result<(), FutexError> {
     validate_uaddr(uaddr)?;
-    if timeout != 0 {
-        return Err(FutexError::Inval);
-    }
     let pa = mm::translate_user_ptr(root_pa, uaddr, 4, UserAccess::Read).ok_or(FutexError::Fault)?;
     // SAFETY: validated user pointer, aligned 4 bytes.
     let value = unsafe { *(pa as *const u32) };
@@ -82,8 +85,17 @@ pub fn wait(root_pa: usize, uaddr: usize, expected: u32, timeout: usize) -> Resu
         return Err(FutexError::Again);
     }
     let slot = slot_for_wait(uaddr)?;
-    runtime::block_current(&FUTEX_WAITERS[slot]);
-    Ok(())
+    match timeout_ms {
+        Some(0) => Err(FutexError::TimedOut),
+        Some(ms) => match runtime::wait_timeout_ms(&FUTEX_WAITERS[slot], ms) {
+            crate::wait::WaitResult::Notified => Ok(()),
+            crate::wait::WaitResult::Timeout => Err(FutexError::TimedOut),
+        },
+        None => {
+            runtime::block_current(&FUTEX_WAITERS[slot]);
+            Ok(())
+        }
+    }
 }
 
 pub fn wake(uaddr: usize, count: usize) -> Result<usize, FutexError> {
