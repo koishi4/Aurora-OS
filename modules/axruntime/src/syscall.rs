@@ -12,6 +12,7 @@ use crate::trap::TrapFrame;
 #[derive(Debug, Clone, Copy)]
 pub enum Errno {
     NoEnt = 2,
+    MFile = 24,
     NoSys = 38,
     Fault = 14,
     Inval = 22,
@@ -198,8 +199,10 @@ const O_CLOEXEC: usize = 0x80000;
 const O_RDONLY: usize = 0;
 const O_WRONLY: usize = 1;
 const O_RDWR: usize = 2;
-const DEV_NULL_FD: usize = 3;
+const PSEUDO_FD_BASE: usize = 3;
+const PSEUDO_FD_SLOTS: usize = 4;
 const DEV_NULL_PATH: &[u8] = b"/dev/null";
+const DEV_ZERO_PATH: &[u8] = b"/dev/zero";
 const SIG_BLOCK: usize = 0;
 const SIG_UNBLOCK: usize = 1;
 const SIG_SETMASK: usize = 2;
@@ -347,6 +350,15 @@ struct Rusage {
     ru_nivcsw: isize,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PseudoFdKind {
+    Empty,
+    DevNull,
+    DevZero,
+}
+
+static mut PSEUDO_FDS: [PseudoFdKind; PSEUDO_FD_SLOTS] = [PseudoFdKind::Empty; PSEUDO_FD_SLOTS];
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct Winsize {
@@ -381,8 +393,19 @@ fn sys_read(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     if len == 0 {
         return Ok(0);
     }
-    if fd == DEV_NULL_FD {
-        return Ok(0);
+    if let Some(kind) = pseudo_fd_kind(fd) {
+        return match kind {
+            PseudoFdKind::DevNull => Ok(0),
+            PseudoFdKind::DevZero => {
+                let root_pa = mm::current_root_pa();
+                if root_pa == 0 {
+                    return Err(Errno::Fault);
+                }
+                zero_user_write(root_pa, buf, len)?;
+                Ok(len)
+            }
+            PseudoFdKind::Empty => Err(Errno::Badf),
+        };
     }
     if fd != 0 {
         return Err(Errno::Badf);
@@ -399,7 +422,7 @@ fn sys_write(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     if len == 0 {
         return Ok(0);
     }
-    if fd == DEV_NULL_FD {
+    if pseudo_fd_kind(fd).is_some() {
         let root_pa = mm::current_root_pa();
         if root_pa == 0 {
             return Err(Errno::Fault);
@@ -419,10 +442,43 @@ fn sys_write(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
 }
 
 fn sys_readv(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
-    if fd == DEV_NULL_FD {
-        return Ok(0);
-    }
     if fd != 0 {
+        if let Some(kind) = pseudo_fd_kind(fd) {
+            if iovcnt == 0 {
+                return Ok(0);
+            }
+            if iovcnt > IOV_MAX {
+                return Err(Errno::Inval);
+            }
+            if iov_ptr == 0 {
+                return Err(Errno::Fault);
+            }
+            let root_pa = mm::current_root_pa();
+            if root_pa == 0 {
+                return Err(Errno::Fault);
+            }
+            let mut total = 0usize;
+            for index in 0..iovcnt {
+                let iov = load_iovec(root_pa, iov_ptr, index)?;
+                if iov.iov_len == 0 {
+                    continue;
+                }
+                match kind {
+                    PseudoFdKind::DevNull => return Ok(0),
+                    PseudoFdKind::DevZero => match zero_user_write(root_pa, iov.iov_base, iov.iov_len) {
+                        Ok(()) => total += iov.iov_len,
+                        Err(err) => {
+                            if total > 0 {
+                                return Ok(total);
+                            }
+                            return Err(err);
+                        }
+                    },
+                    PseudoFdKind::Empty => return Err(Errno::Badf),
+                }
+            }
+            return Ok(total);
+        }
         return Err(Errno::Badf);
     }
     if iovcnt == 0 {
@@ -464,9 +520,9 @@ fn sys_readv(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
 }
 
 fn sys_writev(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
-    let null_sink = fd == DEV_NULL_FD;
+    let pseudo_kind = pseudo_fd_kind(fd);
     if fd != 1 && fd != 2 {
-        if !null_sink {
+        if pseudo_kind.is_none() {
             return Err(Errno::Badf);
         }
     }
@@ -490,7 +546,7 @@ fn sys_writev(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> 
         if iov.iov_len == 0 {
             continue;
         }
-        if null_sink {
+        if pseudo_kind.is_some() {
             validate_user_read(root_pa, iov.iov_base, iov.iov_len)?;
             total = total.saturating_add(iov.iov_len);
             continue;
@@ -521,24 +577,27 @@ fn sys_openat(_dirfd: usize, pathname: usize, _flags: usize, _mode: usize) -> Re
         return Err(Errno::Fault);
     }
     if user_path_eq(root_pa, pathname, DEV_NULL_PATH)? {
-        return Ok(DEV_NULL_FD);
+        return alloc_pseudo_fd(PseudoFdKind::DevNull).ok_or(Errno::MFile);
+    }
+    if user_path_eq(root_pa, pathname, DEV_ZERO_PATH)? {
+        return alloc_pseudo_fd(PseudoFdKind::DevZero).ok_or(Errno::MFile);
     }
     Err(Errno::NoEnt)
 }
 
-fn sys_getdents64(fd: usize, _buf: usize, _len: usize) -> Result<usize, Errno> {
-    if _len == 0 {
+fn sys_getdents64(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
+    if len == 0 {
         return Ok(0);
     }
-    if _buf == 0 {
+    if buf == 0 {
         return Err(Errno::Fault);
     }
     let root_pa = mm::current_root_pa();
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    validate_user_write(root_pa, _buf, _len)?;
-    if fd <= 2 || fd == DEV_NULL_FD {
+    validate_user_write(root_pa, buf, len)?;
+    if fd <= 2 || pseudo_fd_kind(fd).is_some() {
         return Err(Errno::NotDir);
     }
     Err(Errno::Badf)
@@ -813,7 +872,10 @@ fn sys_getcwd(buf: usize, size: usize) -> Result<usize, Errno> {
 }
 
 fn sys_close(fd: usize) -> Result<usize, Errno> {
-    if fd <= 2 || fd == DEV_NULL_FD {
+    if fd <= 2 {
+        return Ok(0);
+    }
+    if free_pseudo_fd(fd) {
         return Ok(0);
     }
     Err(Errno::Badf)
@@ -853,7 +915,7 @@ fn sys_prlimit64(_pid: usize, _resource: usize, new_rlim: usize, old_rlim: usize
 }
 
 fn sys_ioctl(fd: usize, cmd: usize, arg: usize) -> Result<usize, Errno> {
-    if fd > 2 {
+    if fd > 2 && pseudo_fd_kind(fd).is_none() {
         return Err(Errno::Badf);
     }
     match cmd {
@@ -1028,7 +1090,7 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
     if stat_ptr == 0 {
         return Err(Errno::Fault);
     }
-    if fd > 2 && fd != DEV_NULL_FD {
+    if fd > 2 && pseudo_fd_kind(fd).is_none() {
         return Err(Errno::Badf);
     }
     let root_pa = mm::current_root_pa();
@@ -1067,14 +1129,14 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
 }
 
 fn sys_dup(oldfd: usize) -> Result<usize, Errno> {
-    if oldfd <= 2 {
+    if oldfd <= 2 || pseudo_fd_kind(oldfd).is_some() {
         return Ok(oldfd);
     }
     Err(Errno::Badf)
 }
 
 fn sys_dup3(oldfd: usize, newfd: usize, flags: usize) -> Result<usize, Errno> {
-    if oldfd > 2 {
+    if oldfd > 2 && pseudo_fd_kind(oldfd).is_none() {
         return Err(Errno::Badf);
     }
     if oldfd == newfd {
@@ -1090,7 +1152,7 @@ fn sys_dup3(oldfd: usize, newfd: usize, flags: usize) -> Result<usize, Errno> {
 }
 
 fn sys_lseek(fd: usize, _offset: usize, _whence: usize) -> Result<usize, Errno> {
-    if fd <= 2 || fd == DEV_NULL_FD {
+    if fd <= 2 || pseudo_fd_kind(fd).is_some() {
         return Err(Errno::Pipe);
     }
     Err(Errno::Badf)
@@ -1172,7 +1234,7 @@ fn sys_rt_sigprocmask(how: usize, set: usize, oldset: usize, sigsetsize: usize) 
 }
 
 fn sys_fcntl(fd: usize, cmd: usize, _arg: usize) -> Result<usize, Errno> {
-    if fd > 2 {
+    if fd > 2 && pseudo_fd_kind(fd).is_none() {
         return Err(Errno::Badf);
     }
     match cmd {
@@ -1413,6 +1475,54 @@ fn user_path_eq(root_pa: usize, ptr: usize, target: &[u8]) -> Result<bool, Errno
     Ok(read_user_byte(root_pa, term_addr)? == 0)
 }
 
+fn alloc_pseudo_fd(kind: PseudoFdKind) -> Option<usize> {
+    // SAFETY: single-hart early boot; pseudo fd table is mutated sequentially.
+    unsafe {
+        for (idx, slot) in PSEUDO_FDS.iter_mut().enumerate() {
+            if *slot == PseudoFdKind::Empty {
+                *slot = kind;
+                return Some(PSEUDO_FD_BASE + idx);
+            }
+        }
+    }
+    None
+}
+
+fn pseudo_fd_kind(fd: usize) -> Option<PseudoFdKind> {
+    if fd < PSEUDO_FD_BASE {
+        return None;
+    }
+    let idx = fd - PSEUDO_FD_BASE;
+    if idx >= PSEUDO_FD_SLOTS {
+        return None;
+    }
+    // SAFETY: single-hart early boot; pseudo fd table is read without races.
+    let kind = unsafe { PSEUDO_FDS[idx] };
+    if kind == PseudoFdKind::Empty {
+        None
+    } else {
+        Some(kind)
+    }
+}
+
+fn free_pseudo_fd(fd: usize) -> bool {
+    if fd < PSEUDO_FD_BASE {
+        return false;
+    }
+    let idx = fd - PSEUDO_FD_BASE;
+    if idx >= PSEUDO_FD_SLOTS {
+        return false;
+    }
+    // SAFETY: single-hart early boot; pseudo fd table is mutated sequentially.
+    unsafe {
+        if PSEUDO_FDS[idx] == PseudoFdKind::Empty {
+            return false;
+        }
+        PSEUDO_FDS[idx] = PseudoFdKind::Empty;
+    }
+    true
+}
+
 fn read_user_byte(root_pa: usize, addr: usize) -> Result<u8, Errno> {
     let pa = mm::translate_user_ptr(root_pa, addr, 1, UserAccess::Read)
         .ok_or(Errno::Fault)?;
@@ -1430,6 +1540,19 @@ fn validate_user_read(root_pa: usize, addr: usize, len: usize) -> Result<(), Err
 fn validate_user_write(root_pa: usize, addr: usize, len: usize) -> Result<(), Errno> {
     UserSlice::new(addr, len)
         .for_each_chunk(root_pa, UserAccess::Write, |_, _| Some(()))
+        .ok_or(Errno::Fault)?;
+    Ok(())
+}
+
+fn zero_user_write(root_pa: usize, addr: usize, len: usize) -> Result<(), Errno> {
+    UserSlice::new(addr, len)
+        .for_each_chunk(root_pa, UserAccess::Write, |pa, chunk| {
+            // SAFETY: 翻译结果确保该片段在用户态可写。
+            unsafe {
+                core::ptr::write_bytes(pa as *mut u8, 0, chunk);
+            }
+            Some(())
+        })
         .ok_or(Errno::Fault)?;
     Ok(())
 }
