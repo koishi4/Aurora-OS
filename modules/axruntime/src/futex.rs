@@ -123,14 +123,19 @@ pub fn wake(uaddr: usize, count: usize) -> Result<usize, FutexError> {
     let Some(slot) = slot_for_wake(uaddr) else {
         return Ok(0);
     };
-    let mut woke = 0usize;
-    for _ in 0..count {
-        if runtime::wake_one(&FUTEX_WAITERS[slot]) {
-            woke += 1;
-        } else {
-            break;
+    let woke = if count >= crate::config::MAX_TASKS {
+        runtime::wake_all(&FUTEX_WAITERS[slot])
+    } else {
+        let mut woke = 0usize;
+        for _ in 0..count {
+            if runtime::wake_one(&FUTEX_WAITERS[slot]) {
+                woke += 1;
+            } else {
+                break;
+            }
         }
-    }
+        woke
+    };
     clear_slot_if_empty(slot);
     Ok(woke)
 }
