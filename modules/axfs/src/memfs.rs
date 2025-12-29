@@ -188,6 +188,51 @@ impl<'a> MemFs<'a> {
         };
         Some(Metadata::new(node.file_type, size, node.mode))
     }
+
+    pub fn resolve_parent<'b>(&self, path: &'b str) -> Result<(InodeId, &'b str), ResolveError> {
+        if !path.starts_with('/') {
+            return Err(ResolveError::Invalid);
+        }
+        let trimmed = path.trim_end_matches('/');
+        if trimmed == "/" {
+            return Err(ResolveError::Invalid);
+        }
+        let mut current = ROOT_ID;
+        let mut iter = trimmed.split('/').filter(|seg| !seg.is_empty()).peekable();
+        let mut leaf = None;
+        while let Some(segment) = iter.next() {
+            if iter.peek().is_none() {
+                let node = self.node(current).ok_or(ResolveError::NotFound)?;
+                if node.file_type != FileType::Dir {
+                    return Err(ResolveError::NotDir);
+                }
+                leaf = Some(segment);
+                break;
+            }
+            if segment == "." {
+                continue;
+            }
+            if segment == ".." {
+                let node = self.node(current).ok_or(ResolveError::NotFound)?;
+                current = node.parent;
+                continue;
+            }
+            let node = self.node(current).ok_or(ResolveError::NotFound)?;
+            if node.file_type != FileType::Dir {
+                return Err(ResolveError::NotDir);
+            }
+            match self.lookup(current, segment) {
+                Ok(Some(next)) => current = next,
+                Ok(None) => return Err(ResolveError::NotFound),
+                Err(_) => return Err(ResolveError::NotFound),
+            }
+        }
+        let name = leaf.ok_or(ResolveError::Invalid)?;
+        if name == "." || name == ".." {
+            return Err(ResolveError::Invalid);
+        }
+        Ok((current, name))
+    }
 }
 
 impl<'a> VfsOps for MemFs<'a> {
@@ -273,5 +318,21 @@ mod tests {
         assert_eq!(&buf[..4], image);
         let meta = fs.metadata_for(INIT_ID).unwrap();
         assert_eq!(meta.size, 4);
+    }
+
+    #[test]
+    fn resolve_parent_paths() {
+        let fs = MemFs::new();
+        let (parent, name) = fs.resolve_parent("/dev/null").unwrap();
+        assert_eq!(parent, DEV_ID);
+        assert_eq!(name, "null");
+        let (parent, name) = fs.resolve_parent("/missing").unwrap();
+        assert_eq!(parent, ROOT_ID);
+        assert_eq!(name, "missing");
+        assert_eq!(fs.resolve_parent("/").unwrap_err(), ResolveError::Invalid);
+        assert_eq!(
+            fs.resolve_parent("/dev/null/child").unwrap_err(),
+            ResolveError::NotDir
+        );
     }
 }

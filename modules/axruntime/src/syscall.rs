@@ -861,6 +861,7 @@ fn sys_mknodat(dirfd: usize, pathname: usize, _mode: usize, _dev: usize) -> Resu
     }
     validate_at_dirfd(dirfd)?;
     validate_user_path(root_pa, pathname)?;
+    memfs_check_parent(root_pa, pathname)?;
     match memfs_lookup_inode(root_pa, pathname) {
         Ok(_) => Err(Errno::Exist),
         Err(err) => Err(err),
@@ -875,6 +876,7 @@ fn sys_mkdirat(_dirfd: usize, pathname: usize, _mode: usize) -> Result<usize, Er
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
+    memfs_check_parent(root_pa, pathname)?;
     match memfs_lookup_inode(root_pa, pathname) {
         Ok(_) => Err(Errno::Exist),
         Err(err) => Err(err),
@@ -889,6 +891,7 @@ fn sys_unlinkat(_dirfd: usize, pathname: usize, _flags: usize) -> Result<usize, 
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
+    memfs_check_parent(root_pa, pathname)?;
     match memfs_lookup_inode(root_pa, pathname) {
         Ok(_) => Err(Errno::Inval),
         Err(err) => Err(err),
@@ -904,6 +907,7 @@ fn sys_symlinkat(oldpath: usize, newdirfd: usize, newpath: usize) -> Result<usiz
     validate_at_dirfd(newdirfd)?;
     validate_user_path(root_pa, oldpath)?;
     validate_user_path(root_pa, newpath)?;
+    memfs_check_parent(root_pa, newpath)?;
     match memfs_lookup_inode(root_pa, newpath) {
         Ok(_) => Err(Errno::Exist),
         Err(err) => Err(err),
@@ -929,6 +933,7 @@ fn sys_linkat(
     validate_at_dirfd(newdirfd)?;
     validate_user_path(root_pa, oldpath)?;
     validate_user_path(root_pa, newpath)?;
+    memfs_check_parent(root_pa, newpath)?;
     if let Err(err) = memfs_lookup_inode(root_pa, oldpath) {
         return Err(err);
     }
@@ -961,6 +966,7 @@ fn sys_renameat2(
     validate_at_dirfd(newdirfd)?;
     validate_user_path(root_pa, oldpath)?;
     validate_user_path(root_pa, newpath)?;
+    memfs_check_parent(root_pa, newpath)?;
     let old_inode = match memfs_lookup_inode(root_pa, oldpath) {
         Ok(inode) => inode,
         Err(err) => return Err(err),
@@ -2249,6 +2255,14 @@ fn memfs_lookup_inode(root_pa: usize, pathname: usize) -> Result<InodeId, Errno>
     let path = read_user_path_str(root_pa, pathname, &mut buf)?;
     let fs = memfs::MemFs::new();
     fs.resolve_path(path).map_err(map_memfs_err)
+}
+
+fn memfs_check_parent(root_pa: usize, pathname: usize) -> Result<(), Errno> {
+    let mut buf = [0u8; MAX_PATH_LEN];
+    let path = read_user_path_str(root_pa, pathname, &mut buf)?;
+    let fs = memfs::MemFs::new();
+    let _ = fs.resolve_parent(path).map_err(map_memfs_err)?;
+    Ok(())
 }
 
 fn map_memfs_err(err: memfs::ResolveError) -> Errno {
