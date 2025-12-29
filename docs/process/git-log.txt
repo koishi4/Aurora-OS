@@ -1,4 +1,36 @@
-* commit bb152efedf4c8af68d403b2f8fc3db4e57ad63a3 (HEAD -> bootstrap-riscv64)
+* commit e6836446efe1d3f7f5eee72ee17812cf4a5652d9 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 23:52:29 +0800
+| 
+|     feat(fs): add FAT32/ext4 read path and VFS fds
+| 
+|  CHANGELOG.md                            |   5 +
+|  crates/axvfs/src/lib.rs                 |  36 ++
+|  docs/design/05_syscall_abi.md           |  10 +-
+|  docs/design/06_fs_vfs.md                |   6 +-
+|  docs/process/phase_3_process_syscall.md |  12 +-
+|  docs/process/phase_4_fs.md              |  10 +-
+|  modules/axfs/src/devfs.rs               |  58 ++-
+|  modules/axfs/src/ext4.rs                | 392 ++++++++++++++++++-
+|  modules/axfs/src/fat32.rs               | 607 +++++++++++++++++++++++++++++-
+|  modules/axfs/src/lib.rs                 |   2 +-
+|  modules/axfs/src/memfs.rs               |  99 ++---
+|  modules/axfs/src/procfs.rs              |  50 ++-
+|  modules/axruntime/src/fs.rs             |  68 ++++
+|  modules/axruntime/src/main.rs           |   1 +
+|  modules/axruntime/src/syscall.rs        | 360 ++++++++++--------
+|  15 files changed, 1438 insertions(+), 278 deletions(-)
+| 
+* commit 7b966a125d7fb2495167a10fd655484844f64159
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 23:05:43 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit bb152efedf4c8af68d403b2f8fc3db4e57ad63a3
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 23:05:28 +0800
 | 
