@@ -1,4 +1,25 @@
-* commit 352946df64cc7789d61ad947fa1d177ec344bc0e (HEAD -> bootstrap-riscv64)
+* commit 071fb93b6b47e1b6112c72e582c3576ee3453c90 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:32:43 +0800
+| 
+|     feat(syscall): add getresuid/getresgid
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 38 +++++++++++++++++++++++++++++++
+|  4 files changed, 41 insertions(+), 3 deletions(-)
+| 
+* commit ab48821996181f1a2a13c800668dbd5bc882c4ec
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:31:42 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 352946df64cc7789d61ad947fa1d177ec344bc0e
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 11:31:29 +0800
 | 
