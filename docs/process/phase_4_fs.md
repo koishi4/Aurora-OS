@@ -4,8 +4,9 @@
 - 规划 VFS/FAT32/ext4 适配路线与测试矩阵。
 
 ## 进展
-- 当前阶段未进入文件系统实现，处于设计准备期。
+- 当前阶段进入 VFS 骨架搭建。
 - 新增 `crates/axvfs` 作为早期 VFS trait 骨架，采用 `InodeId` 句柄便于后续替换实现。
+- 新增 `modules/axfs` memfs 占位实现，并在 `getdents64` 目录枚举中复用 memfs 的静态目录项。
 
 ## 问题与定位
 - 尚未进入实现阶段，暂无问题记录。

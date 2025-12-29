@@ -4,6 +4,7 @@ use core::cmp::min;
 use core::mem::size_of;
 use core::sync::atomic::{AtomicU64, Ordering};
 
+use axfs::memfs;
 use crate::futex;
 use crate::mm::{self, UserAccess, UserPtr, UserSlice};
 use crate::{sbi, time};
@@ -285,9 +286,6 @@ const POLLOUT: u16 = 0x004;
 const POLLERR: u16 = 0x008;
 const POLLHUP: u16 = 0x010;
 const POLLNVAL: u16 = 0x020;
-const DT_CHR: u8 = 2;
-const DT_DIR: u8 = 4;
-const DT_REG: u8 = 8;
 const PPOLL_RETRY_SLEEP_MS: u64 = 10;
 const PR_SET_NAME: usize = 15;
 const PR_GET_NAME: usize = 16;
@@ -487,26 +485,6 @@ struct Pipe {
     len: usize,
     buf: [u8; PIPE_BUFFER_SIZE],
 }
-
-#[derive(Clone, Copy)]
-struct DirEntry {
-    name: &'static [u8],
-    dtype: u8,
-}
-
-const ROOT_DIRENTS: [DirEntry; 4] = [
-    DirEntry { name: b".", dtype: DT_DIR },
-    DirEntry { name: b"..", dtype: DT_DIR },
-    DirEntry { name: b"dev", dtype: DT_DIR },
-    DirEntry { name: b"init", dtype: DT_REG },
-];
-
-const DEV_DIRENTS: [DirEntry; 4] = [
-    DirEntry { name: b".", dtype: DT_DIR },
-    DirEntry { name: b"..", dtype: DT_DIR },
-    DirEntry { name: b"null", dtype: DT_CHR },
-    DirEntry { name: b"zero", dtype: DT_CHR },
-];
 
 const EMPTY_PIPE: Pipe = Pipe {
     used: false,
@@ -1022,11 +1000,13 @@ fn sys_getdents64(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     }
     validate_user_write(root_pa, buf, len)?;
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    let fs = memfs::MemFs::new();
     let entries = match entry.kind {
-        FdKind::DirRoot => &ROOT_DIRENTS[..],
-        FdKind::DirDev => &DEV_DIRENTS[..],
-        _ => return Err(Errno::NotDir),
-    };
+        FdKind::DirRoot => fs.dir_entries(memfs::ROOT_ID),
+        FdKind::DirDev => fs.dir_entries(memfs::DEV_ID),
+        _ => None,
+    }
+    .ok_or(Errno::NotDir)?;
     let index = fd_offset(fd).ok_or(Errno::Badf)?;
     if index >= entries.len() {
         return Ok(0);
@@ -1040,7 +1020,7 @@ fn write_dirents(
     root_pa: usize,
     buf: usize,
     len: usize,
-    entries: &[DirEntry],
+    entries: &[memfs::DirEntry],
     mut index: usize,
 ) -> Result<(usize, usize), Errno> {
     const HDR_LEN: usize = 19;
@@ -1061,7 +1041,7 @@ fn write_dirents(
             break;
         }
         let mut record = [0u8; RECORD_MAX];
-        let ino = (index + 1) as u64;
+        let ino = entry.ino;
         let off = (index + 1) as i64;
         record[0..8].copy_from_slice(&ino.to_le_bytes());
         record[8..16].copy_from_slice(&off.to_le_bytes());

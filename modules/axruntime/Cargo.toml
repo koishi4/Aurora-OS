@@ -8,3 +8,4 @@ user-test = []
 sched-demo = []
 
 [dependencies]
+axfs = { path = "../axfs" }

@@ -3,8 +3,18 @@
 version = 3
 
 [[package]]
+name = "axfs"
+version = "0.1.0"
+dependencies = [
+ "axvfs",
+]
+
+[[package]]
 name = "axruntime"
 version = "0.1.0"
+dependencies = [
+ "axfs",
+]
 
 [[package]]
 name = "axvfs"
