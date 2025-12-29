@@ -1,4 +1,38 @@
-* commit fd964493ec377108fcd6b4b171df3b3585032ebb (HEAD -> bootstrap-riscv64)
+* commit f284efbfe6b529b037ed7c84c9e67852917e219d (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 18:23:53 +0800
+| 
+|     fix(syscall): use sleep-retry for ppoll multi-fd
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 12 +++++++-----
+|  4 files changed, 10 insertions(+), 8 deletions(-)
+| 
+* commit f46de40ff935168e9098981f4ffaa3474fad277e
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 18:18:56 +0800
+| 
+|     feat(process): fix forked resume and extend user test
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/10_testing_benchmark.md     |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/runtime.rs        |  2 +
+|  modules/axruntime/src/user.rs           | 97 +++++++++++++++++--------------
+|  5 files changed, 57 insertions(+), 47 deletions(-)
+| 
+* commit 83242c675b09be4a1b2de11b3f4c78cb7dd015de
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 17:44:30 +0800
+| 
+|     chore(docs): update git history logs
+| 
+|  docs/process/git-log.txt | 28 +++++++++++++++++++++++++++-
+|  1 file changed, 27 insertions(+), 1 deletion(-)
+| 
+* commit fd964493ec377108fcd6b4b171df3b3585032ebb
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 17:44:19 +0800
 | 
