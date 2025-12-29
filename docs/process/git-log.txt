@@ -1,4 +1,25 @@
-* commit a17b2b38610be3193d029fff504a4c9a13da4419 (HEAD -> bootstrap-riscv64)
+* commit d7c69a85d36690295303d8d25001ab1e74e2e214 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:20:23 +0800
+| 
+|     feat(syscall): add getpgrp/setpgrp stubs
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 12 ++++++++++++
+|  4 files changed, 15 insertions(+), 3 deletions(-)
+| 
+* commit 1b1352ec2dc5908751a231a8c2266ddb1e1ef691
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:19:30 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit a17b2b38610be3193d029fff504a4c9a13da4419
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 11:19:18 +0800
 | 
