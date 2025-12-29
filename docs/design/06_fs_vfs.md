@@ -18,6 +18,7 @@
 - 页缓存以页为单位缓存文件数据，写入采用 write-back + 定期刷盘。
 - 块设备通过 `BlockDevice` 抽象接入 virtio-block，早期以 BlockCache 直通占位。
 - FAT32 先从 BPB 解析与根簇定位开始，逐步扩展目录遍历与文件读取。
+- ext4 先实现 superblock 解析与根 inode 占位，为后续目录遍历铺路。
 - 权限与时间戳语义对齐 Linux，错误码通过 errno 映射返回。
 
 ## 关键数据结构

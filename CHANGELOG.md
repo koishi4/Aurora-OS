@@ -90,6 +90,7 @@
 - Add VFS mount table with /, /dev, /proc reserved mounts plus devfs/procfs stubs.
 - Add BlockDevice trait and a pass-through BlockCache scaffold for future FS work.
 - Add a FAT32 BPB parser and root-cluster scaffold for read-path bring-up.
+- Add an ext4 superblock parser and root-inode scaffold for read-path bring-up.
 - Extend USER_TEST to cover getdents64 on / and /dev.
 - Extend USER_TEST to cover clone tid writeback validation.
 - Build clone_user_root from kernel mappings to avoid sharing parent page tables.
