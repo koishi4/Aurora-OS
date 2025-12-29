@@ -1,4 +1,25 @@
-* commit a169f4294f7962e418095b76057db56b82919c2e (HEAD -> bootstrap-riscv64)
+* commit 70570b79157e0da57417164e11b2db33fba51b79 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:32:27 +0800
+| 
+|     feat(syscall): add static dir entries for getdents64
+| 
+|  CHANGELOG.md                            |   1 +
+|  docs/design/05_syscall_abi.md           |   1 +
+|  docs/process/phase_3_process_syscall.md |   1 +
+|  modules/axruntime/src/syscall.rs        | 265 +++++++++++++++++++++++-------
+|  4 files changed, 207 insertions(+), 61 deletions(-)
+| 
+* commit 76d70702fd7042641527672688ba9b306e02be44
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:18:24 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit a169f4294f7962e418095b76057db56b82919c2e
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 20:18:11 +0800
 | 
