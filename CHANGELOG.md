@@ -46,3 +46,4 @@
 - Add clock_gettime/gettimeofday/getpid time stubs based on uptime ticks.
 - Add readv/writev helpers and route the user smoke through writev.
 - Add uname syscall stub with minimal utsname fields.
+- Add minimal getppid/getuid/geteuid/getgid/getegid stubs.

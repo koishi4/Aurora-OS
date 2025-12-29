@@ -56,6 +56,11 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_CLOCK_GETTIME => sys_clock_gettime(ctx.args[0], ctx.args[1]),
         SYS_GETTIMEOFDAY => sys_gettimeofday(ctx.args[0], ctx.args[1]),
         SYS_GETPID => sys_getpid(),
+        SYS_GETPPID => sys_getppid(),
+        SYS_GETUID => sys_getuid(),
+        SYS_GETEUID => sys_geteuid(),
+        SYS_GETGID => sys_getgid(),
+        SYS_GETEGID => sys_getegid(),
         SYS_UNAME => sys_uname(ctx.args[0]),
         _ => Err(Errno::NoSys),
     }
@@ -69,6 +74,11 @@ const SYS_WRITEV: usize = 66;
 const SYS_CLOCK_GETTIME: usize = 113;
 const SYS_GETTIMEOFDAY: usize = 169;
 const SYS_GETPID: usize = 172;
+const SYS_GETPPID: usize = 173;
+const SYS_GETUID: usize = 174;
+const SYS_GETEUID: usize = 175;
+const SYS_GETGID: usize = 176;
+const SYS_GETEGID: usize = 177;
 const SYS_UNAME: usize = 160;
 
 const CLOCK_REALTIME: usize = 0;
@@ -272,6 +282,26 @@ fn sys_gettimeofday(tv: usize, tz: usize) -> Result<usize, Errno> {
 
 fn sys_getpid() -> Result<usize, Errno> {
     Ok(1)
+}
+
+fn sys_getppid() -> Result<usize, Errno> {
+    Ok(0)
+}
+
+fn sys_getuid() -> Result<usize, Errno> {
+    Ok(0)
+}
+
+fn sys_geteuid() -> Result<usize, Errno> {
+    Ok(0)
+}
+
+fn sys_getgid() -> Result<usize, Errno> {
+    Ok(0)
+}
+
+fn sys_getegid() -> Result<usize, Errno> {
+    Ok(0)
 }
 
 fn sys_uname(buf: usize) -> Result<usize, Errno> {
