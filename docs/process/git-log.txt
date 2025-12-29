@@ -1,4 +1,25 @@
-* commit 27d15c648ef3a78bc99df7857b2c3c036faff9c2 (HEAD -> bootstrap-riscv64)
+* commit 3f73aa01a70dc97fbe37a7ec9e262f527e6db9a5 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 14:56:16 +0800
+| 
+|     feat(syscall): honor O_NONBLOCK for pipes
+| 
+|  CHANGELOG.md                            |   1 +
+|  docs/design/05_syscall_abi.md           |   2 +-
+|  docs/process/phase_3_process_syscall.md |   1 +
+|  modules/axruntime/src/syscall.rs        | 210 ++++++++++++++++++++----------
+|  4 files changed, 143 insertions(+), 71 deletions(-)
+| 
+* commit 3ea1daa185d42b929d659d2196462854a53846db
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 14:40:56 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 27d15c648ef3a78bc99df7857b2c3c036faff9c2
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 14:40:40 +0800
 | 
