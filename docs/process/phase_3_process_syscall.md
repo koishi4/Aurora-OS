@@ -34,6 +34,7 @@
 - 增加 clock_gettime/gettimeofday/getpid，占位返回 tick 时间与固定 PID。
 - 增加 clock_gettime64，占位复用 clock_gettime 逻辑。
 - 增加 nanosleep，占位使用 tick 时间忙等。
+- 增加 clock_getres/clock_getres_time64，占位返回 tick 精度。
 - 增加 readv/writev，占位支持分段缓冲区访问。
 - 增加 uname，占位返回内核与平台信息。
 - 增加 getppid/getuid/geteuid/getgid/getegid 等身份信息占位。

@@ -63,3 +63,4 @@
 - Add robust list stubs returning empty state.
 - Add rt_sigaction/rt_sigprocmask stubs.
 - Add fcntl stub for stdio flags.
+- Add clock_getres stubs using tick resolution.

@@ -58,6 +58,8 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_WRITEV => sys_writev(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_CLOCK_GETTIME => sys_clock_gettime(ctx.args[0], ctx.args[1]),
         SYS_CLOCK_GETTIME64 => sys_clock_gettime(ctx.args[0], ctx.args[1]),
+        SYS_CLOCK_GETRES => sys_clock_getres(ctx.args[0], ctx.args[1]),
+        SYS_CLOCK_GETRES64 => sys_clock_getres(ctx.args[0], ctx.args[1]),
         SYS_GETTIMEOFDAY => sys_gettimeofday(ctx.args[0], ctx.args[1]),
         SYS_NANOSLEEP => sys_nanosleep(ctx.args[0], ctx.args[1]),
         SYS_GETPID => sys_getpid(),
@@ -114,6 +116,8 @@ const SYS_FCNTL: usize = 25;
 const TIOCGWINSZ: usize = 0x5413;
 const SYS_CLOCK_GETTIME: usize = 113;
 const SYS_CLOCK_GETTIME64: usize = 403;
+const SYS_CLOCK_GETRES: usize = 114;
+const SYS_CLOCK_GETRES64: usize = 406;
 const SYS_GETTIMEOFDAY: usize = 169;
 const SYS_NANOSLEEP: usize = 101;
 const SYS_GETPID: usize = 172;
@@ -370,6 +374,33 @@ fn sys_clock_gettime(clock_id: usize, tp: usize) -> Result<usize, Errno> {
     let ts = Timespec {
         tv_sec: (now_ms / 1000) as i64,
         tv_nsec: ((now_ms % 1000) * 1_000_000) as i64,
+    };
+    match clock_id {
+        CLOCK_REALTIME | CLOCK_MONOTONIC => {
+            let root_pa = mm::current_root_pa();
+            if root_pa == 0 {
+                return Err(Errno::Fault);
+            }
+            UserPtr::new(tp).write(root_pa, ts).ok_or(Errno::Fault)?;
+            Ok(0)
+        }
+        _ => Err(Errno::Inval),
+    }
+}
+
+fn sys_clock_getres(clock_id: usize, tp: usize) -> Result<usize, Errno> {
+    if tp == 0 {
+        return Ok(0);
+    }
+    let hz = time::tick_hz();
+    let nsec = if hz == 0 {
+        0
+    } else {
+        1_000_000_000u64 / hz
+    };
+    let ts = Timespec {
+        tv_sec: 0,
+        tv_nsec: nsec as i64,
     };
     match clock_id {
         CLOCK_REALTIME | CLOCK_MONOTONIC => {
