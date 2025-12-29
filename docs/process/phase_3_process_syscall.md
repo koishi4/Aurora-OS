@@ -85,7 +85,7 @@
 
 ## 解决与验证
 - 通过 `make test-qemu-smoke ARCH=riscv64 PLATFORM=qemu` 验证启动与 tick 日志。
-- 通过 `USER_TEST=1 make test-qemu-smoke ARCH=riscv64 PLATFORM=qemu` 覆盖 execve/pipe/poll 的用户态路径。
+- 通过 `USER_TEST=1 make test-qemu-smoke ARCH=riscv64 PLATFORM=qemu` 覆盖 execve/pipe/poll/clone/wait4 的用户态路径。
 
 ## 下一步
 - 补齐任务切换的 trapframe 保存/恢复与最小用户态切入。

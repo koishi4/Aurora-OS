@@ -204,6 +204,8 @@ pub fn spawn_forked_user(
         child_tf.a0 = 0;
         child_tf.sepc = parent_tf.sepc.wrapping_add(4);
     }
+    // Ensure the first resume uses the saved trap frame without clobbering it.
+    let _ = task::set_context(task_id, resume_user_from_trap as usize, trap_frame_ptr);
     let _ = task::set_trap_frame(task_id, trap_frame_ptr);
     let _ = task::set_user_context(task_id, child_root_pa, parent_tf.sepc.wrapping_add(4), user_sp);
     let _ = task::set_user_sp(task_id, user_sp);
