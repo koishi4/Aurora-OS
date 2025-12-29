@@ -53,6 +53,7 @@
 - Add poll/ppoll stubs that report pipe readiness, block on a single pipe fd, and use a sleep-retry loop for multi-fd waits.
 - Add console input stash and polling readiness for stdin; USER_TEST now covers pipe poll readiness.
 - Enable timer-driven preemption by returning running tasks to the run queue and scheduling from idle.
+- Allow user tasks to be preempted by timer ticks and resume via trapframe-backed paths.
 - Add execve loader for `/init` built-in ELF image with argv/envp stack layout.
 - Add minimal process table and wait4/waitpid support with zombie reaping and WNOHANG.
 - Track user task root/entry/sp/trapframe and add a trapframe resume path for user tasks.

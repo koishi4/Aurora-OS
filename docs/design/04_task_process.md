@@ -12,6 +12,7 @@
 - 增加上下文结构与 `context_switch` 汇编入口，当前仅保留接口占位。
 - 使用 `need_resched` 标志从 tick 中断发起调度请求，运行中任务先回到空闲上下文，再由 idle_loop 拉起下一任务。
 - 增加 `yield_now` 协作式让渡，主动入队并清理 CURRENT_TASK，再切回空闲。
+- 用户任务在定时器抢占/协作 yield 后更新恢复入口为 `resume_user_from_trap`，确保从 trapframe 返回用户态且 `sscratch` 保持用户栈指针。
 - RunQueue 维护轮转指针，实现最小 RR 顺序。
 - RunQueue 保存 `TaskId`，任务实体存放在固定大小的 TaskTable。
 - 引入最小进程表（state/ppid/exit_code），以 TaskId+1 作为早期 PID 占位。

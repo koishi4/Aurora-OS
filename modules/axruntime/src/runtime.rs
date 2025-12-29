@@ -298,9 +298,6 @@ pub fn preempt_current() {
         let Some(task_id) = CURRENT_TASK else {
             return;
         };
-        if task::user_root_pa(task_id).unwrap_or(0) != 0 {
-            return;
-        }
         let Some(task_ptr) = task::task_ptr(task_id) else {
             return;
         };
@@ -314,16 +311,20 @@ pub fn preempt_current() {
         CURRENT_TASK = None;
         // 切回空闲上下文，由 idle_loop 统一拉起下一任务。
         crate::scheduler::switch(&mut *task_ptr, &IDLE_TASK);
-        if let (Some(kernel_sp), Some(root_pa), Some(trap_frame)) = (
-            task::kernel_sp(task_id),
-            task::user_root_pa(task_id),
-            task::trap_frame_ptr(task_id),
-        ) {
-            if root_pa != 0 && trap_frame != 0 {
-                let _ = task::set_context(task_id, resume_user_from_trap as usize, kernel_sp);
+        let root_pa = task::user_root_pa(task_id).unwrap_or(0);
+        let trap_frame = task::trap_frame_ptr(task_id).unwrap_or(0);
+        if root_pa != 0 && trap_frame != 0 {
+            // 用户任务在 trap 中被抢占：恢复后从保存的 trapframe 返回用户态。
+            let _ = task::set_context(task_id, resume_user_from_trap as usize, trap_frame);
+            if let Some(user_sp) = task::user_sp(task_id) {
+                if user_sp != 0 {
+                    crate::trap::set_user_stack(user_sp);
+                }
             }
+        } else {
+            // 内核任务仅需保持当前内核栈指针供下次 trap 使用。
+            crate::trap::set_kernel_stack(crate::trap::current_sp());
         }
-        crate::trap::set_kernel_stack(crate::trap::current_sp());
     }
 }
 
@@ -355,16 +356,19 @@ pub fn yield_now() {
         NEED_RESCHED.store(true, Ordering::Relaxed);
         CURRENT_TASK = None;
         crate::scheduler::switch(&mut *task_ptr, &IDLE_TASK);
-        if let (Some(kernel_sp), Some(root_pa), Some(trap_frame)) = (
-            task::kernel_sp(task_id),
-            task::user_root_pa(task_id),
-            task::trap_frame_ptr(task_id),
-        ) {
-            if root_pa != 0 && trap_frame != 0 {
-                let _ = task::set_context(task_id, resume_user_from_trap as usize, kernel_sp);
+        let root_pa = task::user_root_pa(task_id).unwrap_or(0);
+        let trap_frame = task::trap_frame_ptr(task_id).unwrap_or(0);
+        if root_pa != 0 && trap_frame != 0 {
+            // 用户任务主动让出 CPU 时，确保后续能从 trapframe 返回用户态。
+            let _ = task::set_context(task_id, resume_user_from_trap as usize, trap_frame);
+            if let Some(user_sp) = task::user_sp(task_id) {
+                if user_sp != 0 {
+                    crate::trap::set_user_stack(user_sp);
+                }
             }
+        } else {
+            crate::trap::set_kernel_stack(crate::trap::current_sp());
         }
-        crate::trap::set_kernel_stack(crate::trap::current_sp());
     }
 }
 
