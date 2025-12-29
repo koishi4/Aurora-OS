@@ -1194,12 +1194,14 @@ fn sys_getrusage(who: usize, usage: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    let zero = KernelTimeval {
-        tv_sec: 0,
-        tv_usec: 0,
+    let now_ns = time::monotonic_ns();
+    let user_time = KernelTimeval {
+        tv_sec: (now_ns / 1_000_000_000) as isize,
+        tv_usec: ((now_ns % 1_000_000_000) / 1_000) as isize,
     };
+    let zero = KernelTimeval { tv_sec: 0, tv_usec: 0 };
     let usage_val = Rusage {
-        ru_utime: zero,
+        ru_utime: user_time,
         ru_stime: zero,
         ru_maxrss: 0,
         ru_ixrss: 0,
