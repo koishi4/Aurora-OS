@@ -1,4 +1,25 @@
-* commit 5e108534c6ab99661842bede4f3b8f3106fa8aff (HEAD -> bootstrap-riscv64)
+* commit c40d5c5e1742a4f24fb4388bef988345cb4d59aa (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:27:30 +0800
+| 
+|     feat(syscall): return EAGAIN on empty read
+| 
+|  CHANGELOG.md                            | 2 +-
+|  docs/design/05_syscall_abi.md           | 2 +-
+|  docs/process/phase_3_process_syscall.md | 2 +-
+|  modules/axruntime/src/syscall.rs        | 3 ++-
+|  4 files changed, 5 insertions(+), 4 deletions(-)
+| 
+* commit 4602c6024c47c29a8aa9d53ef568dfb55ddecd36
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:26:03 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 5e108534c6ab99661842bede4f3b8f3106fa8aff
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 11:25:50 +0800
 | 
