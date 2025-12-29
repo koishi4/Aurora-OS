@@ -1,4 +1,36 @@
-* commit 3a18eca310b5975345d8ba71719046f0c2010675 (HEAD -> bootstrap-riscv64)
+* commit f0baeffcab7738fc9b1f3ae92286cb8e64b4fe10 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 16:47:03 +0800
+| 
+|     feat(proc): add execve ELF loader and waitpid support
+| 
+|  CHANGELOG.md                            |   4 +-
+|  arch/riscv64/trap.S                     |  43 +++
+|  docs/design/02_trap_interrupt.md        |   4 +-
+|  docs/design/04_task_process.md          |  14 +
+|  docs/design/05_syscall_abi.md           |   4 +-
+|  docs/design/10_testing_benchmark.md     |   2 +-
+|  docs/process/phase_3_process_syscall.md |   7 +-
+|  modules/axruntime/src/main.rs           |   8 +-
+|  modules/axruntime/src/mm.rs             |  45 ++++
+|  modules/axruntime/src/process.rs        | 146 ++++++++++
+|  modules/axruntime/src/runtime.rs        |  96 +++++++
+|  modules/axruntime/src/syscall.rs        |  33 ++-
+|  modules/axruntime/src/task.rs           | 123 +++++++++
+|  modules/axruntime/src/trap.rs           |  25 ++
+|  modules/axruntime/src/user.rs           | 430 +++++++++++++++++++++++++++++-
+|  15 files changed, 966 insertions(+), 18 deletions(-)
+| 
+* commit fa58c81b2eb0f2d5a6bd7fc37c261c2859b47a81
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 16:08:40 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 25 ++++++++++++++++++++++++-
+|  1 file changed, 24 insertions(+), 1 deletion(-)
+| 
+* commit 3a18eca310b5975345d8ba71719046f0c2010675
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 16:08:23 +0800
 | 
