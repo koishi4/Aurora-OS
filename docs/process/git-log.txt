@@ -1,4 +1,32 @@
-* commit f0baeffcab7738fc9b1f3ae92286cb8e64b4fe10 (HEAD -> bootstrap-riscv64)
+* commit ecc566fe7b5edf0cfd38ec9f5ed1932e43e3261d (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 17:02:50 +0800
+| 
+|     feat(proc): add clone syscall and CoW fork
+| 
+|  CHANGELOG.md                            |   2 +
+|  docs/design/02_trap_interrupt.md        |   1 +
+|  docs/design/03_memory.md                |   8 +-
+|  docs/design/04_task_process.md          |   2 +
+|  docs/design/05_syscall_abi.md           |   2 +
+|  docs/process/phase_2_mm.md              |  13 +-
+|  docs/process/phase_3_process_syscall.md |   1 +
+|  modules/axruntime/src/mm.rs             | 199 +++++++++++++++++++++++++++++-
+|  modules/axruntime/src/runtime.rs        |  28 +++++
+|  modules/axruntime/src/syscall.rs        |  27 ++++
+|  modules/axruntime/src/trap.rs           |   8 ++
+|  11 files changed, 284 insertions(+), 7 deletions(-)
+| 
+* commit be7bac0bbd5162302abac36d0e068c62b9683073
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 16:47:21 +0800
+| 
+|     chore(docs): update git history logs
+| 
+|  docs/process/git-log.txt | 34 +++++++++++++++++++++++++++++++++-
+|  1 file changed, 33 insertions(+), 1 deletion(-)
+| 
+* commit f0baeffcab7738fc9b1f3ae92286cb8e64b4fe10
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 16:47:03 +0800
 | 
