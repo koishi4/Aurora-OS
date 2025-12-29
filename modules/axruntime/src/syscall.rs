@@ -1963,32 +1963,8 @@ fn sys_getrusage(who: usize, usage: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    let now_ns = time::monotonic_ns();
-    let user_time = KernelTimeval {
-        tv_sec: (now_ns / 1_000_000_000) as isize,
-        tv_usec: ((now_ns % 1_000_000_000) / 1_000) as isize,
-    };
-    let zero = KernelTimeval { tv_sec: 0, tv_usec: 0 };
-    let usage_val = Rusage {
-        ru_utime: user_time,
-        ru_stime: zero,
-        ru_maxrss: 0,
-        ru_ixrss: 0,
-        ru_idrss: 0,
-        ru_isrss: 0,
-        ru_minflt: 0,
-        ru_majflt: 0,
-        ru_nswap: 0,
-        ru_inblock: 0,
-        ru_oublock: 0,
-        ru_msgsnd: 0,
-        ru_msgrcv: 0,
-        ru_nsignals: 0,
-        ru_nvcsw: 0,
-        ru_nivcsw: 0,
-    };
     UserPtr::new(usage)
-        .write(root_pa, usage_val)
+        .write(root_pa, default_rusage())
         .ok_or(Errno::Fault)?;
     Ok(0)
 }
@@ -2065,8 +2041,48 @@ fn sys_getcpu(cpu: usize, node: usize) -> Result<usize, Errno> {
     Ok(0)
 }
 
-fn sys_wait4(pid: usize, status: usize, options: usize, _rusage: usize) -> Result<usize, Errno> {
-    crate::process::waitpid(pid as isize, status, options)
+fn sys_wait4(pid: usize, status: usize, options: usize, rusage: usize) -> Result<usize, Errno> {
+    let waited = crate::process::waitpid(pid as isize, status, options)?;
+    if waited == 0 || rusage == 0 {
+        return Ok(waited);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    // wait4 子进程统计占位：复用 getrusage 的最小填充。
+    UserPtr::new(rusage)
+        .write(root_pa, default_rusage())
+        .ok_or(Errno::Fault)?;
+    Ok(waited)
+}
+
+// 占位 rusage：复用单调时间作为用户态时间，其余字段清零。
+fn default_rusage() -> Rusage {
+    let now_ns = time::monotonic_ns();
+    let user_time = KernelTimeval {
+        tv_sec: (now_ns / 1_000_000_000) as isize,
+        tv_usec: ((now_ns % 1_000_000_000) / 1_000) as isize,
+    };
+    let zero = KernelTimeval { tv_sec: 0, tv_usec: 0 };
+    Rusage {
+        ru_utime: user_time,
+        ru_stime: zero,
+        ru_maxrss: 0,
+        ru_ixrss: 0,
+        ru_idrss: 0,
+        ru_isrss: 0,
+        ru_minflt: 0,
+        ru_majflt: 0,
+        ru_nswap: 0,
+        ru_inblock: 0,
+        ru_oublock: 0,
+        ru_msgsnd: 0,
+        ru_msgrcv: 0,
+        ru_nsignals: 0,
+        ru_nvcsw: 0,
+        ru_nivcsw: 0,
+    }
 }
 
 fn current_pid() -> usize {
