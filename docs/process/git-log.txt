@@ -1,4 +1,25 @@
-* commit bc32004ba695935977d885f9e9ccdfede5767757 (HEAD -> bootstrap-riscv64)
+* commit 516c83a99b9c57683683cf6e7b0dcc69772606ff (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:49:55 +0800
+| 
+|     feat(syscall): add openat/newfstatat stubs
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 47 +++++++++++++++++++++++++++++++
+|  4 files changed, 50 insertions(+)
+| 
+* commit bd8ecfc8db1b8cffc55c627e803e04a38b7fb617
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:43:29 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit bc32004ba695935977d885f9e9ccdfede5767757
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 11:43:13 +0800
 | 
