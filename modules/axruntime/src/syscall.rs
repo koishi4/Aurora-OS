@@ -550,8 +550,7 @@ fn sys_nanosleep(req: usize, rem: usize) -> Result<usize, Errno> {
 }
 
 fn sys_getpid() -> Result<usize, Errno> {
-    let pid = crate::runtime::current_task_id().map(|id| id + 1).unwrap_or(1);
-    Ok(pid)
+    Ok(current_pid())
 }
 
 fn sys_getppid() -> Result<usize, Errno> {
@@ -575,8 +574,7 @@ fn sys_getegid() -> Result<usize, Errno> {
 }
 
 fn sys_gettid() -> Result<usize, Errno> {
-    let tid = crate::runtime::current_task_id().map(|id| id + 1).unwrap_or(1);
-    Ok(tid)
+    Ok(current_pid())
 }
 
 fn sys_sched_yield() -> Result<usize, Errno> {
@@ -1091,11 +1089,16 @@ fn sys_setpgid(_pid: usize, _pgid: usize) -> Result<usize, Errno> {
 }
 
 fn sys_getpgid(_pid: usize) -> Result<usize, Errno> {
-    Ok(1)
+    Ok(current_pid())
 }
 
 fn sys_setsid() -> Result<usize, Errno> {
-    Ok(1)
+    Ok(current_pid())
+}
+
+fn current_pid() -> usize {
+    // Single-hart early boot uses TaskId+1 as a stable placeholder PID.
+    crate::runtime::current_task_id().map(|id| id + 1).unwrap_or(1)
 }
 
 fn load_iovec(root_pa: usize, iov_ptr: usize, index: usize) -> Result<Iovec, Errno> {
