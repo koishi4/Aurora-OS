@@ -56,7 +56,7 @@
 - Add close stub for stdio fds.
 - Add getrlimit/prlimit64 stubs with default limits.
 - Add ioctl stubs for TIOCGWINSZ/TCGETS/TCSETS with default terminal data.
-- Add nanosleep stub using timebase busy wait.
+- Add nanosleep stub using scheduler sleep when available.
 - Add sysinfo stub for uptime and memory size.
 - Add getrandom stub with xorshift output.
 - Add fstat stub for stdio character device metadata.

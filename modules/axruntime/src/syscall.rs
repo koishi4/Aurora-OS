@@ -532,9 +532,15 @@ fn sys_nanosleep(req: usize, rem: usize) -> Result<usize, Errno> {
     let total_ns = (ts.tv_sec as u64)
         .saturating_mul(1_000_000_000)
         .saturating_add(ts.tv_nsec as u64);
-    let deadline = time::monotonic_ns().saturating_add(total_ns);
-    while time::monotonic_ns() < deadline {
-        crate::cpu::wait_for_interrupt();
+    let sleep_ms = total_ns.saturating_add(999_999) / 1_000_000;
+    if sleep_ms > 0 {
+        let slept = crate::runtime::sleep_current_ms(sleep_ms);
+        if !slept {
+            let deadline = time::monotonic_ns().saturating_add(total_ns);
+            while time::monotonic_ns() < deadline {
+                crate::cpu::wait_for_interrupt();
+            }
+        }
     }
     if rem != 0 {
         let zero = Timespec { tv_sec: 0, tv_nsec: 0 };

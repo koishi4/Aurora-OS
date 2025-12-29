@@ -34,7 +34,7 @@
 - 用户态测试字符串跨页布局，用于覆盖 UserSlice 跨页读路径。
 - 增加 clock_gettime/gettimeofday/getpid，占位返回 timebase 时间与固定 PID。
 - 增加 clock_gettime64，占位复用 clock_gettime 逻辑。
-- 增加 nanosleep，占位使用 timebase 时间忙等。
+- 增加 nanosleep，占位优先走调度器睡眠，否则使用 timebase 忙等。
 - 增加 clock_getres/clock_getres_time64，占位返回 timebase 精度。
 - 增加 readv/writev，占位支持分段缓冲区访问。
 - 增加 uname，占位返回内核与平台信息。

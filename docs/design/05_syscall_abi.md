@@ -18,7 +18,7 @@
 - 早期实现 `clock_gettime/gettimeofday/getpid`，返回基于 timebase/rdtime 的时间与占位 PID。
 - 早期实现 `clock_gettime64`，与 `clock_gettime` 共用时间源。
 - 早期实现 `clock_getres/clock_getres_time64`，返回 timebase 精度占位。
-- 早期实现 `nanosleep`，使用 timebase 时间的忙等占位。
+- 早期实现 `nanosleep`，优先走调度器睡眠；无任务上下文时用 timebase 忙等。
 - 早期实现 `readv/writev`，复用用户指针校验并支持分段缓冲区。
 - 早期实现 `uname`，返回最小可用的系统信息占位。
 - 早期实现 `getpid/getppid/getuid/geteuid/getgid/getegid` 等身份信息占位。
