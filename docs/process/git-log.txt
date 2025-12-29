@@ -1,4 +1,25 @@
-* commit 8157ba763cf974e26d8ddf48b2756e8fa9e81779 (HEAD -> bootstrap-riscv64)
+* commit dfc27afe2430e0e5ecce8e95d22b429fbd434a6a (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:53:19 +0800
+| 
+|     feat(syscall): add /init memfile support
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 81 +++++++++++++++++++++++++------
+|  4 files changed, 68 insertions(+), 18 deletions(-)
+| 
+* commit 960ff600d1d5f6a7805fb9ef0e2c98ab16656f8b
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:46:50 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 8157ba763cf974e26d8ddf48b2756e8fa9e81779
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 20:46:39 +0800
 | 
