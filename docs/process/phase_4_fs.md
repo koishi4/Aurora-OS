@@ -16,6 +16,7 @@
 - fstat 对伪节点改用 memfs 元数据。
 - memfs 增加 parent+basename 解析，用于校验 create/unlink/rename 的父目录路径。
 - memfs 读路径扩展到 `/dev/null` 与 `/dev/zero`。
+- memfs 读取统一走 read_at，并通过 fd offset 维护文件读位置。
 
 ## 问题与定位
 - 尚未进入实现阶段，暂无问题记录。

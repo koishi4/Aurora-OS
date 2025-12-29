@@ -2945,9 +2945,9 @@ fn read_from_entry(fd: usize, entry: FdEntry, root_pa: usize, buf: usize, len: u
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             read_console_into(root_pa, buf, len, nonblock)
         }
-        FdKind::DevNull => read_memfs_device(root_pa, memfs::DEV_NULL_ID, buf, len),
-        FdKind::DevZero => read_memfs_device(root_pa, memfs::DEV_ZERO_ID, buf, len),
-        FdKind::InitFile => read_init_file(fd, root_pa, buf, len),
+        FdKind::DevNull => read_memfs_fd(fd, root_pa, memfs::DEV_NULL_ID, buf, len),
+        FdKind::DevZero => read_memfs_fd(fd, root_pa, memfs::DEV_ZERO_ID, buf, len),
+        FdKind::InitFile => read_memfs_fd(fd, root_pa, memfs::INIT_ID, buf, len),
         FdKind::PipeRead(pipe_id) => {
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             pipe_read(pipe_id, root_pa, buf, len, nonblock)
@@ -2962,43 +2962,27 @@ fn init_memfile_image() -> &'static [u8] {
     crate::user::init_exec_elf_image()
 }
 
-fn read_init_file(fd: usize, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
+fn read_memfs_fd(fd: usize, root_pa: usize, inode: InodeId, buf: usize, len: usize) -> Result<usize, Errno> {
     let offset = fd_offset(fd).ok_or(Errno::Badf)?;
-    let fs = memfs::MemFs::with_init_image(init_memfile_image());
-    let mut total = 0usize;
-    let mut remaining = len;
-    let mut scratch = [0u8; 256];
-    while remaining > 0 {
-        let chunk = min(remaining, scratch.len());
-        let read = match fs.read_at(memfs::INIT_ID, (offset + total) as u64, &mut scratch[..chunk]) {
-            Ok(read) => read,
-            Err(_) => return Err(Errno::Badf),
-        };
-        if read == 0 {
-            break;
-        }
-        let dst = buf.checked_add(total).ok_or(Errno::Fault)?;
-        UserSlice::new(dst, read)
-            .copy_from_slice(root_pa, &scratch[..read])
-            .ok_or(Errno::Fault)?;
-        total += read;
-        remaining = remaining.saturating_sub(read);
-    }
-    set_fd_offset(fd, offset + total);
-    Ok(total)
+    let read = read_memfs_at(root_pa, inode, offset, buf, len)?;
+    set_fd_offset(fd, offset + read);
+    Ok(read)
 }
 
-fn read_memfs_device(root_pa: usize, inode: InodeId, buf: usize, len: usize) -> Result<usize, Errno> {
-    if len == 0 {
-        return Ok(0);
-    }
+fn read_memfs_at(
+    root_pa: usize,
+    inode: InodeId,
+    offset: usize,
+    buf: usize,
+    len: usize,
+) -> Result<usize, Errno> {
     let fs = memfs::MemFs::with_init_image(init_memfile_image());
     let mut total = 0usize;
     let mut remaining = len;
     let mut scratch = [0u8; 256];
     while remaining > 0 {
         let chunk = min(remaining, scratch.len());
-        let read = match fs.read_at(inode, 0, &mut scratch[..chunk]) {
+        let read = match fs.read_at(inode, (offset + total) as u64, &mut scratch[..chunk]) {
             Ok(read) => read,
             Err(_) => return Err(Errno::Badf),
         };
