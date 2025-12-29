@@ -69,7 +69,7 @@
 - Add clock_getres stubs using timebase resolution.
 - Add umask stub with stored mask.
 - Add prctl stub that stores process name.
-- Add sched affinity stubs for single CPU.
+- Add sched affinity stubs for single CPU (mask cleared before setting CPU0).
 - Add getcpu stub returning CPU=0/NUMA=0.
 - Add getrusage stub returning zero stats.
 - Add setpgid/getpgid/getsid/setsid/getpgrp/setpgrp stubs (TaskId+1 when available).

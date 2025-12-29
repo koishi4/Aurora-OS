@@ -1162,6 +1162,15 @@ fn sys_sched_getaffinity(_pid: usize, len: usize, mask: usize) -> Result<usize, 
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
+    UserSlice::new(mask, len)
+        .for_each_chunk(root_pa, UserAccess::Write, |pa, chunk| {
+            // SAFETY: 翻译结果确保该片段在用户态可写。
+            unsafe {
+                core::ptr::write_bytes(pa as *mut u8, 0, chunk);
+            }
+            Some(())
+        })
+        .ok_or(Errno::Fault)?;
     UserPtr::<usize>::new(mask)
         .write(root_pa, 1)
         .ok_or(Errno::Fault)?;
