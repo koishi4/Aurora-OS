@@ -261,20 +261,27 @@ impl<'a> VfsOps for MemFs<'a> {
     }
 
     fn read_at(&self, inode: InodeId, offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
-        if inode != INIT_ID {
-            return Err(VfsError::NotSupported);
+        match inode {
+            INIT_ID => {
+                let image = match self.init_image {
+                    Some(image) => image,
+                    None => return Err(VfsError::NotSupported),
+                };
+                let offset = offset as usize;
+                if offset >= image.len() {
+                    return Ok(0);
+                }
+                let to_read = min(buf.len(), image.len() - offset);
+                buf[..to_read].copy_from_slice(&image[offset..offset + to_read]);
+                Ok(to_read)
+            }
+            DEV_ZERO_ID => {
+                buf.fill(0);
+                Ok(buf.len())
+            }
+            DEV_NULL_ID => Ok(0),
+            _ => Err(VfsError::NotSupported),
         }
-        let image = match self.init_image {
-            Some(image) => image,
-            None => return Err(VfsError::NotSupported),
-        };
-        let offset = offset as usize;
-        if offset >= image.len() {
-            return Ok(0);
-        }
-        let to_read = min(buf.len(), image.len() - offset);
-        buf[..to_read].copy_from_slice(&image[offset..offset + to_read]);
-        Ok(to_read)
     }
 
     fn write_at(&self, _inode: InodeId, _offset: u64, _buf: &[u8]) -> VfsResult<usize> {
@@ -318,6 +325,17 @@ mod tests {
         assert_eq!(&buf[..4], image);
         let meta = fs.metadata_for(INIT_ID).unwrap();
         assert_eq!(meta.size, 4);
+    }
+
+    #[test]
+    fn dev_nodes_read() {
+        let fs = MemFs::new();
+        let mut buf = [0x5a_u8; 4];
+        let read = fs.read_at(DEV_NULL_ID, 0, &mut buf).unwrap();
+        assert_eq!(read, 0);
+        let read = fs.read_at(DEV_ZERO_ID, 0, &mut buf).unwrap();
+        assert_eq!(read, 4);
+        assert_eq!(buf, [0, 0, 0, 0]);
     }
 
     #[test]

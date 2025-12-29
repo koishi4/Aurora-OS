@@ -2945,11 +2945,8 @@ fn read_from_entry(fd: usize, entry: FdEntry, root_pa: usize, buf: usize, len: u
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             read_console_into(root_pa, buf, len, nonblock)
         }
-        FdKind::DevNull => Ok(0),
-        FdKind::DevZero => {
-            zero_user_write(root_pa, buf, len)?;
-            Ok(len)
-        }
+        FdKind::DevNull => read_memfs_device(root_pa, memfs::DEV_NULL_ID, buf, len),
+        FdKind::DevZero => read_memfs_device(root_pa, memfs::DEV_ZERO_ID, buf, len),
         FdKind::InitFile => read_init_file(fd, root_pa, buf, len),
         FdKind::PipeRead(pipe_id) => {
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
@@ -2988,6 +2985,33 @@ fn read_init_file(fd: usize, root_pa: usize, buf: usize, len: usize) -> Result<u
         remaining = remaining.saturating_sub(read);
     }
     set_fd_offset(fd, offset + total);
+    Ok(total)
+}
+
+fn read_memfs_device(root_pa: usize, inode: InodeId, buf: usize, len: usize) -> Result<usize, Errno> {
+    if len == 0 {
+        return Ok(0);
+    }
+    let fs = memfs::MemFs::with_init_image(init_memfile_image());
+    let mut total = 0usize;
+    let mut remaining = len;
+    let mut scratch = [0u8; 256];
+    while remaining > 0 {
+        let chunk = min(remaining, scratch.len());
+        let read = match fs.read_at(inode, 0, &mut scratch[..chunk]) {
+            Ok(read) => read,
+            Err(_) => return Err(Errno::Badf),
+        };
+        if read == 0 {
+            break;
+        }
+        let dst = buf.checked_add(total).ok_or(Errno::Fault)?;
+        UserSlice::new(dst, read)
+            .copy_from_slice(root_pa, &scratch[..read])
+            .ok_or(Errno::Fault)?;
+        total += read;
+        remaining = remaining.saturating_sub(read);
+    }
     Ok(total)
 }
 

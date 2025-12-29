@@ -83,6 +83,7 @@
 - Route /init reads through memfs read_at with the embedded ELF image.
 - Route fstat metadata for pseudo nodes through memfs.
 - Add memfs parent resolution to validate create/unlink/rename parents.
+- Add memfs read support for /dev/null and /dev/zero.
 - Extend USER_TEST to cover getdents64 on / and /dev.
 - Extend USER_TEST to cover clone tid writeback validation.
 - Build clone_user_root from kernel mappings to avoid sharing parent page tables.
