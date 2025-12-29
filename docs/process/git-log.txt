@@ -1,4 +1,25 @@
-* commit e17d7751886d1202ed3ca74ed536ee2ca15a2c47 (HEAD -> bootstrap-riscv64)
+* commit 3e884f88bebdbb1fdd34754ae55b9058399d2a4b (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:39:32 +0800
+| 
+|     feat(syscall): add faccessat stub
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 16 ++++++++++++++++
+|  4 files changed, 19 insertions(+), 3 deletions(-)
+| 
+* commit 2fee6386391ebbc65e2269a78dd842dc9d7e0928
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:20:51 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit e17d7751886d1202ed3ca74ed536ee2ca15a2c47
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 12:20:33 +0800
 | 
