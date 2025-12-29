@@ -54,3 +54,4 @@
 - Add set_tid_address stub with pointer validation.
 - Add close stub for stdio fds.
 - Add getrlimit/prlimit64 stubs with default limits.
+- Add ioctl TIOCGWINSZ stub with default 80x24.

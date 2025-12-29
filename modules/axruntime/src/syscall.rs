@@ -72,6 +72,7 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_CLOSE => sys_close(ctx.args[0]),
         SYS_GETRLIMIT => sys_getrlimit(ctx.args[0], ctx.args[1]),
         SYS_PRLIMIT64 => sys_prlimit64(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_IOCTL => sys_ioctl(ctx.args[0], ctx.args[1], ctx.args[2]),
         _ => Err(Errno::NoSys),
     }
 }
@@ -86,6 +87,9 @@ const SYS_GETCWD: usize = 17;
 const SYS_CLOSE: usize = 57;
 const SYS_GETRLIMIT: usize = 163;
 const SYS_PRLIMIT64: usize = 261;
+const SYS_IOCTL: usize = 29;
+
+const TIOCGWINSZ: usize = 0x5413;
 const SYS_CLOCK_GETTIME: usize = 113;
 const SYS_CLOCK_GETTIME64: usize = 403;
 const SYS_GETTIMEOFDAY: usize = 169;
@@ -148,6 +152,15 @@ struct Utsname {
 struct Rlimit {
     rlim_cur: u64,
     rlim_max: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Winsize {
+    ws_row: u16,
+    ws_col: u16,
+    ws_xpixel: u16,
+    ws_ypixel: u16,
 }
 
 fn sys_exit(_code: usize) -> Result<usize, Errno> {
@@ -440,6 +453,30 @@ fn sys_prlimit64(_pid: usize, _resource: usize, new_rlim: usize, old_rlim: usize
             .write(root_pa, default_rlimit())
             .ok_or(Errno::Fault)?;
     }
+    Ok(0)
+}
+
+fn sys_ioctl(fd: usize, cmd: usize, arg: usize) -> Result<usize, Errno> {
+    if fd > 2 {
+        return Err(Errno::Badf);
+    }
+    if cmd != TIOCGWINSZ {
+        return Err(Errno::Inval);
+    }
+    if arg == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let winsz = Winsize {
+        ws_row: 24,
+        ws_col: 80,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    UserPtr::new(arg).write(root_pa, winsz).ok_or(Errno::Fault)?;
     Ok(0)
 }
 
