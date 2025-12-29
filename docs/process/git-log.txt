@@ -1,4 +1,25 @@
-* commit 93cef623e70cdeac2a69391fe65ee57fbf86a3bc (HEAD -> bootstrap-riscv64)
+* commit 20332bbc3fd5fbf633b8258ebd970b0813081131 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:27:03 +0800
+| 
+|     test(user): cover clone tid writeback
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/10_testing_benchmark.md     |  2 +-
+|  docs/process/phase_3_process_syscall.md |  4 +-
+|  modules/axruntime/src/user.rs           | 63 ++++++++++++++++++-------------
+|  4 files changed, 41 insertions(+), 29 deletions(-)
+| 
+* commit 79f43ddb3829341dab04b15ea4174e55a8cbd7ba
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:17:30 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 93cef623e70cdeac2a69391fe65ee57fbf86a3bc
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 19:17:09 +0800
 | 
