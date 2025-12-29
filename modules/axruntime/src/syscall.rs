@@ -64,11 +64,13 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_GETTID => sys_gettid(),
         SYS_SCHED_YIELD => sys_sched_yield(),
         SYS_UNAME => sys_uname(ctx.args[0]),
+        SYS_EXIT_GROUP => sys_exit_group(ctx.args[0]),
         _ => Err(Errno::NoSys),
     }
 }
 
 const SYS_EXIT: usize = 93;
+const SYS_EXIT_GROUP: usize = 94;
 const SYS_READ: usize = 63;
 const SYS_WRITE: usize = 64;
 const SYS_READV: usize = 65;
@@ -130,6 +132,10 @@ struct Utsname {
 
 fn sys_exit(_code: usize) -> Result<usize, Errno> {
     crate::sbi::shutdown();
+}
+
+fn sys_exit_group(code: usize) -> Result<usize, Errno> {
+    sys_exit(code)
 }
 
 fn sys_read(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {

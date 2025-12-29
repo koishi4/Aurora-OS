@@ -48,3 +48,4 @@
 - Add uname syscall stub with minimal utsname fields.
 - Add minimal getppid/getuid/geteuid/getgid/getegid stubs.
 - Add gettid and sched_yield stubs.
+- Add exit_group stub aligned with exit shutdown.
