@@ -143,6 +143,13 @@ pub fn set_kernel_stack(sp: usize) {
     }
 }
 
+pub fn set_user_stack(sp: usize) {
+    // SAFETY: caller provides a valid user stack pointer.
+    unsafe {
+        write_sscratch(sp);
+    }
+}
+
 pub fn current_sp() -> usize {
     read_sp()
 }

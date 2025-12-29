@@ -53,6 +53,7 @@
 - Add poll/ppoll stubs that report pipe readiness, block on a single pipe fd, and use a shared wait queue with periodic rescans for multi-fd waits.
 - Add console input stash and polling readiness for stdin; USER_TEST now covers pipe poll readiness.
 - Enable timer-driven preemption by returning running tasks to the run queue and scheduling from idle.
+- Add execve stub for `/init` built-in image with stack reset.
 - Track O_NONBLOCK via fcntl and honor it for pipe reads/writes.
 - Add uname syscall stub with minimal utsname fields.
 - Add minimal getppid/getuid/geteuid/getgid/getegid/getresuid/getresgid stubs.

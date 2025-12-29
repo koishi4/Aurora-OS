@@ -48,7 +48,7 @@ impl SyscallContext {
 
 pub fn handle_syscall(tf: &mut TrapFrame) {
     let ctx = SyscallContext::from_trap_frame(tf);
-    let ret = dispatch(ctx);
+    let ret = dispatch(tf, ctx);
     tf.a0 = match ret {
         Ok(value) => value,
         Err(err) => err.to_ret(),
@@ -56,9 +56,10 @@ pub fn handle_syscall(tf: &mut TrapFrame) {
     tf.sepc = tf.sepc.wrapping_add(4);
 }
 
-fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
+fn dispatch(tf: &mut TrapFrame, ctx: SyscallContext) -> Result<usize, Errno> {
     match ctx.nr {
         SYS_EXIT => sys_exit(ctx.args[0]),
+        SYS_EXECVE => sys_execve(tf, ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_READ => sys_read(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_WRITE => sys_write(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_READV => sys_readv(ctx.args[0], ctx.args[1], ctx.args[2]),
@@ -143,6 +144,7 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
 
 const SYS_EXIT: usize = 93;
 const SYS_EXIT_GROUP: usize = 94;
+const SYS_EXECVE: usize = 221;
 const SYS_READ: usize = 63;
 const SYS_WRITE: usize = 64;
 const SYS_READV: usize = 65;
@@ -255,6 +257,7 @@ const PIPE_BUFFER_SIZE: usize = 512;
 const DEV_NULL_PATH: &[u8] = b"/dev/null";
 const DEV_ZERO_PATH: &[u8] = b"/dev/zero";
 const ROOT_PATH: &[u8] = b"/";
+const INIT_PATH: &[u8] = b"/init";
 const SIG_BLOCK: usize = 0;
 const SIG_UNBLOCK: usize = 1;
 const SIG_SETMASK: usize = 2;
@@ -547,6 +550,30 @@ fn sys_exit(_code: usize) -> Result<usize, Errno> {
 
 fn sys_exit_group(code: usize) -> Result<usize, Errno> {
     sys_exit(code)
+}
+
+fn sys_execve(tf: &mut TrapFrame, pathname: usize, argv: usize, envp: usize) -> Result<usize, Errno> {
+    if pathname == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    validate_user_path(root_pa, pathname)?;
+    validate_user_ptr_list(root_pa, argv)?;
+    validate_user_ptr_list(root_pa, envp)?;
+    if !user_path_eq(root_pa, pathname, INIT_PATH)? {
+        return Err(Errno::NoEnt);
+    }
+    let ctx = crate::user::load_user_image(root_pa).ok_or(Errno::NoEnt)?;
+    // execve 成功后不返回，更新入口与用户栈并清理参数寄存器。
+    tf.sepc = ctx.entry.wrapping_sub(4);
+    tf.a0 = 0;
+    tf.a1 = 0;
+    tf.a2 = 0;
+    crate::trap::set_user_stack(ctx.user_sp);
+    Ok(0)
 }
 
 fn sys_read(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
@@ -1918,6 +1945,17 @@ fn validate_user_path(root_pa: usize, path: usize) -> Result<(), Errno> {
     }
     // 只读取首字节，确保指针可访问，避免提前扫描整条路径。
     read_user_byte(root_pa, path)?;
+    Ok(())
+}
+
+fn validate_user_ptr_list(root_pa: usize, ptr: usize) -> Result<(), Errno> {
+    if ptr == 0 {
+        return Ok(());
+    }
+    let size = size_of::<usize>();
+    if mm::translate_user_ptr(root_pa, ptr, size, UserAccess::Read).is_none() {
+        return Err(Errno::Fault);
+    }
     Ok(())
 }
 

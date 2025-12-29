@@ -87,14 +87,43 @@ pub fn prepare_user_test() -> Option<UserContext> {
     if root_pa == 0 {
         return None;
     }
+    load_user_image(root_pa)
+}
 
-    let code_frame = mm::alloc_frame()?;
-    let data_frame = mm::alloc_frame()?;
-    let stack_frame = mm::alloc_frame()?;
-    let code_pa = code_frame.addr().as_usize();
-    let data_pa = data_frame.addr().as_usize();
-    let stack_pa = stack_frame.addr().as_usize();
+pub fn load_user_image(root_pa: usize) -> Option<UserContext> {
+    let code_pa = ensure_user_page(root_pa, USER_CODE_VA, mm::UserAccess::Read, mm::map_user_code)?;
+    let data_pa = ensure_user_page(root_pa, USER_DATA_VA, mm::UserAccess::Write, mm::map_user_data)?;
+    let stack_pa = ensure_user_page(root_pa, USER_STACK_VA, mm::UserAccess::Write, mm::map_user_stack)?;
 
+    init_user_image(code_pa, data_pa, stack_pa);
+    mm::flush_icache();
+    mm::flush_tlb();
+
+    Some(UserContext {
+        entry: USER_CODE_VA,
+        user_sp: USER_STACK_VA + USER_STACK_SIZE,
+        satp: mm::satp_for_root(root_pa),
+    })
+}
+
+fn ensure_user_page(
+    root_pa: usize,
+    va: usize,
+    access: mm::UserAccess,
+    map_fn: fn(usize, usize, usize) -> bool,
+) -> Option<usize> {
+    if let Some(pa) = mm::translate_user_ptr(root_pa, va, 1, access) {
+        return Some(pa);
+    }
+    let frame = mm::alloc_frame()?;
+    let pa = frame.addr().as_usize();
+    if !map_fn(root_pa, va, pa) {
+        return None;
+    }
+    Some(pa)
+}
+
+fn init_user_image(code_pa: usize, data_pa: usize, stack_pa: usize) {
     // SAFETY: frames are identity-mapped; code/data fit in a single page each.
     unsafe {
         ptr::copy_nonoverlapping(USER_CODE.as_ptr(), code_pa as *mut u8, USER_CODE.len());
@@ -131,22 +160,4 @@ pub fn prepare_user_test() -> Option<UserContext> {
             revents: 0,
         });
     }
-    mm::flush_icache();
-
-    if !mm::map_user_code(root_pa, USER_CODE_VA, code_pa) {
-        return None;
-    }
-    if !mm::map_user_data(root_pa, USER_DATA_VA, data_pa) {
-        return None;
-    }
-    if !mm::map_user_stack(root_pa, USER_STACK_VA, stack_pa) {
-        return None;
-    }
-    mm::flush_tlb();
-
-    Some(UserContext {
-        entry: USER_CODE_VA,
-        user_sp: USER_STACK_VA + USER_STACK_SIZE,
-        satp: mm::satp_for_root(root_pa),
-    })
 }
