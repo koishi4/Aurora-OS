@@ -98,6 +98,7 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_SETPGID => sys_setpgid(ctx.args[0], ctx.args[1]),
         SYS_GETPGID => sys_getpgid(ctx.args[0]),
         SYS_SETSID => sys_setsid(),
+        SYS_GETSID => sys_getsid(ctx.args[0]),
         SYS_GETPGRP => sys_getpgrp(),
         SYS_SETPGRP => sys_setpgrp(),
         _ => Err(Errno::NoSys),
@@ -133,6 +134,7 @@ const SYS_GETRUSAGE: usize = 165;
 const SYS_SETPGID: usize = 154;
 const SYS_GETPGID: usize = 155;
 const SYS_SETSID: usize = 157;
+const SYS_GETSID: usize = 156;
 const SYS_GETPGRP: usize = 111;
 const SYS_SETPGRP: usize = 112;
 
@@ -1127,6 +1129,10 @@ fn sys_getpgid(_pid: usize) -> Result<usize, Errno> {
 }
 
 fn sys_setsid() -> Result<usize, Errno> {
+    Ok(current_pid())
+}
+
+fn sys_getsid(_pid: usize) -> Result<usize, Errno> {
     Ok(current_pid())
 }
 
