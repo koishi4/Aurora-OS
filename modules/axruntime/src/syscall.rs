@@ -65,6 +65,7 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_GETEGID => sys_getegid(),
         SYS_GETTID => sys_gettid(),
         SYS_SCHED_YIELD => sys_sched_yield(),
+        SYS_SET_TID_ADDRESS => sys_set_tid_address(ctx.args[0]),
         SYS_UNAME => sys_uname(ctx.args[0]),
         SYS_EXIT_GROUP => sys_exit_group(ctx.args[0]),
         SYS_GETCWD => sys_getcwd(ctx.args[0], ctx.args[1]),
@@ -90,6 +91,7 @@ const SYS_GETGID: usize = 176;
 const SYS_GETEGID: usize = 177;
 const SYS_GETTID: usize = 178;
 const SYS_SCHED_YIELD: usize = 124;
+const SYS_SET_TID_ADDRESS: usize = 96;
 const SYS_UNAME: usize = 160;
 
 const CLOCK_REALTIME: usize = 0;
@@ -326,6 +328,21 @@ fn sys_gettid() -> Result<usize, Errno> {
 fn sys_sched_yield() -> Result<usize, Errno> {
     crate::runtime::yield_now();
     Ok(0)
+}
+
+fn sys_set_tid_address(tidptr: usize) -> Result<usize, Errno> {
+    if tidptr == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let size = size_of::<usize>();
+    if mm::translate_user_ptr(root_pa, tidptr, size, UserAccess::Write).is_none() {
+        return Err(Errno::Fault);
+    }
+    Ok(1)
 }
 
 fn sys_uname(buf: usize) -> Result<usize, Errno> {

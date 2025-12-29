@@ -51,3 +51,4 @@
 - Add exit_group stub aligned with exit shutdown.
 - Add clock_gettime64 alias to clock_gettime stub.
 - Add getcwd stub returning root path.
+- Add set_tid_address stub with pointer validation.
