@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
+use core::cmp::min;
 use core::mem::size_of;
+use core::sync::atomic::{AtomicU64, Ordering};
 
 use crate::mm::{self, UserAccess, UserPtr, UserSlice};
 use crate::{sbi, time};
@@ -75,6 +77,7 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_PRLIMIT64 => sys_prlimit64(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_IOCTL => sys_ioctl(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_SYSINFO => sys_sysinfo(ctx.args[0]),
+        SYS_GETRANDOM => sys_getrandom(ctx.args[0], ctx.args[1], ctx.args[2]),
         _ => Err(Errno::NoSys),
     }
 }
@@ -90,6 +93,7 @@ const SYS_CLOSE: usize = 57;
 const SYS_GETRLIMIT: usize = 163;
 const SYS_PRLIMIT64: usize = 261;
 const SYS_IOCTL: usize = 29;
+const SYS_GETRANDOM: usize = 278;
 
 const TIOCGWINSZ: usize = 0x5413;
 const SYS_CLOCK_GETTIME: usize = 113;
@@ -111,6 +115,8 @@ const SYS_UNAME: usize = 160;
 const CLOCK_REALTIME: usize = 0;
 const CLOCK_MONOTONIC: usize = 1;
 const IOV_MAX: usize = 1024;
+
+static RNG_STATE: AtomicU64 = AtomicU64::new(0);
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -564,6 +570,43 @@ fn sys_sysinfo(info: usize) -> Result<usize, Errno> {
     Ok(0)
 }
 
+fn sys_getrandom(buf: usize, len: usize, _flags: usize) -> Result<usize, Errno> {
+    if len == 0 {
+        return Ok(0);
+    }
+    if buf == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let slice = UserSlice::new(buf, len);
+    let mut written = 0usize;
+    slice
+        .for_each_chunk(root_pa, UserAccess::Write, |pa, chunk| {
+            let mut offset = 0usize;
+            while offset < chunk {
+                let rand = rng_next();
+                let bytes = rand.to_le_bytes();
+                let copy_len = min(bytes.len(), chunk - offset);
+                // SAFETY: 翻译结果确保该片段在用户态可写。
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        bytes.as_ptr(),
+                        (pa as *mut u8).add(offset),
+                        copy_len,
+                    );
+                }
+                offset += copy_len;
+            }
+            written += chunk;
+            Some(())
+        })
+        .ok_or(Errno::Fault)?;
+    Ok(written)
+}
+
 fn load_iovec(root_pa: usize, iov_ptr: usize, index: usize) -> Result<Iovec, Errno> {
     let size = size_of::<Iovec>();
     let offset = index.checked_mul(size).ok_or(Errno::Fault)?;
@@ -583,6 +626,34 @@ fn default_rlimit() -> Rlimit {
         rlim_cur: u64::MAX,
         rlim_max: u64::MAX,
     }
+}
+
+fn rng_next() -> u64 {
+    let mut state = RNG_STATE.load(Ordering::Relaxed);
+    if state == 0 {
+        state = rng_seed();
+    }
+    loop {
+        let mut x = state;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        match RNG_STATE.compare_exchange(state, x, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return x,
+            Err(cur) => {
+                state = cur;
+                if state == 0 {
+                    state = rng_seed();
+                }
+            }
+        }
+    }
+}
+
+fn rng_seed() -> u64 {
+    let tick = time::ticks();
+    let addr = &RNG_STATE as *const _ as u64;
+    tick ^ addr ^ (tick << 32)
 }
 
 fn read_console_into(root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
