@@ -83,6 +83,7 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_FCHMODAT => sys_fchmodat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_FCHOWNAT => sys_fchownat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
         SYS_UTIMENSAT => sys_utimensat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_POLL => sys_poll(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_PPOLL => sys_ppoll(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
         SYS_PPOLL_TIME64 => sys_ppoll(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
         SYS_CLOCK_GETTIME => sys_clock_gettime(ctx.args[0], ctx.args[1]),
@@ -166,6 +167,7 @@ const SYS_FCHMODAT: usize = 53;
 const SYS_FCHOWNAT: usize = 54;
 const SYS_UTIMENSAT: usize = 88;
 const SYS_RENAMEAT2: usize = 276;
+const SYS_POLL: usize = 7;
 const SYS_PPOLL: usize = 73;
 const SYS_PPOLL_TIME64: usize = 414;
 const SYS_GETCWD: usize = 17;
@@ -1017,67 +1019,28 @@ fn sys_utimensat(dirfd: usize, pathname: usize, times: usize, flags: usize) -> R
     }
 }
 
-fn sys_ppoll(fds: usize, nfds: usize, tmo: usize, _sigmask: usize, _sigsetsize: usize) -> Result<usize, Errno> {
-    if nfds == 0 {
-        return Ok(0);
-    }
-    if fds == 0 {
-        return Err(Errno::Fault);
-    }
+fn sys_poll(fds: usize, nfds: usize, timeout: usize) -> Result<usize, Errno> {
+    // poll 的 timeout 为有符号毫秒，负值表示无限期等待。
+    let timeout = timeout as isize;
+    let timeout_ms = if timeout < 0 {
+        None
+    } else {
+        Some(timeout as u64)
+    };
     let root_pa = mm::current_root_pa();
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    let stride = size_of::<PollFd>();
-    let total = nfds.checked_mul(stride).ok_or(Errno::Fault)?;
-    validate_user_read(root_pa, fds, total)?;
-    validate_user_write(root_pa, fds, total)?;
-    let (ready, single) = ppoll_scan(root_pa, fds, nfds)?;
-    if ready > 0 || !can_block_current() {
-        return Ok(ready);
+    ppoll_wait(root_pa, fds, nfds, timeout_ms)
+}
+
+fn sys_ppoll(fds: usize, nfds: usize, tmo: usize, _sigmask: usize, _sigsetsize: usize) -> Result<usize, Errno> {
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
     }
     let timeout_ms = ppoll_timeout_ms(root_pa, tmo)?;
-    if let Some(0) = timeout_ms {
-        return Ok(0);
-    }
-    if nfds == 1 {
-        if let Some((fd, events)) = single {
-            if let Some(queue) = ppoll_single_waiter_queue(fd, events) {
-                if let Some(timeout_ms) = timeout_ms {
-                    let _ = crate::runtime::wait_timeout_ms(queue, timeout_ms);
-                } else {
-                    crate::runtime::block_current(queue);
-                }
-                let (ready_after, _) = ppoll_scan(root_pa, fds, nfds)?;
-                return Ok(ready_after);
-            }
-        }
-    }
-    // 多 fd 情况使用简单的 sleep-retry 轮询，避免引入复杂的多队列等待。
-    let mut remaining_ms = timeout_ms;
-    loop {
-        let sleep_ms = match remaining_ms {
-            Some(0) => return Ok(0),
-            Some(ms) => core::cmp::min(ms, PPOLL_RETRY_SLEEP_MS),
-            None => PPOLL_RETRY_SLEEP_MS,
-        };
-        if sleep_ms == 0 {
-            return Ok(0);
-        }
-        if !crate::runtime::sleep_current_ms(sleep_ms) {
-            return Ok(0);
-        }
-        if let Some(ms) = remaining_ms {
-            remaining_ms = Some(ms.saturating_sub(sleep_ms));
-        }
-        let (ready_retry, _) = ppoll_scan(root_pa, fds, nfds)?;
-        if ready_retry > 0 {
-            return Ok(ready_retry);
-        }
-        if !can_block_current() {
-            return Ok(0);
-        }
-    }
+    ppoll_wait(root_pa, fds, nfds, timeout_ms)
 }
 
 fn sys_clock_gettime(clock_id: usize, tp: usize) -> Result<usize, Errno> {
@@ -2433,6 +2396,91 @@ fn poll_revents_for_fd(fd: i32, events: u16) -> u16 {
             revents
         }
         _ => 0,
+    }
+}
+
+fn ppoll_wait(root_pa: usize, fds: usize, nfds: usize, timeout_ms: Option<u64>) -> Result<usize, Errno> {
+    if nfds == 0 {
+        return ppoll_sleep_only(timeout_ms);
+    }
+    if fds == 0 {
+        return Err(Errno::Fault);
+    }
+    let stride = size_of::<PollFd>();
+    let total = nfds.checked_mul(stride).ok_or(Errno::Fault)?;
+    validate_user_read(root_pa, fds, total)?;
+    validate_user_write(root_pa, fds, total)?;
+    let (ready, single) = ppoll_scan(root_pa, fds, nfds)?;
+    if ready > 0 || !can_block_current() {
+        return Ok(ready);
+    }
+    if let Some(0) = timeout_ms {
+        return Ok(0);
+    }
+    if nfds == 1 {
+        if let Some((fd, events)) = single {
+            if let Some(queue) = ppoll_single_waiter_queue(fd, events) {
+                if let Some(timeout_ms) = timeout_ms {
+                    let _ = crate::runtime::wait_timeout_ms(queue, timeout_ms);
+                } else {
+                    crate::runtime::block_current(queue);
+                }
+                let (ready_after, _) = ppoll_scan(root_pa, fds, nfds)?;
+                return Ok(ready_after);
+            }
+        }
+    }
+    // 多 fd 情况使用简单的 sleep-retry 轮询，避免引入复杂的多队列等待。
+    let mut remaining_ms = timeout_ms;
+    loop {
+        let sleep_ms = match remaining_ms {
+            Some(0) => return Ok(0),
+            Some(ms) => core::cmp::min(ms, PPOLL_RETRY_SLEEP_MS),
+            None => PPOLL_RETRY_SLEEP_MS,
+        };
+        if sleep_ms == 0 {
+            return Ok(0);
+        }
+        if !crate::runtime::sleep_current_ms(sleep_ms) {
+            return Ok(0);
+        }
+        if let Some(ms) = remaining_ms {
+            remaining_ms = Some(ms.saturating_sub(sleep_ms));
+        }
+        let (ready_retry, _) = ppoll_scan(root_pa, fds, nfds)?;
+        if ready_retry > 0 {
+            return Ok(ready_retry);
+        }
+        if !can_block_current() {
+            return Ok(0);
+        }
+    }
+}
+
+fn ppoll_sleep_only(timeout_ms: Option<u64>) -> Result<usize, Errno> {
+    // nfds=0 作为睡眠路径，复用调度器的定时阻塞能力。
+    if let Some(0) = timeout_ms {
+        return Ok(0);
+    }
+    if !can_block_current() {
+        return Ok(0);
+    }
+    let mut remaining_ms = timeout_ms;
+    loop {
+        let sleep_ms = match remaining_ms {
+            Some(0) => return Ok(0),
+            Some(ms) => core::cmp::min(ms, PPOLL_RETRY_SLEEP_MS),
+            None => PPOLL_RETRY_SLEEP_MS,
+        };
+        if sleep_ms == 0 {
+            return Ok(0);
+        }
+        if !crate::runtime::sleep_current_ms(sleep_ms) {
+            return Ok(0);
+        }
+        if let Some(ms) = remaining_ms {
+            remaining_ms = Some(ms.saturating_sub(sleep_ms));
+        }
     }
 }
 
