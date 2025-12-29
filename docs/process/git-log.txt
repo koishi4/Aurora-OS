@@ -1,4 +1,25 @@
-* commit 94393cdc1bf64959de05046fa48c35fcfbb77849 (HEAD -> bootstrap-riscv64)
+* commit 0947f3d5002c25f9f979c195798f47a33c4e5cdd (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:23:07 +0800
+| 
+|     feat(syscall): accept TIOCSWINSZ
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 14 ++++++++++++++
+|  4 files changed, 17 insertions(+), 3 deletions(-)
+| 
+* commit 331e38ad3bf6282e520a07ad9d5134a3ba685b9d
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:21:40 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 94393cdc1bf64959de05046fa48c35fcfbb77849
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-29 11:21:29 +0800
 | 
