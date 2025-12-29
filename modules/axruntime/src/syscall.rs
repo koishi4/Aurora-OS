@@ -1378,8 +1378,10 @@ fn sys_futex(
     const FUTEX_WAIT: usize = 0;
     const FUTEX_WAKE: usize = 1;
     const FUTEX_CMD_MASK: usize = 0x7f;
+    const FUTEX_PRIVATE_FLAG: usize = 0x80;
 
     let cmd = op & FUTEX_CMD_MASK;
+    let private = (op & FUTEX_PRIVATE_FLAG) != 0;
     match cmd {
         FUTEX_WAIT => {
             let root_pa = mm::current_root_pa();
@@ -1387,11 +1389,17 @@ fn sys_futex(
                 return Err(Errno::Fault);
             }
             let timeout_ms = futex_timeout_ms(root_pa, timeout)?;
-            futex::wait(root_pa, uaddr, val as u32, timeout_ms)
+            futex::wait(root_pa, uaddr, val as u32, timeout_ms, private)
                 .map(|_| 0)
                 .map_err(map_futex_err)
         }
-        FUTEX_WAKE => futex::wake(uaddr, val).map_err(map_futex_err),
+        FUTEX_WAKE => {
+            let root_pa = mm::current_root_pa();
+            if root_pa == 0 {
+                return Err(Errno::Fault);
+            }
+            futex::wake(root_pa, uaddr, val, private).map_err(map_futex_err)
+        }
         _ => Err(Errno::Inval),
     }
 }

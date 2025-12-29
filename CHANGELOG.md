@@ -66,6 +66,7 @@
 - Support futex timeout with ETIMEDOUT and EAGAIN semantics.
 - Reclaim futex address slots when wait queues become empty.
 - Allow FUTEX_WAKE to wake all waiters when count is large.
+- Key private futex waits by address space to avoid cross-process aliasing.
 - Extend USER_TEST to cover clone tid writeback validation.
 - Build clone_user_root from kernel mappings to avoid sharing parent page tables.
 - Add PTE_COW and page-fault handling to copy pages on first write.

@@ -79,7 +79,7 @@ pub fn exit_current(code: i32) -> bool {
     if root_pa != 0 && clear_tid != 0 {
         // 清零 child_tid 并唤醒 futex 等待者。
         let _ = mm::UserPtr::new(clear_tid).write(root_pa, 0usize);
-        let _ = futex::wake(clear_tid, 1);
+        let _ = futex::wake(root_pa, clear_tid, 1, true);
     }
     // SAFETY: early boot single-hart; process table writes are serialized.
     unsafe {

@@ -6,7 +6,19 @@ use crate::task_wait_queue::TaskWaitQueue;
 
 const MAX_FUTEXES: usize = crate::config::MAX_TASKS;
 
-static mut FUTEX_ADDRS: [usize; MAX_FUTEXES] = [0; MAX_FUTEXES];
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct FutexKey {
+    root_pa: usize,
+    uaddr: usize,
+}
+
+const EMPTY_KEY: FutexKey = FutexKey {
+    root_pa: 0,
+    uaddr: 0,
+};
+
+// root_pa=0 表示共享 futex（不区分地址空间）；私有 futex 使用当前页表作为 key。
+static mut FUTEX_KEYS: [FutexKey; MAX_FUTEXES] = [EMPTY_KEY; MAX_FUTEXES];
 // 与 MAX_TASKS 保持一致，方便在早期固定容量下复用等待队列。
 static FUTEX_WAITERS: [TaskWaitQueue; MAX_FUTEXES] = [
     TaskWaitQueue::new(),
@@ -38,17 +50,24 @@ fn validate_uaddr(uaddr: usize) -> Result<(), FutexError> {
     Ok(())
 }
 
-fn slot_for_wait(uaddr: usize) -> Result<usize, FutexError> {
+fn make_key(root_pa: usize, uaddr: usize, private: bool) -> FutexKey {
+    FutexKey {
+        root_pa: if private { root_pa } else { 0 },
+        uaddr,
+    }
+}
+
+fn slot_for_wait(key: FutexKey) -> Result<usize, FutexError> {
     // SAFETY: single-hart early use; futex table writes are serialized.
     unsafe {
-        for (idx, &addr) in FUTEX_ADDRS.iter().enumerate() {
-            if addr == uaddr {
+        for (idx, &exist) in FUTEX_KEYS.iter().enumerate() {
+            if exist == key {
                 return Ok(idx);
             }
         }
-        for (idx, addr) in FUTEX_ADDRS.iter_mut().enumerate() {
-            if *addr == 0 {
-                *addr = uaddr;
+        for (idx, exist) in FUTEX_KEYS.iter_mut().enumerate() {
+            if exist.uaddr == 0 {
+                *exist = key;
                 return Ok(idx);
             }
         }
@@ -56,11 +75,11 @@ fn slot_for_wait(uaddr: usize) -> Result<usize, FutexError> {
     Err(FutexError::NoMem)
 }
 
-fn slot_for_wake(uaddr: usize) -> Option<usize> {
+fn slot_for_wake(key: FutexKey) -> Option<usize> {
     // SAFETY: single-hart early use; futex table reads are serialized.
     unsafe {
-        for (idx, &addr) in FUTEX_ADDRS.iter().enumerate() {
-            if addr == uaddr {
+        for (idx, &exist) in FUTEX_KEYS.iter().enumerate() {
+            if exist == key {
                 return Some(idx);
             }
         }
@@ -74,7 +93,7 @@ fn clear_slot_if_empty(slot: usize) {
     }
     // SAFETY: single-hart early use; futex table writes are serialized.
     unsafe {
-        FUTEX_ADDRS[slot] = 0;
+        FUTEX_KEYS[slot] = EMPTY_KEY;
     }
 }
 
@@ -83,6 +102,7 @@ pub fn wait(
     uaddr: usize,
     expected: u32,
     timeout_ms: Option<u64>,
+    private: bool,
 ) -> Result<(), FutexError> {
     validate_uaddr(uaddr)?;
     let pa = mm::translate_user_ptr(root_pa, uaddr, 4, UserAccess::Read).ok_or(FutexError::Fault)?;
@@ -94,7 +114,8 @@ pub fn wait(
     if runtime::current_task_id().is_none() {
         return Err(FutexError::Again);
     }
-    let slot = slot_for_wait(uaddr)?;
+    let key = make_key(root_pa, uaddr, private);
+    let slot = slot_for_wait(key)?;
     match timeout_ms {
         Some(0) => Err(FutexError::TimedOut),
         Some(ms) => match runtime::wait_timeout_ms(&FUTEX_WAITERS[slot], ms) {
@@ -115,12 +136,13 @@ pub fn wait(
     }
 }
 
-pub fn wake(uaddr: usize, count: usize) -> Result<usize, FutexError> {
+pub fn wake(root_pa: usize, uaddr: usize, count: usize, private: bool) -> Result<usize, FutexError> {
     validate_uaddr(uaddr)?;
     if count == 0 {
         return Ok(0);
     }
-    let Some(slot) = slot_for_wake(uaddr) else {
+    let key = make_key(root_pa, uaddr, private);
+    let Some(slot) = slot_for_wake(key) else {
         return Ok(0);
     };
     let woke = if count >= crate::config::MAX_TASKS {
