@@ -4,6 +4,7 @@ use core::cmp::min;
 use core::mem::size_of;
 use core::sync::atomic::{AtomicU64, Ordering};
 
+use crate::futex;
 use crate::mm::{self, UserAccess, UserPtr, UserSlice};
 use crate::{sbi, time};
 use crate::trap::TrapFrame;
@@ -118,6 +119,7 @@ fn dispatch(tf: &mut TrapFrame, ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_IOCTL => sys_ioctl(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_SYSINFO => sys_sysinfo(ctx.args[0]),
         SYS_GETRANDOM => sys_getrandom(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_FUTEX => sys_futex(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4], ctx.args[5]),
         SYS_FSTAT => sys_fstat(ctx.args[0], ctx.args[1]),
         SYS_DUP => sys_dup(ctx.args[0]),
         SYS_DUP3 => sys_dup3(ctx.args[0], ctx.args[1], ctx.args[2]),
@@ -186,6 +188,7 @@ const SYS_PRLIMIT64: usize = 261;
 const SYS_IOCTL: usize = 29;
 const SYS_GETRANDOM: usize = 278;
 const SYS_FSTAT: usize = 80;
+const SYS_FUTEX: usize = 98;
 const SYS_DUP: usize = 23;
 const SYS_DUP3: usize = 24;
 const SYS_SET_ROBUST_LIST: usize = 99;
@@ -1363,6 +1366,32 @@ fn sys_set_tid_address(tidptr: usize) -> Result<usize, Errno> {
     Ok(current_pid())
 }
 
+fn sys_futex(
+    uaddr: usize,
+    op: usize,
+    val: usize,
+    timeout: usize,
+    _uaddr2: usize,
+    _val3: usize,
+) -> Result<usize, Errno> {
+    const FUTEX_WAIT: usize = 0;
+    const FUTEX_WAKE: usize = 1;
+    const FUTEX_CMD_MASK: usize = 0x7f;
+
+    let cmd = op & FUTEX_CMD_MASK;
+    match cmd {
+        FUTEX_WAIT => {
+            let root_pa = mm::current_root_pa();
+            if root_pa == 0 {
+                return Err(Errno::Fault);
+            }
+            futex::wait(root_pa, uaddr, val as u32, timeout).map(|_| 0).map_err(map_futex_err)
+        }
+        FUTEX_WAKE => futex::wake(uaddr, val).map_err(map_futex_err),
+        _ => Err(Errno::Inval),
+    }
+}
+
 fn sys_uname(buf: usize) -> Result<usize, Errno> {
     if buf == 0 {
         return Err(Errno::Fault);
@@ -2047,6 +2076,15 @@ fn validate_user_ptr_list(root_pa: usize, ptr: usize) -> Result<(), Errno> {
         return Err(Errno::Fault);
     }
     Ok(())
+}
+
+fn map_futex_err(err: futex::FutexError) -> Errno {
+    match err {
+        futex::FutexError::Fault => Errno::Fault,
+        futex::FutexError::Again => Errno::Again,
+        futex::FutexError::Inval => Errno::Inval,
+        futex::FutexError::NoMem => Errno::NoMem,
+    }
 }
 
 fn classify_path(root_pa: usize, path: usize) -> Result<Option<KnownPath>, Errno> {

@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use crate::futex;
 use crate::mm;
 use crate::runtime;
 use crate::syscall::Errno;
@@ -76,8 +77,9 @@ pub fn exit_current(code: i32) -> bool {
         )
     };
     if root_pa != 0 && clear_tid != 0 {
-        // 清零 child_tid（futex 唤醒未实现，后续补齐）。
+        // 清零 child_tid 并唤醒 futex 等待者。
         let _ = mm::UserPtr::new(clear_tid).write(root_pa, 0usize);
+        let _ = futex::wake(clear_tid, 1);
     }
     // SAFETY: early boot single-hart; process table writes are serialized.
     unsafe {

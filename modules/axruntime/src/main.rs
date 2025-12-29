@@ -12,6 +12,7 @@ mod sleep;
 mod sleep_queue;
 mod wait;
 mod wait_queue;
+mod futex;
 mod syscall;
 mod user;
 mod task_wait_queue;
