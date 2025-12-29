@@ -1,21 +1,45 @@
 # 05_syscall_abi.md
 
 ## 目标
-- TODO: syscall 设计、errno 映射、兼容性策略。
+- 明确 syscall ABI 与寄存器约定，保证与 Linux 语义一致。
+- 定义统一的 syscall 分发入口与 errno 映射策略。
+- 约束用户态指针与缓冲区访问，避免越权或内核崩溃。
 
 ## 设计
-- TODO: ABI 寄存器约定、号表管理、兼容层。
+- 遵循目标架构的 Linux syscall ABI 约定：寄存器传参、返回值与错误码格式保持一致。
+- 将 ABI 细节下沉到架构层（如 `arch/*/syscall.rs`），内核核心只依赖 `SyscallAbi` 抽象。
+- syscall 分发采用静态表（数组/切片）索引，避免早期动态分配。
+- 统一 errno 处理：内核内部使用 `Result<usize, Errno>`，出口转换为 `-errno` 返回给用户态。
+- 用户态内存访问通过 `UserPtr`/`UserSlice` 等封装校验范围与页表映射（后续与 mm 子系统对接）。
+- 兼容层为关键 syscall 提供 Linux 语义对齐（如 `getdents64`/`ioctl`/`pipe2`/`dup3`）。
 
 ## 关键数据结构
-- TODO: SyscallTable、Errno 映射表。
+- `SyscallAbi`：抽象获取 syscall 号与参数、设置返回值与 `sepc` 前进。
+- `SyscallTable`：以 syscall 号为索引的处理函数表（`fn(SyscallCtx) -> Result<usize, Errno>`）。
+- `Errno`：错误码枚举与 Linux 对齐映射（用于转换为 `-errno`）。
+- `SyscallCtx`：保存 syscall 号、参数切片、调用进程/线程上下文引用。
 
 ## 关键流程图或伪代码
 ```text
-TODO: syscall_entry -> dispatch -> return。
+trap_entry
+  -> save TrapFrame
+  -> if scause == ecall from U-mode:
+       ctx = SyscallAbi::from_trapframe(tf)
+       ret = syscall_dispatch(ctx)
+       SyscallAbi::write_return(tf, ret)
+       advance sepc
+  -> restore TrapFrame
+  -> sret
 ```
 
 ## 风险与权衡
-- TODO: 兼容性与维护成本。
+- ABI 细节错配会导致用户态程序崩溃，需严格对齐 Linux 文档。
+- syscall 覆盖面大，维护成本高，需要持续回归测试。
+- 用户态指针检查不完善会引入安全问题或内核崩溃。
 
 ## 测试点
-- TODO: oscomp 关键 syscalls 覆盖。
+- 基础 syscall：`read/write/open/close` 的返回值与 errno 行为。
+- 目录与文件：`getdents64`、`stat`、`fstat` 的结构体布局与字段。
+- 管道与重定向：`pipe2`、`dup3` 语义对齐。
+- 终端控制：`ioctl` 的常用命令（tty、窗口大小）。
+- 竞赛测例：busybox、bash、git、gcc、rustc 的关键路径回归。
