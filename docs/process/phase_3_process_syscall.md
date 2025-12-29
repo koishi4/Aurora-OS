@@ -26,6 +26,7 @@
 - trap 支持 U-mode ecall 分发，syscall dispatcher 骨架完成。
 - trap 入口通过 sscratch 交换内核栈，保证 U-mode trap 使用内核栈。
 - 添加用户态测试映射与 enter_user 入口，用于验证 ecall 路径。
+- 实现最小 sys_write：翻译用户指针并输出到控制台。
 
 ## 问题与定位
 - 调度仍处于占位阶段，尚未引入用户态/系统调用上下文保存。

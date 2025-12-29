@@ -5,9 +5,10 @@ use core::cmp::{max, min};
 use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-const PAGE_SIZE: usize = 4096;
+pub const PAGE_SIZE: usize = 4096;
 const PAGE_SHIFT: usize = 12;
 const PAGE_SIZE_2M: usize = 1 << 21;
+const PAGE_SIZE_1G: usize = 1 << 30;
 const SV39_LEVELS: usize = 3;
 const SV39_ENTRIES: usize = 512;
 
@@ -252,12 +253,25 @@ pub fn alloc_frame() -> Option<PhysPageNum> {
     if !FRAME_ALLOC_READY.load(Ordering::Acquire) {
         return None;
     }
-    // Safety: initialized once in init_frame_allocator before any allocations.
+    // SAFETY: initialized once in init_frame_allocator before any allocations.
     unsafe { FRAME_ALLOC.assume_init_ref().alloc() }
+}
+
+#[derive(Clone, Copy)]
+pub enum UserAccess {
+    Read,
+    Write,
+    Execute,
 }
 
 pub fn kernel_root_pa() -> usize {
     KERNEL_ROOT_PA.load(Ordering::Relaxed)
+}
+
+pub fn current_root_pa() -> usize {
+    let satp = read_satp();
+    let ppn = satp & PPN_MASK;
+    ppn << PAGE_SHIFT
 }
 
 pub fn satp_for_root(root_pa: usize) -> usize {
@@ -265,24 +279,76 @@ pub fn satp_for_root(root_pa: usize) -> usize {
 }
 
 pub fn flush_tlb() {
-    // Safety: sfence.vma is safe to issue after updating page tables.
+    // SAFETY: sfence.vma is safe to issue after updating page tables.
     unsafe {
         asm!("sfence.vma");
     }
 }
 
 pub fn flush_icache() {
-    // Safety: fence.i syncs instruction stream after writing code.
+    // SAFETY: fence.i syncs instruction stream after writing code.
     unsafe {
         asm!("fence.i");
     }
+}
+
+pub fn translate_user_ptr(root_pa: usize, va: usize, len: usize, access: UserAccess) -> Option<usize> {
+    let (pa_base, page_size, flags) = walk_page(root_pa, va)?;
+    if (flags & PTE_U) == 0 {
+        return None;
+    }
+    match access {
+        UserAccess::Read if (flags & PTE_R) == 0 => return None,
+        UserAccess::Write if (flags & PTE_W) == 0 => return None,
+        UserAccess::Execute if (flags & PTE_X) == 0 => return None,
+        _ => {}
+    }
+    let offset = va & (page_size - 1);
+    if len > page_size.saturating_sub(offset) {
+        return None;
+    }
+    Some(pa_base + offset)
+}
+
+fn walk_page(root_pa: usize, va: usize) -> Option<(usize, usize, usize)> {
+    if root_pa == 0 {
+        return None;
+    }
+    // SAFETY: early boot uses identity mapping; page table pages are valid.
+    let l2 = unsafe { &*(root_pa as *const PageTable) };
+    let [l2_idx, l1_idx, l0_idx] = VirtAddr::new(va).sv39_indexes();
+    let l2e = l2.entries[l2_idx];
+    if !l2e.is_valid() {
+        return None;
+    }
+    if l2e.is_leaf() {
+        return Some((l2e.ppn().addr().as_usize(), PAGE_SIZE_1G, l2e.flags()));
+    }
+
+    // SAFETY: entry points to a valid next-level table page.
+    let l1 = unsafe { &*(l2e.ppn().addr().as_usize() as *const PageTable) };
+    let l1e = l1.entries[l1_idx];
+    if !l1e.is_valid() {
+        return None;
+    }
+    if l1e.is_leaf() {
+        return Some((l1e.ppn().addr().as_usize(), PAGE_SIZE_2M, l1e.flags()));
+    }
+
+    // SAFETY: entry points to a valid next-level table page.
+    let l0 = unsafe { &*(l1e.ppn().addr().as_usize() as *const PageTable) };
+    let l0e = l0.entries[l0_idx];
+    if !l0e.is_valid() || !l0e.is_leaf() {
+        return None;
+    }
+    Some((l0e.ppn().addr().as_usize(), PAGE_SIZE, l0e.flags()))
 }
 
 unsafe fn alloc_page_table() -> Option<&'static mut PageTable> {
     let frame = alloc_frame()?;
     let pa = frame.addr().as_usize();
     let table = pa as *mut PageTable;
-    // Safety: 早期启动阶段使用恒等映射，且帧分配器返回唯一页帧。
+    // SAFETY: 早期启动阶段使用恒等映射，且帧分配器返回唯一页帧。
     core::ptr::write_bytes(table as *mut u8, 0, PAGE_SIZE);
     Some(&mut *table)
 }
@@ -294,7 +360,7 @@ fn ensure_table(entry: &mut PageTableEntry) -> Option<&'static mut PageTable> {
         }
         let table_pa = entry.ppn().addr().as_usize();
         let table = table_pa as *mut PageTable;
-        // Safety: existing page table entry points to a valid table page.
+        // SAFETY: existing page table entry points to a valid table page.
         return Some(unsafe { &mut *table });
     }
     // SAFETY: allocating a fresh page table during early boot.
@@ -308,6 +374,10 @@ pub fn map_user_code(root_pa: usize, va: usize, pa: usize) -> bool {
     map_page(root_pa, va, pa, PTE_FLAGS_USER_CODE)
 }
 
+pub fn map_user_data(root_pa: usize, va: usize, pa: usize) -> bool {
+    map_page(root_pa, va, pa, PTE_FLAGS_USER_DATA)
+}
+
 pub fn map_user_stack(root_pa: usize, va: usize, pa: usize) -> bool {
     map_page(root_pa, va, pa, PTE_FLAGS_USER_DATA)
 }
@@ -316,6 +386,7 @@ fn map_page(root_pa: usize, va: usize, pa: usize, flags: usize) -> bool {
     if root_pa == 0 {
         return false;
     }
+    // SAFETY: early boot uses identity mapping; root page table is valid.
     let l2 = unsafe { &mut *(root_pa as *mut PageTable) };
     let [l2_idx, l1_idx, l0_idx] = VirtAddr::new(va).sv39_indexes();
     let l1 = match ensure_table(&mut l2.entries[l2_idx]) {
@@ -353,7 +424,7 @@ fn init_frame_allocator(region: MemoryRegion) {
     }
 
     let allocator = BumpFrameAllocator::new(PhysAddr::new(start), PhysAddr::new(end));
-    // Safety: 仅在早期单核初始化时写入，全局只初始化一次。
+    // SAFETY: 仅在早期单核初始化时写入，全局只初始化一次。
     unsafe {
         FRAME_ALLOC.write(allocator);
     }
@@ -439,4 +510,14 @@ const fn align_up(value: usize, align: usize) -> usize {
 #[inline]
 const fn virt_to_phys(addr: usize) -> usize {
     addr
+}
+
+#[inline]
+fn read_satp() -> usize {
+    let value: usize;
+    // SAFETY: reading satp does not modify machine state.
+    unsafe {
+        asm!("csrr {0}, satp", out(reg) value);
+    }
+    value
 }

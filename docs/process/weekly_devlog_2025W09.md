@@ -21,6 +21,7 @@
 - trap 处理 U-mode ecall 并接入 syscall 分发骨架。
 - trap 入口改为 sscratch 内核栈交换，提供最小 U-mode trap 支持。
 - 增加用户态测试映射与 enter_user 入口。
+- sys_write 支持用户指针翻译与控制台输出，覆盖最小写路径。
 - `make test-qemu-smoke ARCH=riscv64 PLATFORM=qemu` 通过。
 
 ## 问题

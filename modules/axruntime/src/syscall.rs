@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use crate::mm::{self, UserAccess};
+use crate::sbi;
 use crate::trap::TrapFrame;
 
 #[repr(i32)]
@@ -8,6 +10,7 @@ pub enum Errno {
     NoSys = 38,
     Fault = 14,
     Inval = 22,
+    Badf = 9,
 }
 
 impl Errno {
@@ -56,7 +59,36 @@ fn sys_exit(_code: usize) -> Result<usize, Errno> {
     crate::sbi::shutdown();
 }
 
-fn sys_write(_fd: usize, _buf: usize, _len: usize) -> Result<usize, Errno> {
-    // User memory access is not wired up yet.
-    Err(Errno::NoSys)
+fn sys_write(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
+    if len == 0 {
+        return Ok(0);
+    }
+    if fd != 1 && fd != 2 {
+        return Err(Errno::Badf);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+
+    let mut addr = buf;
+    let mut remaining = len;
+    let mut written = 0usize;
+    while remaining > 0 {
+        let page_off = addr & (mm::PAGE_SIZE - 1);
+        let chunk = core::cmp::min(remaining, mm::PAGE_SIZE - page_off);
+        let pa = mm::translate_user_ptr(root_pa, addr, chunk, UserAccess::Read)
+            .ok_or(Errno::Fault)?;
+        // SAFETY: 翻译结果确保该片段在用户态可读。
+        unsafe {
+            let src = pa as *const u8;
+            for i in 0..chunk {
+                sbi::console_putchar(*src.add(i));
+            }
+        }
+        addr = addr.wrapping_add(chunk);
+        remaining -= chunk;
+        written += chunk;
+    }
+    Ok(written)
 }

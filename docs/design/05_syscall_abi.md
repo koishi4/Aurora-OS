@@ -13,6 +13,7 @@
 - 统一 errno 处理：内核内部使用 `Result<usize, Errno>`，出口转换为 `-errno` 返回给用户态。
 - 用户态内存访问通过 `UserPtr`/`UserSlice` 等封装校验范围与页表映射（后续与 mm 子系统对接）。
 - 兼容层为关键 syscall 提供 Linux 语义对齐（如 `getdents64`/`ioctl`/`pipe2`/`dup3`）。
+- 早期实现 `write` 的用户指针翻译与控制台输出，用于验证 U-mode ecall 链路。
 
 ## 关键数据结构
 - `SyscallAbi`：抽象获取 syscall 号与参数、设置返回值与 `sepc` 前进。
