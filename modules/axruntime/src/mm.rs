@@ -288,20 +288,21 @@ impl<T> UserPtr<T> {
 impl<T: Copy> UserPtr<T> {
     pub fn read(self, root_pa: usize) -> Option<T> {
         let size = size_of::<T>();
-        let pa = translate_user_ptr(root_pa, self.ptr, size, UserAccess::Read)?;
-        // SAFETY: translate_user_ptr 已验证用户态权限与范围，
-        // 且当前阶段使用恒等映射，可直接读取对应物理页。
-        unsafe { Some((pa as *const T).read_unaligned()) }
+        let mut value = MaybeUninit::<T>::uninit();
+        let dst = unsafe {
+            core::slice::from_raw_parts_mut(value.as_mut_ptr() as *mut u8, size)
+        };
+        UserSlice::new(self.ptr, size).copy_to_slice(root_pa, dst)?;
+        // SAFETY: copy_to_slice 已完整写入 size 字节。
+        Some(unsafe { value.assume_init() })
     }
 
     pub fn write(self, root_pa: usize, value: T) -> Option<()> {
         let size = size_of::<T>();
-        let pa = translate_user_ptr(root_pa, self.ptr, size, UserAccess::Write)?;
-        // SAFETY: translate_user_ptr 已验证用户态权限与范围，
-        // 且当前阶段使用恒等映射，可直接写入对应物理页。
-        unsafe {
-            (pa as *mut T).write_unaligned(value);
-        }
+        let src = unsafe {
+            core::slice::from_raw_parts(&value as *const T as *const u8, size)
+        };
+        UserSlice::new(self.ptr, size).copy_from_slice(root_pa, src)?;
         Some(())
     }
 }

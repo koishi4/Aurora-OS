@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::mm::{self, UserAccess, UserPtr, UserSlice};
-use crate::sbi;
+use crate::{sbi, time};
 use crate::trap::TrapFrame;
 
 #[repr(i32)]
@@ -49,6 +49,9 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_EXIT => sys_exit(ctx.args[0]),
         SYS_READ => sys_read(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_WRITE => sys_write(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_CLOCK_GETTIME => sys_clock_gettime(ctx.args[0], ctx.args[1]),
+        SYS_GETTIMEOFDAY => sys_gettimeofday(ctx.args[0], ctx.args[1]),
+        SYS_GETPID => sys_getpid(),
         _ => Err(Errno::NoSys),
     }
 }
@@ -56,6 +59,33 @@ fn dispatch(ctx: SyscallContext) -> Result<usize, Errno> {
 const SYS_EXIT: usize = 93;
 const SYS_READ: usize = 63;
 const SYS_WRITE: usize = 64;
+const SYS_CLOCK_GETTIME: usize = 113;
+const SYS_GETTIMEOFDAY: usize = 169;
+const SYS_GETPID: usize = 172;
+
+const CLOCK_REALTIME: usize = 0;
+const CLOCK_MONOTONIC: usize = 1;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Timespec {
+    tv_sec: i64,
+    tv_nsec: i64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Timeval {
+    tv_sec: i64,
+    tv_usec: i64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct TimeZone {
+    tz_minuteswest: i32,
+    tz_dsttime: i32,
+}
 
 fn sys_exit(_code: usize) -> Result<usize, Errno> {
     crate::sbi::shutdown();
@@ -118,4 +148,57 @@ fn sys_write(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
         })
         .ok_or(Errno::Fault)?;
     Ok(written)
+}
+
+fn sys_clock_gettime(clock_id: usize, tp: usize) -> Result<usize, Errno> {
+    if tp == 0 {
+        return Err(Errno::Fault);
+    }
+    let now_ms = time::uptime_ms();
+    let ts = Timespec {
+        tv_sec: (now_ms / 1000) as i64,
+        tv_nsec: ((now_ms % 1000) * 1_000_000) as i64,
+    };
+    match clock_id {
+        CLOCK_REALTIME | CLOCK_MONOTONIC => {
+            let root_pa = mm::current_root_pa();
+            if root_pa == 0 {
+                return Err(Errno::Fault);
+            }
+            UserPtr::new(tp).write(root_pa, ts).ok_or(Errno::Fault)?;
+            Ok(0)
+        }
+        _ => Err(Errno::Inval),
+    }
+}
+
+fn sys_gettimeofday(tv: usize, tz: usize) -> Result<usize, Errno> {
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    if tv != 0 {
+        let now_ms = time::uptime_ms();
+        let tv_val = Timeval {
+            tv_sec: (now_ms / 1000) as i64,
+            tv_usec: ((now_ms % 1000) * 1_000) as i64,
+        };
+        UserPtr::new(tv)
+            .write(root_pa, tv_val)
+            .ok_or(Errno::Fault)?;
+    }
+    if tz != 0 {
+        let tz_val = TimeZone {
+            tz_minuteswest: 0,
+            tz_dsttime: 0,
+        };
+        UserPtr::new(tz)
+            .write(root_pa, tz_val)
+            .ok_or(Errno::Fault)?;
+    }
+    Ok(0)
+}
+
+fn sys_getpid() -> Result<usize, Errno> {
+    Ok(1)
 }
