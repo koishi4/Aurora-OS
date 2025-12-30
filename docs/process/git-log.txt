@@ -1,4 +1,22 @@
-* commit e5d448d9b4fc37baef7d986d56b315b7b89813ee (HEAD -> bootstrap-riscv64)
+* commit f9071d6ae392bd312d771b121494a8d97286792c (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 11:40:33 +0800
+| 
+|     test: add internal selftest suite
+| 
+|  CHANGELOG.md                             |   1 +
+|  Makefile                                 |   4 +-
+|  docs/design/10_testing_benchmark.md      |   6 +-
+|  docs/process/git-log.txt                 |  11 ++-
+|  docs/process/phase_4_fs.md               |   2 +-
+|  docs/process/phase_6_oscomp_hardening.md |  10 +--
+|  scripts/test_oscomp.sh                   | 107 +++++++++++++++++------------
+|  scripts/test_qemu_smoke.sh               |  13 +++-
+|  tests/self/README.md                     |  12 ++++
+|  tests/self/cases.txt                     |   3 +
+|  10 files changed, 112 insertions(+), 57 deletions(-)
+| 
+* commit e5d448d9b4fc37baef7d986d56b315b7b89813ee
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-30 11:24:16 +0800
 | 
