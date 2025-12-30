@@ -1,4 +1,27 @@
-* commit f9071d6ae392bd312d771b121494a8d97286792c (HEAD -> bootstrap-riscv64)
+* commit 274a998f2d64e8c3f0a2fd57bfc16f45e6489d41 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 13:04:51 +0800
+| 
+|     fix(runtime): stabilize user address space switching
+| 
+|  CHANGELOG.md                            |  4 ++--
+|  docs/process/phase_3_process_syscall.md |  2 ++
+|  modules/axruntime/src/mm.rs             |  8 ++++++++
+|  modules/axruntime/src/process.rs        |  4 +++-
+|  modules/axruntime/src/runtime.rs        | 13 ++++++++++++-
+|  modules/axruntime/src/user.rs           | 11 +++++++----
+|  6 files changed, 34 insertions(+), 8 deletions(-)
+| 
+* commit 5c7da2b858262ae8f3e124614f2d64ff9502d795
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 11:40:49 +0800
+| 
+|     chore(process): refresh git history
+| 
+|  docs/process/git-log.txt | 20 +++++++++++++++++++-
+|  1 file changed, 19 insertions(+), 1 deletion(-)
+| 
+* commit f9071d6ae392bd312d771b121494a8d97286792c
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-30 11:40:33 +0800
 | 
