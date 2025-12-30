@@ -1,4 +1,33 @@
-* commit 8ef3efc161fa17424c428cd851f09ea2493e16c0 (HEAD -> bootstrap-riscv64)
+* commit 2970a09e2a1383b4a73eff41424fd3f6ac90499b (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 10:19:46 +0800
+| 
+|     feat(runtime): add oscomp runner and PLIC IRQs
+| 
+|  CHANGELOG.md                             |  2 +
+|  docs/design/02_trap_interrupt.md         |  4 ++
+|  docs/design/08_driver_model.md           |  4 +-
+|  docs/design/10_testing_benchmark.md      |  1 +
+|  docs/process/phase_6_oscomp_hardening.md |  6 ++-
+|  modules/axruntime/src/dtb.rs             | 74 ++++++++++++++++++++++++--
+|  modules/axruntime/src/fs.rs              |  4 +-
+|  modules/axruntime/src/main.rs            | 22 ++++++--
+|  modules/axruntime/src/plic.rs            | 71 +++++++++++++++++++++++++
+|  modules/axruntime/src/trap.rs            | 19 +++++++
+|  modules/axruntime/src/virtio_blk.rs      | 44 +++++++++++++---
+|  scripts/test_oscomp.sh                   | 83 +++++++++++++++++++++++++++++-
+|  12 files changed, 311 insertions(+), 23 deletions(-)
+| 
+* commit 39fc01f17c3efa1cbb66bbdad1080f7a645236ce
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 10:02:34 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 20 +++++++++++++++++++-
+|  1 file changed, 19 insertions(+), 1 deletion(-)
+| 
+* commit 8ef3efc161fa17424c428cd851f09ea2493e16c0
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-30 10:02:19 +0800
 | 
