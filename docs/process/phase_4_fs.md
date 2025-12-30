@@ -35,7 +35,7 @@
 - 新增 `tools/build_init_elf.py` 与 `scripts/mkfs_ext4.sh` 生成最小 ext4 镜像用于 QEMU 测试。
 - ext4 读路径扩展到 extent 树深度>0 与间接块（single/double/triple）。
 - 增加 extent 树与间接块覆盖的单元测试。
-- 新增 ext4 `/init` VFS 读取自测用例，覆盖根目录枚举与多块读路径。
+- 新增 ext4 `/init` VFS 读取自测用例，覆盖根目录枚举、多块读路径与 `/etc/issue` 读取。
 - QEMU 启动时输出 `vfs: mounted ext4 rootfs`，ext4 冒烟用例强制检查该标记。
 
 ## 问题与定位

@@ -708,6 +708,14 @@ mod tests {
             let read_tail = fs.read_at(inode, 4096, &mut tail).expect("read init tail");
             assert!(read_tail > 0);
         }
+
+        let etc_inode = fs.lookup(root, "etc").expect("lookup etc").expect("etc inode");
+        let issue_inode = fs.lookup(etc_inode, "issue").expect("lookup issue").expect("issue inode");
+        let expected_issue = b"Aurora ext4 test\n";
+        let mut issue_buf = vec![0u8; expected_issue.len()];
+        let issue_read = fs.read_at(issue_inode, 0, &mut issue_buf).expect("read /etc/issue");
+        assert_eq!(issue_read, expected_issue.len());
+        assert_eq!(issue_buf, expected_issue);
     }
 
     fn build_minimal_ext4(buf: &mut [u8], file_data: &[u8]) {

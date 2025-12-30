@@ -17,6 +17,8 @@ python3 "${ROOT}/tools/build_init_elf.py" --out "${INIT_ELF}"
 rm -rf "${WORKDIR}"
 mkdir -p "${WORKDIR}"
 cp "${INIT_ELF}" "${WORKDIR}/init"
+mkdir -p "${WORKDIR}/etc"
+printf "Aurora ext4 test\n" > "${WORKDIR}/etc/issue"
 
 mke2fs -q -t ext4 -d "${WORKDIR}" -F "${OUT}" "${SIZE}"
 echo "ext4 image created: ${OUT}"
