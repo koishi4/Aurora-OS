@@ -19,6 +19,12 @@ mkdir -p "${WORKDIR}"
 cp "${INIT_ELF}" "${WORKDIR}/init"
 mkdir -p "${WORKDIR}/etc"
 printf "Aurora ext4 test\n" > "${WORKDIR}/etc/issue"
+WORKDIR="${WORKDIR}" python3 - <<'PY'
+import os
+path = os.path.join(os.environ["WORKDIR"], "etc", "large")
+with open(path, "wb") as f:
+    f.write(b"Z" * 8192)
+PY
 
 mke2fs -q -t ext4 -d "${WORKDIR}" -F "${OUT}" "${SIZE}"
 echo "ext4 image created: ${OUT}"

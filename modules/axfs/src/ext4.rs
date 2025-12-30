@@ -789,12 +789,24 @@ mod tests {
             etc_offset += count;
         }
         assert!(etc_names.iter().any(|name| name == b"issue"));
+        assert!(etc_names.iter().any(|name| name == b"large"));
         let issue_inode = fs.lookup(etc_inode, "issue").expect("lookup issue").expect("issue inode");
         let expected_issue = b"Aurora ext4 test\n";
         let mut issue_buf = vec![0u8; expected_issue.len()];
         let issue_read = fs.read_at(issue_inode, 0, &mut issue_buf).expect("read /etc/issue");
         assert_eq!(issue_read, expected_issue.len());
         assert_eq!(issue_buf, expected_issue);
+
+        let large_inode = fs.lookup(etc_inode, "large").expect("lookup large").expect("large inode");
+        let large_meta = fs.metadata(large_inode).expect("large metadata");
+        assert!(large_meta.size >= 4096 + 64);
+        let mut large_buf = [0u8; 64];
+        let read_head = fs.read_at(large_inode, 0, &mut large_buf).expect("read /etc/large head");
+        assert_eq!(read_head, large_buf.len());
+        assert!(large_buf.iter().all(|&b| b == b'Z'));
+        let read_mid = fs.read_at(large_inode, 4096, &mut large_buf).expect("read /etc/large mid");
+        assert_eq!(read_mid, large_buf.len());
+        assert!(large_buf.iter().all(|&b| b == b'Z'));
     }
 
     fn build_minimal_ext4(buf: &mut [u8], file_data: &[u8]) {
