@@ -185,44 +185,40 @@ fn submit_request(req_type: u32, block_id: BlockId, buf: &mut [u8]) -> VfsResult
         reserved: 0,
         sector: block_id,
     };
-    unsafe {
-        queue.req = req;
-        queue.status = 0xff;
-    }
+    queue.req = req;
+    queue.status = 0xff;
 
     let req_addr = mm::kernel_virt_to_phys(queue.req_addr()) as u64;
     let buf_addr = mm::kernel_virt_to_phys(buf.as_ptr() as usize) as u64;
     let status_addr = mm::kernel_virt_to_phys(queue.status_addr()) as u64;
 
-    unsafe {
-        queue.desc[0] = VirtqDesc {
-            addr: req_addr,
-            len: core::mem::size_of::<VirtioBlkReq>() as u32,
-            flags: DESC_F_NEXT,
-            next: 1,
-        };
-        queue.desc[1] = VirtqDesc {
-            addr: buf_addr,
-            len: buf.len() as u32,
-            flags: if req_type == VIRTIO_BLK_T_IN {
-                DESC_F_WRITE | DESC_F_NEXT
-            } else {
-                DESC_F_NEXT
-            },
-            next: 2,
-        };
-        queue.desc[2] = VirtqDesc {
-            addr: status_addr,
-            len: 1,
-            flags: DESC_F_WRITE,
-            next: 0,
-        };
+    queue.desc[0] = VirtqDesc {
+        addr: req_addr,
+        len: core::mem::size_of::<VirtioBlkReq>() as u32,
+        flags: DESC_F_NEXT,
+        next: 1,
+    };
+    queue.desc[1] = VirtqDesc {
+        addr: buf_addr,
+        len: buf.len() as u32,
+        flags: if req_type == VIRTIO_BLK_T_IN {
+            DESC_F_WRITE | DESC_F_NEXT
+        } else {
+            DESC_F_NEXT
+        },
+        next: 2,
+    };
+    queue.desc[2] = VirtqDesc {
+        addr: status_addr,
+        len: 1,
+        flags: DESC_F_WRITE,
+        next: 0,
+    };
 
-        let avail_idx = queue.avail.idx;
-        queue.avail.ring[(avail_idx as usize) % queue_size] = 0;
-        fence(Ordering::SeqCst);
-        queue.avail.idx = avail_idx.wrapping_add(1);
-    }
+    let avail_idx = queue.avail.idx;
+    queue.avail.ring[(avail_idx as usize) % queue_size] = 0;
+    fence(Ordering::SeqCst);
+    queue.avail.idx = avail_idx.wrapping_add(1);
 
     fence(Ordering::SeqCst);
     mmio_write32(base, MMIO_QUEUE_NOTIFY, 0);
@@ -238,7 +234,7 @@ fn submit_request(req_type: u32, block_id: BlockId, buf: &mut [u8]) -> VfsResult
         spin_loop();
     }
 
-    let status = unsafe { queue.status };
+    let status = unsafe { ptr::read_volatile(&queue.status) };
     if status != 0 {
         return Err(VfsError::Io);
     }
