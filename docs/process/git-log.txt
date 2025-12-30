@@ -1,4 +1,22 @@
-* commit e4153cde655c1922e7a3f0f2449d3328f2b4f40e (HEAD -> bootstrap-riscv64)
+* commit 57ae05a3ff1633f85be8d185e18e82000195fbbe (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 15:20:14 +0800
+| 
+|     fix(fs): import vec macro for ext4 test
+| 
+|  modules/axfs/src/ext4.rs | 2 +-
+|  1 file changed, 1 insertion(+), 1 deletion(-)
+| 
+* commit be69487a64ab31ddc6106ebdef75af2646209ff3
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 15:19:28 +0800
+| 
+|     chore(process): update git log
+| 
+|  docs/process/git-log.txt | 27 ++++++++++++++++++++++++++-
+|  1 file changed, 26 insertions(+), 1 deletion(-)
+| 
+* commit e4153cde655c1922e7a3f0f2449d3328f2b4f40e
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-30 15:16:15 +0800
 | 
