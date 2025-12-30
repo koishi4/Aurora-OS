@@ -67,6 +67,12 @@ static VIRTIO_QUEUE_LOCK: SpinLock = SpinLock::new();
 static VIRTIO_BLK_DEVICE: VirtioBlkDevice = VirtioBlkDevice;
 static VIRTIO_QUEUE: QueueCell = QueueCell::new();
 
+#[repr(align(512))]
+struct BounceBuf([u8; SECTOR_SIZE]);
+
+// SAFETY: 单队列同步 I/O；通过锁保证同一时刻只有一个请求使用缓冲区。
+static mut VIRTIO_BLK_BOUNCE: BounceBuf = BounceBuf([0; SECTOR_SIZE]);
+
 pub struct VirtioBlkDevice;
 
 impl BlockDevice for VirtioBlkDevice {
@@ -122,7 +128,8 @@ fn try_init_device(base: usize, irq: u32) -> bool {
     if mmio_read32(base, MMIO_MAGIC) != VIRTIO_MMIO_MAGIC {
         return false;
     }
-    if mmio_read32(base, MMIO_VERSION) != VIRTIO_MMIO_VERSION {
+    let version = mmio_read32(base, MMIO_VERSION);
+    if version != VIRTIO_MMIO_VERSION {
         return false;
     }
     if mmio_read32(base, MMIO_DEVICE_ID) != VIRTIO_DEVICE_BLOCK {
@@ -218,9 +225,15 @@ fn submit_request(req_type: u32, block_id: BlockId, buf: &mut [u8]) -> VfsResult
             queue.req = req;
             queue.status = 0xff;
 
-            let req_addr = mm::kernel_virt_to_phys(queue.req_addr()) as u64;
-            let buf_addr = mm::kernel_virt_to_phys(buf.as_ptr() as usize) as u64;
-            let status_addr = mm::kernel_virt_to_phys(queue.status_addr()) as u64;
+        let req_addr = mm::kernel_virt_to_phys(queue.req_addr()) as u64;
+        let buf_addr = unsafe {
+            let bounce = &mut VIRTIO_BLK_BOUNCE.0;
+            if req_type == VIRTIO_BLK_T_OUT {
+                bounce.copy_from_slice(&buf[..SECTOR_SIZE]);
+            }
+            mm::kernel_virt_to_phys(bounce.as_ptr() as usize) as u64
+        };
+        let status_addr = mm::kernel_virt_to_phys(queue.status_addr()) as u64;
 
             queue.desc[0] = VirtqDesc {
                 addr: req_addr,
@@ -230,7 +243,7 @@ fn submit_request(req_type: u32, block_id: BlockId, buf: &mut [u8]) -> VfsResult
             };
             queue.desc[1] = VirtqDesc {
                 addr: buf_addr,
-                len: buf.len() as u32,
+            len: SECTOR_SIZE as u32,
                 flags: if req_type == VIRTIO_BLK_T_IN {
                     DESC_F_WRITE | DESC_F_NEXT
                 } else {
@@ -245,10 +258,17 @@ fn submit_request(req_type: u32, block_id: BlockId, buf: &mut [u8]) -> VfsResult
                 next: 0,
             };
 
-            let avail_idx = queue.avail.idx;
-            queue.avail.ring[(avail_idx as usize) % queue_size] = 0;
-            fence(Ordering::SeqCst);
-            queue.avail.idx = avail_idx.wrapping_add(1);
+        let avail_idx = unsafe { ptr::read_volatile(&queue.avail.idx) };
+        unsafe {
+            ptr::write_volatile(
+                &mut queue.avail.ring[(avail_idx as usize) % queue_size],
+                0,
+            );
+        }
+        fence(Ordering::SeqCst);
+        unsafe {
+            ptr::write_volatile(&mut queue.avail.idx, avail_idx.wrapping_add(1));
+        }
 
             fence(Ordering::SeqCst);
             mmio_write32(base, MMIO_QUEUE_NOTIFY, 0);
@@ -260,6 +280,11 @@ fn submit_request(req_type: u32, block_id: BlockId, buf: &mut [u8]) -> VfsResult
             unsafe { ptr::read_volatile(&queue.status) }
         };
 
+        if req_type == VIRTIO_BLK_T_IN {
+            unsafe {
+                buf[..SECTOR_SIZE].copy_from_slice(&VIRTIO_BLK_BOUNCE.0);
+            }
+        }
         VIRTIO_BLK_INFLIGHT.store(false, Ordering::Release);
         let _ = VIRTIO_BLK_WAITERS.notify_all();
 

@@ -33,6 +33,7 @@ KERNEL="${ROOT}/target/${TARGET}/${OUT_DIR}/${CRATE}"
 
 echo "QEMU waiting for GDB on tcp::${GDB_PORT}" >&2
 exec "${QEMU_BIN}" \
+  -global virtio-mmio.force-legacy=false \
   -machine virt \
   -nographic \
   -bios "${BIOS}" \

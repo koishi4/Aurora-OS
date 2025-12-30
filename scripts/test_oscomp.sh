@@ -85,6 +85,20 @@ EOF
 for case_name in "${CASES[@]}"; do
   case_log="${LOG_DIR}/selftest-${case_name}.log"
   case_fs=""
+  if [[ "${case_name}" == "ext4-init" ]]; then
+    ensure_ext4_image
+    set +e
+    (cd "${ROOT}" && AXFS_EXT4_IMAGE="${FS_EXT4}" cargo test -p axfs ext4_init_image) \
+      >"${case_log}" 2>&1
+    case_status=$?
+    set -e
+    echo "${case_name}: status=${case_status} log=${case_log} fs=${FS_EXT4}" >> "${SUMMARY_FILE}"
+    if [[ ${case_status} -ne 0 ]]; then
+      STATUS=${case_status}
+    fi
+    continue
+  fi
+
   if [[ "${case_name}" == "ext4" ]]; then
     ensure_ext4_image
     case_fs="${FS_EXT4}"

@@ -42,6 +42,7 @@ else
 fi
 
 exec "${QEMU_BIN}" \
+  -global virtio-mmio.force-legacy=false \
   -machine virt \
   -nographic \
   -bios "${BIOS}" \

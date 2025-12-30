@@ -48,6 +48,7 @@ fi
 set +e
 if command -v timeout >/dev/null 2>&1; then
   timeout "${TIMEOUT}" "${QEMU_BIN}" \
+    -global virtio-mmio.force-legacy=false \
     -machine virt \
     -nographic \
     -bios "${BIOS}" \
@@ -59,6 +60,7 @@ if command -v timeout >/dev/null 2>&1; then
   STATUS=$?
 else
   "${QEMU_BIN}" \
+    -global virtio-mmio.force-legacy=false \
     -machine virt \
     -nographic \
     -bios "${BIOS}" \
@@ -92,6 +94,7 @@ if [[ "${EXPECT_INIT}" == "1" ]]; then
     exit 1
   fi
 fi
+
 
 if [[ ${STATUS} -ne 0 && ${STATUS} -ne 124 ]]; then
   echo "QEMU exited with status ${STATUS}" >&2

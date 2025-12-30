@@ -1,3 +1,4 @@
 # Aurora self-test cases
 ramdisk
 ext4
+ext4-init

@@ -544,6 +544,7 @@ fn find_extent_index(buf: &[u8], entries: u16, logical: u32) -> VfsResult<Option
 mod tests {
     use super::*;
     use core::cell::RefCell;
+    use std::{env, fs, vec::Vec};
 
     const TEST_INODE_SIZE: usize = 128;
 
@@ -553,6 +554,35 @@ mod tests {
     }
 
     impl BlockDevice for TestBlockDevice {
+        fn block_size(&self) -> usize {
+            self.block_size
+        }
+
+        fn read_block(&self, block_id: BlockId, buf: &mut [u8]) -> VfsResult<()> {
+            let offset = block_id as usize * self.block_size;
+            let data = self.data.borrow();
+            if offset + self.block_size > data.len() {
+                return Err(VfsError::NotFound);
+            }
+            buf[..self.block_size].copy_from_slice(&data[offset..offset + self.block_size]);
+            Ok(())
+        }
+
+        fn write_block(&self, _block_id: BlockId, _buf: &[u8]) -> VfsResult<()> {
+            Err(VfsError::NotSupported)
+        }
+
+        fn flush(&self) -> VfsResult<()> {
+            Ok(())
+        }
+    }
+
+    struct FileBlockDevice {
+        block_size: usize,
+        data: RefCell<Vec<u8>>,
+    }
+
+    impl BlockDevice for FileBlockDevice {
         fn block_size(&self) -> usize {
             self.block_size
         }
@@ -649,6 +679,26 @@ mod tests {
         let read = fs.read_at(inode, offset, &mut buf).unwrap();
         assert_eq!(read, file_data.len());
         assert_eq!(&buf[..read], file_data);
+    }
+
+    #[test]
+    fn ext4_init_image() {
+        let path = match env::var("AXFS_EXT4_IMAGE") {
+            Ok(value) => value,
+            Err(_) => return,
+        };
+        let data = fs::read(&path).expect("read ext4 image");
+        let dev = FileBlockDevice {
+            block_size: 512,
+            data: RefCell::new(data),
+        };
+        let fs = Ext4Fs::new(&dev).expect("open ext4 image");
+        let root = fs.root().expect("root inode");
+        let inode = fs.lookup(root, "init").expect("lookup init").expect("init inode");
+        let mut buf = [0u8; 4];
+        let read = fs.read_at(inode, 0, &mut buf).expect("read init");
+        assert_eq!(read, buf.len());
+        assert_eq!(&buf, b"\x7fELF");
     }
 
     fn build_minimal_ext4(buf: &mut [u8], file_data: &[u8]) {
