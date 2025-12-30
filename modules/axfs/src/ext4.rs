@@ -544,7 +544,7 @@ fn find_extent_index(buf: &[u8], entries: u16, logical: u32) -> VfsResult<Option
 mod tests {
     use super::*;
     use core::cell::RefCell;
-    use std::{env, fs, vec::Vec};
+    use std::{env, fs, vec, vec::Vec};
 
     const TEST_INODE_SIZE: usize = 128;
 
