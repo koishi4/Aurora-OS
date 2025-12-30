@@ -1,4 +1,22 @@
-* commit 3e2ae9bbac95a8f908fc459acba754c2873c8652 (HEAD -> bootstrap-riscv64)
+* commit fc3e67668c4860b10fa65872194ca946555c80df (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:24:33 +0800
+| 
+|     test(scripts): normalize ext4 image path
+| 
+|  scripts/test_oscomp.sh | 15 +++++++++++++++
+|  1 file changed, 15 insertions(+)
+| 
+* commit 766026e280b19b777034c56df74116b84caa159b
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:19:27 +0800
+| 
+|     chore(process): update git log
+| 
+|  docs/process/git-log.txt | 39 ++++++++++++++++++++++++++++++++++++++-
+|  1 file changed, 38 insertions(+), 1 deletion(-)
+| 
+* commit 3e2ae9bbac95a8f908fc459acba754c2873c8652
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-30 16:19:05 +0800
 | 
