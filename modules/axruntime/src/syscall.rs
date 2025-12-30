@@ -3140,7 +3140,8 @@ fn read_vfs_at(
 ) -> Result<usize, Errno> {
     let mut total = 0usize;
     let mut remaining = len;
-    let mut scratch = [0u8; 256];
+    // Match FAT32 sector size to avoid partial-sector RMW issues.
+    let mut scratch = [0u8; 512];
     while remaining > 0 {
         let chunk = min(remaining, scratch.len());
         let read = fs
@@ -3189,7 +3190,8 @@ fn write_vfs_at(
     }
     let mut total = 0usize;
     let mut remaining = len;
-    let mut scratch = [0u8; 256];
+    // Match FAT32 sector size to avoid partial-sector RMW issues.
+    let mut scratch = [0u8; 512];
     while remaining > 0 {
         let chunk = min(remaining, scratch.len());
         let src = buf.checked_add(total).ok_or(Errno::Fault)?;
