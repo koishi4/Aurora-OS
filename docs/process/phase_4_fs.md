@@ -42,7 +42,7 @@
 - `cargo test -p axfs`
 - `make rootfs-ext4`
 - `USER_TEST=1 make test-qemu-smoke ARCH=riscv64 PLATFORM=qemu FS=build/rootfs.ext4`
-- `make test-oscomp ARCH=riscv64 PLATFORM=qemu FS=build/rootfs.ext4`（脚本占位，返回 TODO）
+- `make test-oscomp ARCH=riscv64 PLATFORM=qemu`（自研测例覆盖 ramdisk/ext4 启动与 /init execve）
 
 ## 下一步
 - 完成 VFS/FAT32/ext4 最小读写后进入网络阶段。

@@ -7,6 +7,7 @@ PLATFORM=${PLATFORM:-qemu}
 FS=${FS:-}
 MODE=${MODE:-debug}
 USER_TEST=${USER_TEST:-0}
+EXPECT_INIT=${EXPECT_INIT:-0}
 TARGET=riscv64gc-unknown-none-elf
 CRATE=axruntime
 QEMU_BIN=${QEMU_BIN:-qemu-system-riscv64}
@@ -14,8 +15,8 @@ BIOS=${BIOS:-default}
 MEM=${MEM:-512M}
 SMP=${SMP:-1}
 TIMEOUT=${TIMEOUT:-5}
-LOG_DIR="${ROOT}/build"
-LOG_FILE="${LOG_DIR}/qemu-smoke.log"
+LOG_DIR=${LOG_DIR:-"${ROOT}/build"}
+LOG_FILE=${LOG_FILE:-"${LOG_DIR}/qemu-smoke.log"}
 
 if [[ "${ARCH}" != "riscv64" || "${PLATFORM}" != "qemu" ]]; then
   echo "Only ARCH=riscv64 PLATFORM=qemu is supported right now." >&2
@@ -79,6 +80,14 @@ fi
 if [[ "${USER_TEST}" == "1" ]]; then
   if ! grep -q "user: hello" "${LOG_FILE}"; then
     echo "Smoke test failed: user-mode banner not found." >&2
+    cat "${LOG_FILE}" >&2
+    exit 1
+  fi
+fi
+
+if [[ "${EXPECT_INIT}" == "1" ]]; then
+  if ! grep -q "init: ok" "${LOG_FILE}"; then
+    echo "Smoke test failed: init banner not found." >&2
     cat "${LOG_FILE}" >&2
     exit 1
   fi

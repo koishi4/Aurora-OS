@@ -118,6 +118,7 @@
 - Add chdir/fchdir stubs allowing root only.
 - Add close stub for stdio fds.
 - Add getrlimit/prlimit64 stubs with default limits.
+- Replace external OSComp runner with internal self-test cases (ramdisk/ext4) and log to build/selftest.
 - Add ioctl stubs for TIOCGWINSZ/TIOCSWINSZ/TIOCGPGRP/TIOCSPGRP/TIOCSCTTY/TCGETS/TCSETS.
 - Add nanosleep stub using scheduler sleep when available.
 - Add sysinfo stub for uptime and memory size.

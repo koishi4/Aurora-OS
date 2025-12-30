@@ -4,7 +4,6 @@ set -euo pipefail
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 ARCH=${ARCH:-riscv64}
 PLATFORM=${PLATFORM:-qemu}
-FS=${FS:-}
 MODE=${MODE:-debug}
 TARGET=riscv64gc-unknown-none-elf
 CRATE=axruntime
@@ -12,26 +11,17 @@ QEMU_BIN=${QEMU_BIN:-qemu-system-riscv64}
 BIOS=${BIOS:-default}
 MEM=${MEM:-512M}
 SMP=${SMP:-1}
-OSCOMP_DIR=${OSCOMP_DIR:-"${ROOT}/tests/oscomp"}
-OSCOMP_RUNNER=${OSCOMP_RUNNER:-}
-OSCOMP_RUNNER_ARGS=${OSCOMP_RUNNER_ARGS:-}
-OSCOMP_CASES=${OSCOMP_CASES:-}
-LOG_DIR="${ROOT}/build/oscomp"
-LOG_FILE="${LOG_DIR}/oscomp.log"
+TIMEOUT=${TIMEOUT:-8}
+EXPECT_INIT=${EXPECT_INIT:-0}
+FS=${FS:-}
+ROOTFS_IMAGE=${ROOTFS_IMAGE:-"${ROOT}/build/rootfs.ext4"}
+BUILD_ROOTFS=${BUILD_ROOTFS:-1}
+CASE_FILE=${CASE_FILE:-"${ROOT}/tests/self/cases.txt"}
+LOG_DIR=${LOG_DIR:-"${ROOT}/build/selftest"}
 SUMMARY_FILE="${LOG_DIR}/summary.txt"
 
 if [[ "${ARCH}" != "riscv64" || "${PLATFORM}" != "qemu" ]]; then
   echo "Only ARCH=riscv64 PLATFORM=qemu is supported right now." >&2
-  exit 1
-fi
-
-if [[ -z "${FS}" ]]; then
-  echo "FS image not set; use FS=path/to/ext4.img" >&2
-  exit 1
-fi
-
-if [[ ! -f "${FS}" ]]; then
-  echo "FS image not found: ${FS}" >&2
   exit 1
 fi
 
@@ -41,7 +31,6 @@ if ! command -v "${QEMU_BIN}" >/dev/null 2>&1; then
 fi
 
 mkdir -p "${LOG_DIR}"
-"${ROOT}/scripts/build.sh"
 
 OUT_DIR=debug
 if [[ "${MODE}" == "release" ]]; then
@@ -49,44 +38,76 @@ if [[ "${MODE}" == "release" ]]; then
 fi
 KERNEL="${ROOT}/target/${TARGET}/${OUT_DIR}/${CRATE}"
 
-RUNNER_CMD=()
-if [[ -n "${OSCOMP_RUNNER}" ]]; then
-  # Allow power users to pass "python3 path/to/run.py" as a single env var.
-  read -r -a RUNNER_CMD <<< "${OSCOMP_RUNNER}"
-elif [[ -x "${OSCOMP_DIR}/run.sh" ]]; then
-  RUNNER_CMD=("${OSCOMP_DIR}/run.sh")
-elif [[ -f "${OSCOMP_DIR}/run.py" ]]; then
-  RUNNER_CMD=(python3 "${OSCOMP_DIR}/run.py")
-else
-  echo "OSComp runner not found. Set OSCOMP_RUNNER or populate ${OSCOMP_DIR}." >&2
+CASES=()
+if [[ -f "${CASE_FILE}" ]]; then
+  while IFS= read -r line; do
+    line="${line%%#*}"
+    line="$(printf "%s" "${line}" | tr -d '\r' | xargs)"
+    if [[ -n "${line}" ]]; then
+      CASES+=("${line}")
+    fi
+  done < "${CASE_FILE}"
+fi
+
+if [[ ${#CASES[@]} -eq 0 ]]; then
+  CASES=(ramdisk ext4)
+fi
+
+if [[ -n "${FS}" && ! -f "${FS}" ]]; then
+  echo "FS image not found: ${FS}" >&2
   exit 1
 fi
 
-RUNNER_ARGS=()
-if [[ -n "${OSCOMP_RUNNER_ARGS}" ]]; then
-  read -r -a RUNNER_ARGS <<< "${OSCOMP_RUNNER_ARGS}"
-fi
+FS_EXT4="${FS}"
+ensure_ext4_image() {
+  if [[ -n "${FS_EXT4}" && -f "${FS_EXT4}" ]]; then
+    return 0
+  fi
+  if [[ "${BUILD_ROOTFS}" != "1" ]]; then
+    echo "FS image not set and BUILD_ROOTFS=0; cannot run ext4 case." >&2
+    return 1
+  fi
+  FS_EXT4="${ROOTFS_IMAGE}"
+  OUT="${FS_EXT4}" "${ROOT}/scripts/mkfs_ext4.sh"
+}
 
-export ARCH PLATFORM FS MODE KERNEL QEMU_BIN BIOS MEM SMP LOG_DIR LOG_FILE OSCOMP_CASES
-
-set +e
-"${RUNNER_CMD[@]}" "${RUNNER_ARGS[@]}" 2>&1 | tee "${LOG_FILE}"
-STATUS=${PIPESTATUS[0]}
-set -e
-
+STATUS=0
 cat <<EOF > "${SUMMARY_FILE}"
-oscomp_runner=${RUNNER_CMD[*]}
+selftest_runner=scripts/test_oscomp.sh
 kernel=${KERNEL}
-fs=${FS}
 arch=${ARCH}
 platform=${PLATFORM}
-status=${STATUS}
-log=${LOG_FILE}
+cases=${CASES[*]}
+expect_init=${EXPECT_INIT}
+log_dir=${LOG_DIR}
 EOF
 
+for case_name in "${CASES[@]}"; do
+  case_log="${LOG_DIR}/selftest-${case_name}.log"
+  case_fs=""
+  if [[ "${case_name}" == "ext4" ]]; then
+    ensure_ext4_image
+    case_fs="${FS_EXT4}"
+  fi
+
+  set +e
+  ARCH="${ARCH}" PLATFORM="${PLATFORM}" FS="${case_fs}" MODE="${MODE}" \
+    USER_TEST=1 EXPECT_INIT="${EXPECT_INIT}" TIMEOUT="${TIMEOUT}" \
+    QEMU_BIN="${QEMU_BIN}" BIOS="${BIOS}" MEM="${MEM}" SMP="${SMP}" \
+    LOG_DIR="${LOG_DIR}" LOG_FILE="${case_log}" \
+    "${ROOT}/scripts/test_qemu_smoke.sh"
+  case_status=$?
+  set -e
+
+  echo "${case_name}: status=${case_status} log=${case_log} fs=${case_fs:-ramdisk}" >> "${SUMMARY_FILE}"
+  if [[ ${case_status} -ne 0 ]]; then
+    STATUS=${case_status}
+  fi
+done
+
 if [[ ${STATUS} -ne 0 ]]; then
-  echo "OSComp test failed with status ${STATUS}" >&2
+  echo "Self-test failed with status ${STATUS}" >&2
   exit ${STATUS}
 fi
 
-echo "OSComp test passed."
+echo "Self-test passed."

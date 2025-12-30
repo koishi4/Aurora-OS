@@ -1,0 +1,3 @@
+# Aurora self-test cases
+ramdisk
+ext4
