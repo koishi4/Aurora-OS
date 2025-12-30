@@ -1,4 +1,32 @@
-* commit b48425d5f6e6b7aa6f9a77e3c515536a03b2bd10 (HEAD -> bootstrap-riscv64)
+* commit b35d4d1c7ba14b2b058e373cde0bf8a49aa97b8e (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 14:55:54 +0800
+| 
+|     feat(test): add ext4-init selftest case
+| 
+|  CHANGELOG.md                        |  2 ++
+|  docs/design/10_testing_benchmark.md |  5 ++--
+|  docs/process/phase_4_fs.md          |  2 ++
+|  modules/axfs/src/ext4.rs            | 50 +++++++++++++++++++++++++++++++++++
+|  modules/axruntime/src/virtio_blk.rs | 43 +++++++++++++++++++++++-------
+|  scripts/gdb.sh                      |  1 +
+|  scripts/run.sh                      |  1 +
+|  scripts/test_oscomp.sh              | 14 ++++++++++
+|  scripts/test_qemu_smoke.sh          |  3 +++
+|  tests/self/README.md                |  4 +++
+|  tests/self/cases.txt                |  1 +
+|  11 files changed, 115 insertions(+), 11 deletions(-)
+| 
+* commit c8b44a50a0514bc4d1d39395c67586eab4694017
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 14:13:38 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 20 +++++++++++++++++++-
+|  1 file changed, 19 insertions(+), 1 deletion(-)
+| 
+* commit b48425d5f6e6b7aa6f9a77e3c515536a03b2bd10
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-30 14:13:25 +0800
 | 
