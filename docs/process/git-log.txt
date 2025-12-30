@@ -1,4 +1,25 @@
-* commit c18f0ee78d187b25f5eafea06a41742fa5c6d98f (HEAD -> bootstrap-riscv64)
+* commit f6c670f04e929a976f614707c40ce627ae7a3df6 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 18:16:19 +0800
+| 
+|     feat(syscall): add openat creat support
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  docs/process/phase_4_fs.md              |  1 +
+|  modules/axruntime/src/syscall.rs        | 25 +++++++++++++++++++++++--
+|  4 files changed, 26 insertions(+), 2 deletions(-)
+| 
+* commit 9ee72247017682d7cadc6d7756389482f7c41fbd
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 18:11:59 +0800
+| 
+|     chore(process): update git log
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit c18f0ee78d187b25f5eafea06a41742fa5c6d98f
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-30 18:11:44 +0800
 | 
