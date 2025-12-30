@@ -1,4 +1,24 @@
-* commit 924e713e580b7b234b6ef84716c1d815e2903c07 (HEAD -> bootstrap-riscv64)
+* commit da9147c0ce25ea56e420ca5d49ff60eebd5c8a56 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 18:04:11 +0800
+| 
+|     feat(fs): update fat32 subdir entry tracking
+| 
+|  CHANGELOG.md               |   1 +
+|  docs/process/phase_4_fs.md |   1 +
+|  modules/axfs/src/fat32.rs  | 187 +++++++++++++++++++++++++++++++++----------
+|  3 files changed, 148 insertions(+), 41 deletions(-)
+| 
+* commit 3c5dc40f2dc8f82f72d388454050265764f9e1e2
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 17:26:32 +0800
+| 
+|     chore(process): update git log
+| 
+|  docs/process/git-log.txt | 26 +++++++++++++++++++++++++-
+|  1 file changed, 25 insertions(+), 1 deletion(-)
+| 
+* commit 924e713e580b7b234b6ef84716c1d815e2903c07
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-30 17:26:21 +0800
 | 
