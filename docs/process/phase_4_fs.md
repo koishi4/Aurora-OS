@@ -40,6 +40,7 @@
 - ext4 extent 深度>0 与间接块读路径已经补齐，后续仍需覆盖写路径。
 
 ## 解决与验证
+- 已通过 `make test-oscomp ARCH=riscv64 PLATFORM=qemu`（ramdisk/ext4 自研自测）。
 - `cargo test -p axfs`
 - `make rootfs-ext4`
 - `USER_TEST=1 make test-qemu-smoke ARCH=riscv64 PLATFORM=qemu FS=build/rootfs.ext4`
