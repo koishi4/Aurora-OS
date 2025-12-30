@@ -880,6 +880,11 @@ fn sys_openat(_dirfd: usize, pathname: usize, flags: usize, _mode: usize) -> Res
                 }
             }
             FileType::Char | FileType::Block => {}
+            FileType::File => {
+                if accmode != O_RDONLY && (meta.mode & 0o222) == 0 {
+                    return Err(Errno::Inval);
+                }
+            }
             _ => {
                 if accmode == O_WRONLY || accmode == O_RDWR {
                     return Err(Errno::Inval);

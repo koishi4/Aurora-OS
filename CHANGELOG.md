@@ -87,6 +87,7 @@
 - Add memfs read support for /dev/null and /dev/zero.
 - Add fd offset tracking for memfs-backed reads.
 - Add memfs write support for /dev/null and /dev/zero, and route readlinkat through memfs.
+- Add a writable /tmp/log placeholder in memfs for minimal write_at coverage.
 - Add VFS mount table with /, /dev, /proc reserved mounts plus devfs/procfs stubs.
 - Add BlockDevice trait and a pass-through BlockCache scaffold for future FS work.
 - Add a FAT32 BPB parser and root-cluster scaffold for read-path bring-up.

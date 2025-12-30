@@ -1,4 +1,7 @@
+use core::cell::UnsafeCell;
 use core::cmp::min;
+use core::hint::spin_loop;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use axvfs::{DirEntry, FileType, InodeId, Metadata, VfsError, VfsOps, VfsResult};
 
@@ -8,6 +11,90 @@ pub const DEV_NULL_ID: InodeId = 3;
 pub const DEV_ZERO_ID: InodeId = 4;
 pub const INIT_ID: InodeId = 5;
 pub const PROC_ID: InodeId = 6;
+pub const TMP_ID: InodeId = 7;
+pub const TMP_LOG_ID: InodeId = 8;
+
+const TMP_LOG_SIZE: usize = 1024;
+
+struct MemLogLock {
+    locked: AtomicBool,
+    buf: UnsafeCell<[u8; TMP_LOG_SIZE]>,
+    len: UnsafeCell<usize>,
+}
+
+unsafe impl Sync for MemLogLock {}
+
+impl MemLogLock {
+    const fn new() -> Self {
+        Self {
+            locked: AtomicBool::new(false),
+            buf: UnsafeCell::new([0u8; TMP_LOG_SIZE]),
+            len: UnsafeCell::new(0),
+        }
+    }
+
+    fn lock(&self) -> MemLogGuard<'_> {
+        while self
+            .locked
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            spin_loop();
+        }
+        MemLogGuard { lock: self }
+    }
+}
+
+struct MemLogGuard<'a> {
+    lock: &'a MemLogLock,
+}
+
+impl<'a> MemLogGuard<'a> {
+    fn len(&self) -> usize {
+        // SAFETY: guard ensures exclusive access to the log state.
+        unsafe { *self.lock.len.get() }
+    }
+
+    fn read_at(&self, offset: usize, buf: &mut [u8]) -> usize {
+        let len = self.len();
+        if offset >= len {
+            return 0;
+        }
+        let end = min(len, offset.saturating_add(buf.len()));
+        let count = end - offset;
+        // SAFETY: guard ensures exclusive access to the log buffer.
+        let data = unsafe { &*self.lock.buf.get() };
+        buf[..count].copy_from_slice(&data[offset..end]);
+        count
+    }
+
+    fn write_at(&self, offset: usize, buf: &[u8]) -> usize {
+        if offset >= TMP_LOG_SIZE {
+            return 0;
+        }
+        let end = min(TMP_LOG_SIZE, offset.saturating_add(buf.len()));
+        let count = end - offset;
+        // SAFETY: guard ensures exclusive access to the log buffer and length.
+        let data = unsafe { &mut *self.lock.buf.get() };
+        let len = unsafe { &mut *self.lock.len.get() };
+        if offset > *len {
+            data[*len..offset].fill(0);
+        }
+        data[offset..end].copy_from_slice(&buf[..count]);
+        if end > *len {
+            *len = end;
+        }
+        count
+    }
+}
+
+impl Drop for MemLogGuard<'_> {
+    fn drop(&mut self) {
+        self.lock.locked.store(false, Ordering::Release);
+    }
+}
+
+static TMP_LOG: MemLogLock = MemLogLock::new();
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResolveError {
@@ -25,7 +112,7 @@ struct Node {
     mode: u16,
 }
 
-const NODES: [Node; 6] = [
+const NODES: [Node; 8] = [
     Node {
         id: ROOT_ID,
         parent: ROOT_ID,
@@ -68,6 +155,20 @@ const NODES: [Node; 6] = [
         file_type: FileType::Dir,
         mode: 0o755,
     },
+    Node {
+        id: TMP_ID,
+        parent: ROOT_ID,
+        name: "tmp",
+        file_type: FileType::Dir,
+        mode: 0o755,
+    },
+    Node {
+        id: TMP_LOG_ID,
+        parent: TMP_ID,
+        name: "log",
+        file_type: FileType::File,
+        mode: 0o644,
+    },
 ];
 
 #[derive(Clone, Copy)]
@@ -77,7 +178,7 @@ struct DirEntrySpec {
     file_type: FileType,
 }
 
-const ROOT_ENTRIES: [DirEntrySpec; 5] = [
+const ROOT_ENTRIES: [DirEntrySpec; 6] = [
     DirEntrySpec {
         ino: ROOT_ID,
         name: b".",
@@ -101,6 +202,11 @@ const ROOT_ENTRIES: [DirEntrySpec; 5] = [
     DirEntrySpec {
         ino: PROC_ID,
         name: b"proc",
+        file_type: FileType::Dir,
+    },
+    DirEntrySpec {
+        ino: TMP_ID,
+        name: b"tmp",
         file_type: FileType::Dir,
     },
 ];
@@ -138,6 +244,24 @@ const PROC_ENTRIES: [DirEntrySpec; 2] = [
         ino: ROOT_ID,
         name: b"..",
         file_type: FileType::Dir,
+    },
+];
+
+const TMP_ENTRIES: [DirEntrySpec; 3] = [
+    DirEntrySpec {
+        ino: TMP_ID,
+        name: b".",
+        file_type: FileType::Dir,
+    },
+    DirEntrySpec {
+        ino: ROOT_ID,
+        name: b"..",
+        file_type: FileType::Dir,
+    },
+    DirEntrySpec {
+        ino: TMP_LOG_ID,
+        name: b"log",
+        file_type: FileType::File,
     },
 ];
 
@@ -197,6 +321,8 @@ impl<'a> MemFs<'a> {
         let node = self.node(inode)?;
         let size = if inode == INIT_ID {
             self.init_image.map(|image| image.len() as u64).unwrap_or(0)
+        } else if inode == TMP_LOG_ID {
+            TMP_LOG.lock().len() as u64
         } else {
             0
         };
@@ -302,13 +428,23 @@ impl<'a> VfsOps for MemFs<'a> {
                 Ok(buf.len())
             }
             DEV_NULL_ID => Ok(0),
+            TMP_LOG_ID => {
+                let offset = offset as usize;
+                let guard = TMP_LOG.lock();
+                Ok(guard.read_at(offset, buf))
+            }
             _ => Err(VfsError::NotSupported),
         }
     }
 
-    fn write_at(&self, inode: InodeId, _offset: u64, buf: &[u8]) -> VfsResult<usize> {
+    fn write_at(&self, inode: InodeId, offset: u64, buf: &[u8]) -> VfsResult<usize> {
         match inode {
             DEV_NULL_ID | DEV_ZERO_ID => Ok(buf.len()),
+            TMP_LOG_ID => {
+                let offset = offset as usize;
+                let guard = TMP_LOG.lock();
+                Ok(guard.write_at(offset, buf))
+            }
             _ => Err(VfsError::NotSupported),
         }
     }
@@ -318,6 +454,7 @@ impl<'a> VfsOps for MemFs<'a> {
             ROOT_ID => &ROOT_ENTRIES[..],
             DEV_ID => &DEV_ENTRIES[..],
             PROC_ID => &PROC_ENTRIES[..],
+            TMP_ID => &TMP_ENTRIES[..],
             _ => return Err(VfsError::NotDir),
         };
         fill_dir_entries(list, offset, entries)
@@ -352,6 +489,7 @@ mod tests {
         assert_eq!(fs.resolve_path("/dev/zero").unwrap(), DEV_ZERO_ID);
         assert_eq!(fs.resolve_path("/init").unwrap(), INIT_ID);
         assert_eq!(fs.resolve_path("/proc").unwrap(), PROC_ID);
+        assert_eq!(fs.resolve_path("/tmp/log").unwrap(), TMP_LOG_ID);
         assert_eq!(fs.resolve_path("dev").unwrap_err(), ResolveError::Invalid);
         assert_eq!(fs.resolve_path("/init/child").unwrap_err(), ResolveError::NotDir);
     }
@@ -400,6 +538,23 @@ mod tests {
         assert_eq!(written, 4);
         let written = fs.write_at(DEV_ZERO_ID, 0, &buf).unwrap();
         assert_eq!(written, 4);
+    }
+
+    #[test]
+    fn tmp_log_read_write() {
+        let fs = MemFs::new();
+        let data = b"hello";
+        let written = fs.write_at(TMP_LOG_ID, 0, data).unwrap();
+        assert_eq!(written, data.len());
+        let mut buf = [0u8; 8];
+        let read = fs.read_at(TMP_LOG_ID, 0, &mut buf).unwrap();
+        assert_eq!(read, data.len());
+        assert_eq!(&buf[..read], data);
+        let written = fs.write_at(TMP_LOG_ID, 6, b"world").unwrap();
+        assert_eq!(written, 5);
+        let read = fs.read_at(TMP_LOG_ID, 0, &mut buf).unwrap();
+        assert_eq!(read, buf.len());
+        assert_eq!(&buf, b"hello\0wo");
     }
 
     #[test]

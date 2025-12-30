@@ -13,6 +13,7 @@
 - 早期 syscalls 通过 memfs 的路径解析与元数据查询返回 openat/newfstatat 结果，作为接入 VFS 的第一步。
 - memfs 支持携带 `/init` ELF 镜像以提供 read_at 路径，作为后续 VFS 读写接口的占位实现。
 - memfs 对 `/dev/null`/`/dev/zero` 提供最小 read/write 行为，作为 VFS 设备节点接入示例。
+- memfs 提供 `/tmp/log` 可写文件，占位覆盖最小 write_at 路径。
 - 挂载点采用 `MountTable` 管理，根文件系统可切换 FAT32/ext4。
 - `MountTable` 预留 `/`、`/dev`、`/proc` 挂载点：/dev 使用 devfs 占位，/proc 使用 procfs 占位，路径解析按最长前缀匹配并剥离挂载前缀。
 - rootfs 优先使用 virtio-blk 外部镜像挂载 ext4/FAT32，失败时回退到内存 FAT32 ramdisk。

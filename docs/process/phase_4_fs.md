@@ -18,6 +18,7 @@
 - memfs 读路径扩展到 `/dev/null` 与 `/dev/zero`。
 - memfs 读取统一走 read_at，并通过 fd offset 维护文件读位置。
 - memfs 写路径支持 `/dev/null` 与 `/dev/zero`，readlinkat 走 memfs 入口占位。
+- memfs 添加 `/tmp/log` 可写文件，占位提供最小写入路径。
 - 引入 MountTable 挂载表，预留 `/`、`/dev`、`/proc` 挂载点，路径解析改为最长前缀匹配。
 - 新增 devfs/procfs 占位实现，/dev 路径解析与元数据读取走 devfs。
 - 新增 BlockDevice trait 与 BlockCache 直通占位，作为后续块设备与缓存接入骨架。
