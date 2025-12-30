@@ -146,3 +146,5 @@
 - Add test runner script for internal self-test cases and log summaries.
 - Add PLIC-backed external IRQ handling and virtio-blk interrupt-driven completion.
 - Add an ext4 rootfs mount log marker and smoke-test check in QEMU runs.
+- Extend /init to read `/etc/issue` and verify it in ext4 QEMU smoke runs.
+- Reduce ext4 read-path stack pressure by reusing a shared scratch buffer.

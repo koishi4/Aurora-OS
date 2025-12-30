@@ -104,6 +104,14 @@ if [[ "${EXPECT_EXT4}" == "1" ]]; then
   fi
 fi
 
+if [[ "${EXPECT_EXT4}" == "1" && "${USER_TEST}" == "1" ]]; then
+  if ! grep -q "Aurora ext4 test" "${LOG_FILE}"; then
+    echo "Smoke test failed: /etc/issue banner not found." >&2
+    cat "${LOG_FILE}" >&2
+    exit 1
+  fi
+fi
+
 
 if [[ ${STATUS} -ne 0 && ${STATUS} -ne 124 ]]; then
   echo "QEMU exited with status ${STATUS}" >&2

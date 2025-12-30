@@ -10,6 +10,7 @@ Cases:
 Notes:
 - ext4-init reads the image path from `AXFS_EXT4_IMAGE` (set by `scripts/test_oscomp.sh`).
 - ext4 QEMU runs verify the `vfs: mounted ext4 rootfs` log marker.
+- ext4 QEMU runs also verify `/etc/issue` output from `/init`.
 
 Usage:
 - `make test-oscomp ARCH=riscv64 PLATFORM=qemu`

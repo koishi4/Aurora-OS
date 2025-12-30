@@ -1,4 +1,7 @@
 use axvfs::{DirEntry, FileType, InodeId, Metadata, VfsError, VfsOps, VfsResult};
+use core::cell::UnsafeCell;
+use core::hint::spin_loop;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::block::{BlockCache, BlockDevice, BlockId};
 
@@ -21,6 +24,53 @@ const INODE_BLOCK_LEN: usize = 60;
 const INODE_SIZE_HIGH_OFFSET: usize = 108;
 const EXT4_EXTENTS_FLAG: u32 = 0x0008_0000;
 const EXTENT_HEADER_MAGIC: u16 = 0xf30a;
+const EXT4_SCRATCH_SIZE: usize = 4096;
+
+struct ScratchLock {
+    locked: AtomicBool,
+    buf: UnsafeCell<[u8; EXT4_SCRATCH_SIZE]>,
+}
+
+unsafe impl Sync for ScratchLock {}
+
+impl ScratchLock {
+    const fn new() -> Self {
+        Self {
+            locked: AtomicBool::new(false),
+            buf: UnsafeCell::new([0u8; EXT4_SCRATCH_SIZE]),
+        }
+    }
+
+    fn lock(&self) -> ScratchGuard<'_> {
+        while self
+            .locked
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            spin_loop();
+        }
+        ScratchGuard { lock: self }
+    }
+}
+
+struct ScratchGuard<'a> {
+    lock: &'a ScratchLock,
+}
+
+impl<'a> ScratchGuard<'a> {
+    fn get_mut(&self) -> &mut [u8; EXT4_SCRATCH_SIZE] {
+        // SAFETY: guard ensures exclusive access to the scratch buffer.
+        unsafe { &mut *self.lock.buf.get() }
+    }
+}
+
+impl Drop for ScratchGuard<'_> {
+    fn drop(&mut self) {
+        self.lock.locked.store(false, Ordering::Release);
+    }
+}
+
+static EXT4_SCRATCH: ScratchLock = ScratchLock::new();
 
 #[derive(Clone, Copy, Debug)]
 pub struct SuperBlock {
@@ -190,7 +240,6 @@ impl<'a> Ext4Fs<'a> {
         let mut remaining = max;
         let mut total = 0usize;
         let mut cur_offset = offset;
-        let mut scratch = [0u8; 4096];
         while remaining > 0 {
             let block_index = (cur_offset / block_size as u64) as u32;
             let in_block = (cur_offset % block_size as u64) as usize;
@@ -198,10 +247,8 @@ impl<'a> Ext4Fs<'a> {
             let Some(phys) = self.map_block(inode, block_index)? else {
                 return Ok(total);
             };
-            let block_offset = phys * block_size as u64;
-            read_bytes(&self.cache, block_offset, &mut scratch[..block_size])?;
-            buf[total..total + to_copy]
-                .copy_from_slice(&scratch[in_block..in_block + to_copy]);
+            let block_offset = phys * block_size as u64 + in_block as u64;
+            read_bytes(&self.cache, block_offset, &mut buf[total..total + to_copy])?;
             total += to_copy;
             remaining -= to_copy;
             cur_offset += to_copy as u64;
@@ -440,11 +487,12 @@ impl VfsOps for Ext4Fs<'_> {
 
 fn read_bytes(cache: &BlockCache<'_>, offset: u64, buf: &mut [u8]) -> VfsResult<()> {
     let block_size = cache.block_size();
-    if block_size == 0 || block_size > 4096 {
+    if block_size == 0 || block_size > EXT4_SCRATCH_SIZE {
         return Err(VfsError::Invalid);
     }
     let block_size_u64 = block_size as u64;
-    let mut scratch = [0u8; 4096];
+    let guard = EXT4_SCRATCH.lock();
+    let scratch = guard.get_mut();
     let mut remaining = buf.len();
     let mut buf_offset = 0usize;
     let mut cur_offset = offset;

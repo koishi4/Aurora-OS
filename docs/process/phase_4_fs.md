@@ -37,6 +37,8 @@
 - 增加 extent 树与间接块覆盖的单元测试。
 - 新增 ext4 `/init` VFS 读取自测用例，覆盖根目录枚举、多块读路径与 `/etc/issue` 读取。
 - QEMU 启动时输出 `vfs: mounted ext4 rootfs`，ext4 冒烟用例强制检查该标记。
+- `/init` 用户态程序增加 `/etc/issue` 读取并在 ext4 冒烟中检查输出。
+- ext4 读路径将块读取 scratch 缓冲迁移到共享区，避免内核栈溢出。
 
 ## 问题与定位
 - ext4 extent 深度>0 与间接块读路径已经补齐，后续仍需覆盖写路径。
