@@ -32,6 +32,7 @@
 - 使用内存块设备构建 FAT32 ramdisk 挂载为 rootfs，`/init` 通过 VFS 读取。
 - ext4 增加组描述符 + inode 表读取，目录查找与只读读路径打通。
 - fd 表改为记录通用 VFS 句柄，open/read/write/stat/getdents64 统一走 VFS。
+- rootfs/挂载表改为惰性初始化后复用，避免每次 syscall 重建 FS 实例导致缓存失效。
 - 新增 DTB virtio-mmio 枚举与 MMIO 映射，初始化 virtio-blk 驱动作为 BlockDevice。
 - rootfs 支持 virtio-blk 外部镜像挂载 ext4/FAT32，失败回退到 ramdisk。
 - ramdisk rootfs 允许写回到内存镜像，支持 FAT32 写入回读验证。

@@ -1,3 +1,4 @@
+use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use axfs::block::{BlockDevice, BlockId};
@@ -13,6 +14,9 @@ static ROOTFS_READY: AtomicBool = AtomicBool::new(false);
 static ROOTFS_SIZE: AtomicUsize = AtomicUsize::new(0);
 // SAFETY: 单核早期阶段初始化一次，后续只读。
 static mut ROOTFS_IMAGE: [u8; ROOTFS_IMAGE_MAX] = [0; ROOTFS_IMAGE_MAX];
+static ROOT_DEVICE_READY: AtomicBool = AtomicBool::new(false);
+// SAFETY: 单核早期阶段初始化一次，后续只读。
+static mut ROOT_DEVICE: MaybeUninit<RootBlockDevice> = MaybeUninit::uninit();
 
 #[derive(Clone, Copy)]
 pub struct RootFsDevice {
@@ -80,12 +84,21 @@ pub fn init(virtio_mmio: &[VirtioMmioDevice]) {
     virtio_blk::init(virtio_mmio);
 }
 
-pub fn root_device() -> RootBlockDevice {
-    if let Some(dev) = virtio_blk::device() {
-        RootBlockDevice::Virtio(dev)
-    } else {
-        RootBlockDevice::Ramdisk(RootFsDevice::new())
+pub fn root_device() -> &'static RootBlockDevice {
+    if !ROOT_DEVICE_READY.load(Ordering::Acquire) {
+        let dev = if let Some(dev) = virtio_blk::device() {
+            RootBlockDevice::Virtio(dev)
+        } else {
+            RootBlockDevice::Ramdisk(RootFsDevice::new())
+        };
+        // SAFETY: 单核初始化时写入静态设备句柄。
+        unsafe {
+            ROOT_DEVICE.write(dev);
+        }
+        ROOT_DEVICE_READY.store(true, Ordering::Release);
     }
+    // SAFETY: ROOT_DEVICE 在上方初始化后只读。
+    unsafe { &*ROOT_DEVICE.as_ptr() }
 }
 
 fn rootfs_image() -> &'static [u8] {

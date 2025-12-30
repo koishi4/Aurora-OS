@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use core::cmp::min;
-use core::mem::size_of;
+use core::mem::{size_of, MaybeUninit};
 use core::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 
 use axfs::{devfs, ext4, fat32, memfs, procfs, DirEntry, FileType, InodeId, VfsError, VfsOps};
@@ -41,9 +41,23 @@ impl Errno {
 const ROOTFS_LOG_EXT4: u8 = 1 << 0;
 const ROOTFS_LOG_FAT32: u8 = 1 << 1;
 const ROOTFS_LOG_MEMFS: u8 = 1 << 2;
+const ROOTFS_KIND_UNKNOWN: u8 = 0;
+const ROOTFS_KIND_EXT4: u8 = 1;
+const ROOTFS_KIND_FAT32: u8 = 2;
+const ROOTFS_KIND_MEMFS: u8 = 3;
 
 // Avoid repeated rootfs log spam across per-syscall mount table creation.
 static ROOTFS_LOGGED: AtomicU8 = AtomicU8::new(0);
+// Rootfs kind is initialized once and reused to keep block cache state stable.
+static ROOTFS_KIND: AtomicU8 = AtomicU8::new(ROOTFS_KIND_UNKNOWN);
+// SAFETY: rootfs instances are initialized once in single-core boot and then shared read-only.
+static mut ROOTFS_EXT4: MaybeUninit<ext4::Ext4Fs<'static>> = MaybeUninit::uninit();
+// SAFETY: rootfs instances are initialized once in single-core boot and then shared read-only.
+static mut ROOTFS_FAT32: MaybeUninit<fat32::Fat32Fs<'static>> = MaybeUninit::uninit();
+// SAFETY: rootfs instances are initialized once in single-core boot and then shared read-only.
+static mut ROOTFS_MEMFS: MaybeUninit<memfs::MemFs<'static>> = MaybeUninit::uninit();
+static DEVFS: devfs::DevFs = devfs::DevFs::new();
+static PROCFS: procfs::ProcFs = procfs::ProcFs::new();
 
 #[derive(Clone, Copy)]
 struct SyscallContext {
@@ -2368,37 +2382,66 @@ fn log_rootfs_once(kind: &str, bit: u8) {
     }
 }
 
-fn with_mounts<R>(f: impl FnOnce(&MountTable<'_, VFS_MOUNT_COUNT>) -> R) -> R {
-    let devfs = devfs::DevFs::new();
-    let procfs = procfs::ProcFs::new();
+fn init_rootfs_kind() {
+    if ROOTFS_KIND.load(Ordering::Acquire) != ROOTFS_KIND_UNKNOWN {
+        return;
+    }
     let root_dev = crate::fs::root_device();
     let root_block = root_dev.as_block_device();
     if let Ok(rootfs) = ext4::Ext4Fs::new(root_block) {
-        log_rootfs_once("ext4", ROOTFS_LOG_EXT4);
-        let mounts = MountTable::new([
-            MountPoint::new(MountId::Root, "/", &rootfs),
-            MountPoint::new(MountId::Dev, "/dev", &devfs),
-            MountPoint::new(MountId::Proc, "/proc", &procfs),
-        ]);
-        f(&mounts)
-    } else if let Ok(rootfs) = fat32::Fat32Fs::new(root_block) {
-        log_rootfs_once("fat32", ROOTFS_LOG_FAT32);
-        let mounts = MountTable::new([
-            MountPoint::new(MountId::Root, "/", &rootfs),
-            MountPoint::new(MountId::Dev, "/dev", &devfs),
-            MountPoint::new(MountId::Proc, "/proc", &procfs),
-        ]);
-        f(&mounts)
-    } else {
-        log_rootfs_once("memfs", ROOTFS_LOG_MEMFS);
-        let rootfs = memfs::MemFs::with_init_image(init_memfile_image());
-        let mounts = MountTable::new([
-            MountPoint::new(MountId::Root, "/", &rootfs),
-            MountPoint::new(MountId::Dev, "/dev", &devfs),
-            MountPoint::new(MountId::Proc, "/proc", &procfs),
-        ]);
-        f(&mounts)
+        // SAFETY: 单核初始化阶段写入 rootfs 实例。
+        unsafe {
+            ROOTFS_EXT4.write(rootfs);
+        }
+        ROOTFS_KIND.store(ROOTFS_KIND_EXT4, Ordering::Release);
+        return;
     }
+    if let Ok(rootfs) = fat32::Fat32Fs::new(root_block) {
+        // SAFETY: 单核初始化阶段写入 rootfs 实例。
+        unsafe {
+            ROOTFS_FAT32.write(rootfs);
+        }
+        ROOTFS_KIND.store(ROOTFS_KIND_FAT32, Ordering::Release);
+        return;
+    }
+    let rootfs = memfs::MemFs::with_init_image(init_memfile_image());
+    // SAFETY: 单核初始化阶段写入 rootfs 实例。
+    unsafe {
+        ROOTFS_MEMFS.write(rootfs);
+    }
+    ROOTFS_KIND.store(ROOTFS_KIND_MEMFS, Ordering::Release);
+}
+
+fn rootfs_kind() -> u8 {
+    if ROOTFS_KIND.load(Ordering::Acquire) == ROOTFS_KIND_UNKNOWN {
+        // 单核启动阶段惰性初始化。
+        init_rootfs_kind();
+    }
+    ROOTFS_KIND.load(Ordering::Acquire)
+}
+
+fn rootfs_ref(kind: u8) -> &'static dyn VfsOps {
+    match kind {
+        ROOTFS_KIND_EXT4 => unsafe { &*ROOTFS_EXT4.as_ptr() },
+        ROOTFS_KIND_FAT32 => unsafe { &*ROOTFS_FAT32.as_ptr() },
+        _ => unsafe { &*ROOTFS_MEMFS.as_ptr() },
+    }
+}
+
+fn with_mounts<R>(f: impl FnOnce(&MountTable<'_, VFS_MOUNT_COUNT>) -> R) -> R {
+    let kind = rootfs_kind();
+    match kind {
+        ROOTFS_KIND_EXT4 => log_rootfs_once("ext4", ROOTFS_LOG_EXT4),
+        ROOTFS_KIND_FAT32 => log_rootfs_once("fat32", ROOTFS_LOG_FAT32),
+        _ => log_rootfs_once("memfs", ROOTFS_LOG_MEMFS),
+    }
+    let rootfs = rootfs_ref(kind);
+    let mounts = MountTable::new([
+        MountPoint::new(MountId::Root, "/", rootfs),
+        MountPoint::new(MountId::Dev, "/dev", &DEVFS),
+        MountPoint::new(MountId::Proc, "/proc", &PROCFS),
+    ]);
+    f(&mounts)
 }
 
 fn vfs_lookup_inode(root_pa: usize, pathname: usize) -> Result<(MountId, InodeId), Errno> {
