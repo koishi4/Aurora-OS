@@ -55,9 +55,11 @@ const SSTATUS_SIE: usize = 1 << 1;
 const SSTATUS_SPIE: usize = 1 << 5;
 const SSTATUS_SPP: usize = 1 << 8;
 const SIE_STIE: usize = 1 << 5;
+const SIE_SEIE: usize = 1 << 9;
 
 const SCAUSE_INTERRUPT_BIT: usize = 1usize << (usize::BITS as usize - 1);
 const SCAUSE_SUPERVISOR_TIMER: usize = 5;
+const SCAUSE_SUPERVISOR_EXTERNAL: usize = 9;
 const SCAUSE_USER_ECALL: usize = 8;
 const SCAUSE_SUPERVISOR_ECALL: usize = 9;
 const SCAUSE_INST_PAGE_FAULT: usize = 12;
@@ -112,6 +114,14 @@ pub fn enable_timer_interrupt(interval_ticks: u64) {
     sbi::set_timer(now + interval_ticks);
     unsafe {
         write_sie(read_sie() | SIE_STIE);
+        write_sstatus(read_sstatus() | SSTATUS_SIE);
+    }
+}
+
+pub fn enable_external_interrupts() {
+    // SAFETY: external interrupts are needed for device IRQ wakeups.
+    unsafe {
+        write_sie(read_sie() | SIE_SEIE);
         write_sstatus(read_sstatus() | SSTATUS_SIE);
     }
 }
@@ -203,6 +213,15 @@ extern "C" fn trap_handler(tf: &mut TrapFrame) {
             runtime::on_tick(ticks);
             runtime::maybe_schedule(ticks, crate::config::SCHED_INTERVAL_TICKS);
             runtime::preempt_current();
+            return;
+        } else if code == SCAUSE_SUPERVISOR_EXTERNAL {
+            loop {
+                let Some(irq) = crate::plic::claim() else {
+                    break;
+                };
+                let _handled = crate::virtio_blk::handle_irq(irq);
+                crate::plic::complete(irq);
+            }
             return;
         }
     } else if code == SCAUSE_USER_ECALL {

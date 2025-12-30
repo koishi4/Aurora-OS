@@ -12,8 +12,8 @@
 - DMA 抽象放在 HAL 层：提供物理页分配、缓存同步、地址转换接口。
 - 中断注册通过平台层统一映射（如 PLIC/CLINT），驱动只关心 IRQ 号。
 - I/O 访问尽量走安全封装（MMIO 访问封装 + volatile 读写）。
-- 当前阶段先落地 virtio-blk(mmio) 最小驱动：DTB 枚举、MMIO 映射、单队列轮询完成同步读写。
-- virtio-blk 仅实现 read/write 请求，暂不启用中断与多队列。
+- 当前阶段先落地 virtio-blk(mmio) 最小驱动：DTB 枚举、MMIO 映射、单队列同步读写，优先使用 IRQ 完成唤醒（PLIC claim/complete），无 IRQ 时回退轮询。
+- virtio-blk 仅实现 read/write 请求，暂不启用多队列与高级特性。
 
 ## 关键数据结构
 - `DeviceInfo`：设备类型、MMIO 基址、IRQ 号、设备树节点信息。

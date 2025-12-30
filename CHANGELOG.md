@@ -138,3 +138,5 @@
 - Add getrusage stub returning monotonic user time.
 - Add setpgid/getpgid/getsid/setsid/getpgrp/setpgrp stubs (TaskId+1 when available).
 - Add getgroups/setgroups stubs returning empty groups.
+- Add OSComp test runner script with external harness integration and log summaries.
+- Add PLIC-backed external IRQ handling and virtio-blk interrupt-driven completion.

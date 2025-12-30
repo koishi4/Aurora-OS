@@ -6,6 +6,7 @@ mod dtb;
 mod sbi;
 mod trap;
 mod mm;
+mod plic;
 mod cpu;
 mod time;
 mod sleep;
@@ -57,22 +58,35 @@ pub extern "C" fn rust_main(hart_id: usize, dtb_addr: usize) -> ! {
         crate::println!("dtb: timebase-frequency={}Hz", freq);
     }
 
-    for region in dtb_info.virtio_mmio_regions() {
+    for dev in dtb_info.virtio_mmio_devices() {
         crate::println!(
-            "dtb: virtio-mmio base={:#x} size={:#x}",
+            "dtb: virtio-mmio base={:#x} size={:#x} irq={}",
+            dev.region.base,
+            dev.region.size,
+            dev.irq
+        );
+    }
+
+    if let Some(region) = dtb_info.plic {
+        crate::println!(
+            "dtb: plic base={:#x} size={:#x}",
             region.base,
             region.size
         );
     }
 
-    mm::init(dtb_info.memory, dtb_info.virtio_mmio_regions());
-    fs::init(dtb_info.virtio_mmio_regions());
+    let mut device_regions = [mm::MemoryRegion::default(); dtb::MAX_DEVICE_REGIONS];
+    let device_count = dtb_info.collect_device_regions(&mut device_regions);
+    mm::init(dtb_info.memory, &device_regions[..device_count]);
+    plic::init(dtb_info.plic);
+    fs::init(dtb_info.virtio_mmio_devices());
 
     let timebase = dtb_info.timebase_frequency.unwrap_or(10_000_000);
     let tick_hz = config::DEFAULT_TICK_HZ;
     let interval = time::init(timebase, tick_hz);
     crate::println!("timer: tick={}Hz interval={} ticks", tick_hz, interval);
     trap::enable_timer_interrupt(interval);
+    trap::enable_external_interrupts();
 
     runtime::init();
 

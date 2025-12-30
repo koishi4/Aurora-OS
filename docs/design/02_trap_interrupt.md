@@ -17,6 +17,8 @@
 - 使用 TrapFrameGuard 记录当前 trapframe 指针，为后续抢占保存上下文预留入口。
 - trap 入口使用 `sscratch` 交换内核栈指针，确保从 U-mode 进入时切到内核栈。
 - page fault 分支尝试处理 CoW 写入异常，成功时直接返回用户态。
+- 支持 S 态外部中断：通过 PLIC claim/complete 拉取 IRQ 并分发到设备处理函数（如 virtio-blk）。
+- 外部中断开启 SIE.SEIE，确保设备完成可唤醒阻塞 I/O。
 
 ## 关键数据结构
 - TrapFrame：保存通用寄存器与 CSR 的固定布局结构。
@@ -36,9 +38,11 @@ trap_entry (__trap_vector)
 ## 风险与权衡
 - trap 保存/恢复开销影响中断延迟。
 - 尚未实现用户态上下文切换与嵌套中断策略。
+- 外部中断依赖 PLIC 寄存器映射，需保证 DTB 提供正确的 MMIO 基址。
 
 ## 测试点
 - QEMU 启动后触发 U/S 态 ecall 并返回。
 - 打开定时器中断并观察 handler 被调用。
 - 启动日志打印 timebase 频率与 tick 间隔。
 - USER_TEST=1 冒烟覆盖用户态 ecall + execve 后返回路径。
+- virtio-blk 读写触发 IRQ 并完成请求（通过 QEMU 日志验证无忙等）。

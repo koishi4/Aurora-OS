@@ -3,7 +3,7 @@ use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use axfs::block::{BlockDevice, BlockId};
 use axfs::{fat32, VfsError, VfsResult};
 
-use crate::mm::MemoryRegion;
+use crate::dtb::VirtioMmioDevice;
 use crate::virtio_blk;
 
 const ROOTFS_BLOCK_SIZE: usize = 512;
@@ -65,7 +65,7 @@ impl RootBlockDevice {
     }
 }
 
-pub fn init(virtio_mmio: &[MemoryRegion]) {
+pub fn init(virtio_mmio: &[VirtioMmioDevice]) {
     virtio_blk::init(virtio_mmio);
 }
 

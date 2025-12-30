@@ -6,7 +6,9 @@ use core::sync::atomic::{fence, AtomicBool, AtomicUsize, Ordering};
 use axfs::block::{BlockDevice, BlockId};
 use axfs::{VfsError, VfsResult};
 
-use crate::mm::{self, MemoryRegion};
+use crate::dtb::VirtioMmioDevice;
+use crate::mm;
+use crate::plic;
 
 const VIRTIO_MMIO_MAGIC: u32 = 0x7472_6976;
 const VIRTIO_MMIO_VERSION: u32 = 2;
@@ -26,6 +28,8 @@ const MMIO_QUEUE_NUM: usize = 0x038;
 const MMIO_QUEUE_READY: usize = 0x044;
 const MMIO_QUEUE_NOTIFY: usize = 0x050;
 const MMIO_STATUS: usize = 0x070;
+const MMIO_INTERRUPT_STATUS: usize = 0x060;
+const MMIO_INTERRUPT_ACK: usize = 0x064;
 const MMIO_QUEUE_DESC_LOW: usize = 0x080;
 const MMIO_QUEUE_DESC_HIGH: usize = 0x084;
 const MMIO_QUEUE_AVAIL_LOW: usize = 0x090;
@@ -52,6 +56,7 @@ static VIRTIO_BLK_READY: AtomicBool = AtomicBool::new(false);
 static VIRTIO_BLK_BASE: AtomicUsize = AtomicUsize::new(0);
 static VIRTIO_BLK_QUEUE_SIZE: AtomicUsize = AtomicUsize::new(0);
 static VIRTIO_BLK_USED_IDX: AtomicUsize = AtomicUsize::new(0);
+static VIRTIO_BLK_IRQ: AtomicUsize = AtomicUsize::new(0);
 static VIRTIO_QUEUE_LOCK: SpinLock = SpinLock::new();
 static VIRTIO_BLK_DEVICE: VirtioBlkDevice = VirtioBlkDevice;
 static VIRTIO_QUEUE: QueueCell = QueueCell::new();
@@ -84,15 +89,15 @@ impl BlockDevice for VirtioBlkDevice {
     }
 }
 
-pub fn init(virtio_mmio: &[MemoryRegion]) {
+pub fn init(virtio_mmio: &[VirtioMmioDevice]) {
     if VIRTIO_BLK_READY.load(Ordering::Acquire) {
         return;
     }
-    for region in virtio_mmio {
-        if region.size == 0 {
+    for dev in virtio_mmio {
+        if dev.region.size == 0 {
             continue;
         }
-        if try_init_device(region.base as usize) {
+        if try_init_device(dev.region.base as usize, dev.irq) {
             VIRTIO_BLK_READY.store(true, Ordering::Release);
             break;
         }
@@ -107,7 +112,7 @@ pub fn device() -> Option<&'static VirtioBlkDevice> {
     }
 }
 
-fn try_init_device(base: usize) -> bool {
+fn try_init_device(base: usize, irq: u32) -> bool {
     if mmio_read32(base, MMIO_MAGIC) != VIRTIO_MMIO_MAGIC {
         return false;
     }
@@ -166,6 +171,10 @@ fn try_init_device(base: usize) -> bool {
     VIRTIO_BLK_BASE.store(base, Ordering::Release);
     VIRTIO_BLK_QUEUE_SIZE.store(queue_size, Ordering::Release);
     VIRTIO_BLK_USED_IDX.store(0, Ordering::Release);
+    VIRTIO_BLK_IRQ.store(irq as usize, Ordering::Release);
+    if irq != 0 {
+        plic::enable(irq);
+    }
     true
 }
 
@@ -231,7 +240,11 @@ fn submit_request(req_type: u32, block_id: BlockId, buf: &mut [u8]) -> VfsResult
             VIRTIO_BLK_USED_IDX.store(last_used as usize, Ordering::Release);
             break;
         }
-        spin_loop();
+        if VIRTIO_BLK_IRQ.load(Ordering::Acquire) != 0 {
+            crate::cpu::wait_for_interrupt();
+        } else {
+            spin_loop();
+        }
     }
 
     let status = unsafe { ptr::read_volatile(&queue.status) };
@@ -239,6 +252,23 @@ fn submit_request(req_type: u32, block_id: BlockId, buf: &mut [u8]) -> VfsResult
         return Err(VfsError::Io);
     }
     Ok(())
+}
+
+pub fn handle_irq(irq: u32) -> bool {
+    let expected = VIRTIO_BLK_IRQ.load(Ordering::Acquire) as u32;
+    if expected == 0 || expected != irq {
+        return false;
+    }
+    let base = VIRTIO_BLK_BASE.load(Ordering::Acquire);
+    if base == 0 {
+        return false;
+    }
+    let status = mmio_read32(base, MMIO_INTERRUPT_STATUS);
+    if status != 0 {
+        mmio_write32(base, MMIO_INTERRUPT_ACK, status);
+        fence(Ordering::SeqCst);
+    }
+    true
 }
 
 #[repr(C, align(16))]

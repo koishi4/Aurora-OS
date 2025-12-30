@@ -9,6 +9,7 @@
 - 脚本化入口统一在 `scripts/`，由 `Makefile` 聚合。
 - 测试环境记录包含工具链版本、QEMU 版本与硬件信息。
 - QEMU 冒烟测试以启动 banner 为通过条件，允许超时退出以适配早期内核。
+- OSComp 测试通过 `scripts/test_oscomp.sh` 统一驱动，支持对接外部测例仓库（`OSCOMP_DIR`/`OSCOMP_RUNNER`），日志输出到 `build/oscomp/`。
 
 ## 关键数据结构
 - TestConfig：测试目标与参数集合（ARCH/PLATFORM/FS）。

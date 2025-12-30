@@ -15,14 +15,22 @@ const FDT_END: u32 = 9;
 const MAX_DEPTH: usize = 16;
 
 const MAX_VIRTIO_MMIO: usize = 4;
+pub const MAX_DEVICE_REGIONS: usize = MAX_VIRTIO_MMIO + 1;
+
+#[derive(Copy, Clone, Debug, Default)]
+pub struct VirtioMmioDevice {
+    pub region: MemoryRegion,
+    pub irq: u32,
+}
 
 #[derive(Copy, Clone, Debug)]
 pub struct DtbInfo {
     pub memory: Option<MemoryRegion>,
     pub uart: Option<MemoryRegion>,
     pub timebase_frequency: Option<u64>,
-    pub virtio_mmio: [MemoryRegion; MAX_VIRTIO_MMIO],
+    pub virtio_mmio: [VirtioMmioDevice; MAX_VIRTIO_MMIO],
     pub virtio_mmio_len: usize,
+    pub plic: Option<MemoryRegion>,
 }
 
 impl Default for DtbInfo {
@@ -31,15 +39,34 @@ impl Default for DtbInfo {
             memory: None,
             uart: None,
             timebase_frequency: None,
-            virtio_mmio: [MemoryRegion::default(); MAX_VIRTIO_MMIO],
+            virtio_mmio: [VirtioMmioDevice::default(); MAX_VIRTIO_MMIO],
             virtio_mmio_len: 0,
+            plic: None,
         }
     }
 }
 
 impl DtbInfo {
-    pub fn virtio_mmio_regions(&self) -> &[MemoryRegion] {
+    pub fn virtio_mmio_devices(&self) -> &[VirtioMmioDevice] {
         &self.virtio_mmio[..self.virtio_mmio_len]
+    }
+
+    pub fn collect_device_regions(&self, out: &mut [MemoryRegion]) -> usize {
+        let mut count = 0usize;
+        for dev in self.virtio_mmio_devices() {
+            if count >= out.len() {
+                break;
+            }
+            out[count] = dev.region;
+            count += 1;
+        }
+        if let Some(plic) = self.plic {
+            if count < out.len() {
+                out[count] = plic;
+                count += 1;
+            }
+        }
+        count
     }
 }
 
@@ -56,6 +83,8 @@ struct NodeState {
     is_memory: bool,
     is_uart: bool,
     is_virtio_mmio: bool,
+    is_plic: bool,
+    virtio_irq: Option<u32>,
 }
 
 #[repr(C)]
@@ -147,6 +176,9 @@ pub fn parse(dtb_addr: usize) -> Result<DtbInfo, DtbError> {
                     if node_name.starts_with("virtio_mmio@") || node_name.starts_with("virtio@") {
                         state.is_virtio_mmio = true;
                     }
+                    if node_name.starts_with("plic@") {
+                        state.is_plic = true;
+                    }
                 }
                 stack[depth] = state;
                 depth += 1;
@@ -209,6 +241,15 @@ pub fn parse(dtb_addr: usize) -> Result<DtbInfo, DtbError> {
                         if has_virtio_mmio_compat(value, len) {
                             state.is_virtio_mmio = true;
                         }
+                        if has_plic_compat(value, len) {
+                            state.is_plic = true;
+                        }
+                    }
+                    Some("interrupts") => {
+                        if state.is_virtio_mmio && len >= 4 {
+                            let irq = unsafe { read_u32_be_ptr(value) };
+                            state.virtio_irq = Some(irq);
+                        }
                     }
                     Some("reg") => {
                         if state.is_memory && info.memory.is_none() {
@@ -222,9 +263,16 @@ pub fn parse(dtb_addr: usize) -> Result<DtbInfo, DtbError> {
                         } else if state.is_virtio_mmio {
                             if let Some(region) = parse_reg(value, len, addr_cells, size_cells) {
                                 if info.virtio_mmio_len < MAX_VIRTIO_MMIO {
-                                    info.virtio_mmio[info.virtio_mmio_len] = region;
+                                    info.virtio_mmio[info.virtio_mmio_len] = VirtioMmioDevice {
+                                        region,
+                                        irq: state.virtio_irq.unwrap_or(0),
+                                    };
                                     info.virtio_mmio_len += 1;
                                 }
+                            }
+                        } else if state.is_plic && info.plic.is_none() {
+                            if let Some(region) = parse_reg(value, len, addr_cells, size_cells) {
+                                info.plic = Some(region);
                             }
                         }
                     }
@@ -295,6 +343,24 @@ fn has_virtio_mmio_compat(value: *const u8, len: usize) -> bool {
         }
         let s = unsafe { read_str(ptr, part_len) };
         if matches!(s, Some("virtio,mmio")) {
+            return true;
+        }
+        offset += part_len + 1;
+    }
+    false
+}
+
+fn has_plic_compat(value: *const u8, len: usize) -> bool {
+    let mut offset = 0usize;
+    while offset < len {
+        let ptr = unsafe { value.add(offset) };
+        let part_len = unsafe { cstr_len(ptr, value.add(len)) };
+        if part_len == 0 {
+            offset += 1;
+            continue;
+        }
+        let s = unsafe { read_str(ptr, part_len) };
+        if matches!(s, Some("riscv,plic0") | Some("sifive,plic-1.0.0")) {
             return true;
         }
         offset += part_len + 1;
