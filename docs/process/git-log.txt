@@ -1,4 +1,24 @@
-* commit da9147c0ce25ea56e420ca5d49ff60eebd5c8a56 (HEAD -> bootstrap-riscv64)
+* commit c18f0ee78d187b25f5eafea06a41742fa5c6d98f (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 18:11:44 +0800
+| 
+|     feat(fs): add fat32 create support
+| 
+|  CHANGELOG.md               |  1 +
+|  docs/process/phase_4_fs.md |  1 +
+|  modules/axfs/src/fat32.rs  | 96 +++++++++++++++++++++++++++++++++++++++++++-
+|  3 files changed, 97 insertions(+), 1 deletion(-)
+| 
+* commit be6d7ab9071632f70a945679385ec80d9119352d
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 18:04:23 +0800
+| 
+|     chore(process): update git log
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit da9147c0ce25ea56e420ca5d49ff60eebd5c8a56
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-30 18:04:11 +0800
 | 
