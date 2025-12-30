@@ -1,4 +1,26 @@
-* commit fc3e67668c4860b10fa65872194ca946555c80df (HEAD -> bootstrap-riscv64)
+* commit 46898427c8ec1f946c69d0c16e25ab79a8ac6f08 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:29:09 +0800
+| 
+|     test(fs): add ext4 large read fixture
+| 
+|  docs/design/10_testing_benchmark.md |  2 +-
+|  docs/process/phase_4_fs.md          |  2 +-
+|  modules/axfs/src/ext4.rs            | 12 ++++++++++++
+|  scripts/mkfs_ext4.sh                |  6 ++++++
+|  tests/self/README.md                |  2 +-
+|  5 files changed, 21 insertions(+), 3 deletions(-)
+| 
+* commit 1ac9e0f2ab7264be4adfa2503cbe9363b1c0ece9
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:24:46 +0800
+| 
+|     chore(process): update git log
+| 
+|  docs/process/git-log.txt | 20 +++++++++++++++++++-
+|  1 file changed, 19 insertions(+), 1 deletion(-)
+| 
+* commit fc3e67668c4860b10fa65872194ca946555c80df
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-30 16:24:33 +0800
 | 
