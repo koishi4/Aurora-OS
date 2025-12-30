@@ -1,4 +1,25 @@
-* commit 26dd4a0fef79b72207de5243bb9b4508634a2827 (HEAD -> bootstrap-riscv64)
+* commit fff3e1ab2fefbcc9246dac9bf0c79b5260e4154a (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 09:57:48 +0800
+| 
+|     feat(fs): extend ext4 extent and indirect reads
+| 
+|  CHANGELOG.md               |   1 +
+|  docs/design/06_fs_vfs.md   |   2 +-
+|  docs/process/phase_4_fs.md |   4 +-
+|  modules/axfs/src/ext4.rs   | 368 +++++++++++++++++++++++++++++++++++++++----
+|  4 files changed, 342 insertions(+), 33 deletions(-)
+| 
+* commit 60366050bfcd72b46c2078f528401db8652877ac
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 09:57:06 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 32 +++++++++++++++++++++++++++++++-
+|  1 file changed, 31 insertions(+), 1 deletion(-)
+| 
+* commit 26dd4a0fef79b72207de5243bb9b4508634a2827
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-30 09:56:53 +0800
 | 
