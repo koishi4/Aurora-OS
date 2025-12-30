@@ -155,3 +155,4 @@
 - Extend USER_TEST to write/read `/fatlog.txt` and add a FAT32 write/read marker check in ramdisk self-tests.
 - Allow the FAT32 ramdisk block device to write back to the in-memory rootfs image for self-tests.
 - Extend FAT32 directory entry updates to find files under subdirectories and add a subdir write/read host test.
+- Add minimal FAT32 create support for short names with preallocated clusters plus root/subdir create tests.

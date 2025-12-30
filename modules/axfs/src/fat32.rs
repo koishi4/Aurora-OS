@@ -933,7 +933,58 @@ impl VfsOps for Fat32Fs<'_> {
     }
 
     fn create(&self, _parent: InodeId, _name: &str, _kind: FileType, _mode: u16) -> VfsResult<InodeId> {
-        Err(VfsError::NotSupported)
+        if _kind != FileType::File {
+            return Err(VfsError::NotSupported);
+        }
+        if !inode_is_dir(_parent) {
+            return Err(VfsError::NotDir);
+        }
+        let parent_cluster = inode_cluster(_parent);
+        if parent_cluster < 2 {
+            return Err(VfsError::Invalid);
+        }
+        let short = encode_short_name(_name)?;
+        let bytes_per_sector = self.bytes_per_sector();
+        if bytes_per_sector == 0 || bytes_per_sector > FAT_SCRATCH_SIZE {
+            return Err(VfsError::Invalid);
+        }
+        let mut scratch = [0u8; FAT_SCRATCH_SIZE];
+        let mut current = parent_cluster;
+        loop {
+            for sector_index in 0..self.bpb.sectors_per_cluster {
+                let sector = self.cluster_to_sector(current) + sector_index as u32;
+                self.read_sector(sector as BlockId, &mut scratch[..bytes_per_sector])?;
+                let mut offset = 0usize;
+                while offset + DIR_ENTRY_SIZE <= bytes_per_sector {
+                    let entry = &scratch[offset..offset + DIR_ENTRY_SIZE];
+                    let first = entry[0];
+                    if first == 0x00 || first == 0xe5 {
+                        let new_cluster = self.alloc_cluster()?;
+                        let slot = &mut scratch[offset..offset + DIR_ENTRY_SIZE];
+                        slot.fill(0);
+                        slot[..11].copy_from_slice(&short);
+                        slot[11] = 0x20;
+                        write_u16(slot, 20, (new_cluster >> 16) as u16);
+                        write_u16(slot, 26, (new_cluster & 0xffff) as u16);
+                        write_u32(slot, 28, 0);
+                        self.write_sector(sector as BlockId, &scratch[..bytes_per_sector])?;
+                        return Ok(fat_inode(new_cluster, 0, false));
+                    }
+                    let attr = entry[11];
+                    if attr != ATTR_LONG_NAME && (attr & ATTR_VOLUME_ID) == 0 {
+                        if &entry[..11] == &short {
+                            return Err(VfsError::AlreadyExists);
+                        }
+                    }
+                    offset += DIR_ENTRY_SIZE;
+                }
+            }
+            match self.next_cluster(current)? {
+                Some(next) => current = next,
+                None => break,
+            }
+        }
+        Err(VfsError::NoMem)
     }
 
     fn remove(&self, _parent: InodeId, _name: &str) -> VfsResult<()> {
@@ -1313,5 +1364,48 @@ mod tests {
         assert_eq!(&buf[..read], payload);
         let meta = fs.metadata(inode).unwrap();
         assert_eq!(meta.size as usize, payload.len());
+    }
+
+    #[test]
+    fn create_root_file() {
+        let mut data = [0u8; IMAGE_SIZE];
+        build_minimal_image(&mut data, "init", b"init-data").unwrap();
+        let dev = TestBlockDevice {
+            block_size: 512,
+            data: RefCell::new(data),
+        };
+        let fs = Fat32Fs::new(&dev).unwrap();
+        let root = fs.root().unwrap();
+        let inode = fs
+            .create(root, "new.txt", FileType::File, 0o644)
+            .unwrap();
+        let payload = b"root-create";
+        let written = fs.write_at(inode, 0, payload).unwrap();
+        assert_eq!(written, payload.len());
+        let mut buf = [0u8; 16];
+        let read = fs.read_at(inode, 0, &mut buf).unwrap();
+        assert_eq!(&buf[..read], payload);
+    }
+
+    #[test]
+    fn create_subdir_file() {
+        let mut data = [0u8; IMAGE_SIZE];
+        build_subdir_image(&mut data).unwrap();
+        let dev = TestBlockDevice {
+            block_size: 512,
+            data: RefCell::new(data),
+        };
+        let fs = Fat32Fs::new(&dev).unwrap();
+        let root = fs.root().unwrap();
+        let subdir = fs.lookup(root, "subdir").unwrap().unwrap();
+        let inode = fs
+            .create(subdir, "note2.txt", FileType::File, 0o644)
+            .unwrap();
+        let payload = b"subdir-create";
+        let written = fs.write_at(inode, 0, payload).unwrap();
+        assert_eq!(written, payload.len());
+        let mut buf = [0u8; 16];
+        let read = fs.read_at(inode, 0, &mut buf).unwrap();
+        assert_eq!(&buf[..read], payload);
     }
 }
