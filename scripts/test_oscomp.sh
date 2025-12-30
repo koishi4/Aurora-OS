@@ -100,6 +100,7 @@ for case_name in "${CASES[@]}"; do
   case_fs=""
   expect_ext4=0
   expect_fat32=0
+  expect_creat=0
   if [[ "${case_name}" == "ext4-init" ]]; then
     ensure_ext4_image
     FS_EXT4="$(abs_path "${FS_EXT4}")"
@@ -122,11 +123,12 @@ for case_name in "${CASES[@]}"; do
     expect_ext4=1
   elif [[ "${case_name}" == "ramdisk" ]]; then
     expect_fat32=1
+    expect_creat=1
   fi
 
   set +e
   ARCH="${ARCH}" PLATFORM="${PLATFORM}" FS="${case_fs}" MODE="${MODE}" \
-    USER_TEST=1 EXPECT_INIT="${EXPECT_INIT}" EXPECT_EXT4="${expect_ext4}" EXPECT_FAT32="${expect_fat32}" TIMEOUT="${TIMEOUT}" \
+    USER_TEST=1 EXPECT_INIT="${EXPECT_INIT}" EXPECT_EXT4="${expect_ext4}" EXPECT_FAT32="${expect_fat32}" EXPECT_CREAT="${expect_creat}" TIMEOUT="${TIMEOUT}" \
     QEMU_BIN="${QEMU_BIN}" BIOS="${BIOS}" MEM="${MEM}" SMP="${SMP}" \
     LOG_DIR="${LOG_DIR}" LOG_FILE="${case_log}" \
     "${ROOT}/scripts/test_qemu_smoke.sh"

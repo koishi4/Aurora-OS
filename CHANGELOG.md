@@ -157,3 +157,4 @@
 - Extend FAT32 directory entry updates to find files under subdirectories and add a subdir write/read host test.
 - Add minimal FAT32 create support for short names with preallocated clusters plus root/subdir create tests.
 - Add openat O_CREAT/O_EXCL support to create files via VFS when missing.
+- Extend USER_TEST to cover O_CREAT|O_EXCL create and EEXIST reporting in ramdisk runs.

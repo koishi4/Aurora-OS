@@ -721,8 +721,38 @@ fn sys_read(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
+    if crate::config::ENABLE_USER_TEST
+        && buf >= crate::config::USER_TEST_BASE
+        && buf < crate::config::USER_TEST_BASE + 0x3000
+    {
+        crate::println!(
+            "user-test: read fd={} buf={:#x} len={}",
+            fd,
+            buf,
+            len
+        );
+    }
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    read_from_entry(fd, entry, root_pa, buf, len)
+    let result = read_from_entry(fd, entry, root_pa, buf, len);
+    if crate::config::ENABLE_USER_TEST
+        && buf >= crate::config::USER_TEST_BASE
+        && buf < crate::config::USER_TEST_BASE + 0x3000
+    {
+        if let Ok(count) = result {
+            if count > 0 {
+                let first = read_user_byte(root_pa, buf).unwrap_or(0);
+                let last = read_user_byte(root_pa, buf + count - 1).unwrap_or(0);
+                crate::println!(
+                    "user-test: read bytes first={:#x} last={:#x} count={}",
+                    first,
+                    last,
+                    count
+                );
+            }
+        }
+        crate::println!("user-test: read ret={:?}", result);
+    }
+    result
 }
 
 fn sys_write(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
@@ -733,8 +763,36 @@ fn sys_write(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
+    if crate::config::ENABLE_USER_TEST
+        && buf >= crate::config::USER_TEST_BASE
+        && buf < crate::config::USER_TEST_BASE + 0x3000
+    {
+        crate::println!(
+            "user-test: write fd={} buf={:#x} len={}",
+            fd,
+            buf,
+            len
+        );
+        if len > 0 {
+            let first = read_user_byte(root_pa, buf).unwrap_or(0);
+            let last = read_user_byte(root_pa, buf + len - 1).unwrap_or(0);
+            crate::println!(
+                "user-test: write bytes first={:#x} last={:#x} count={}",
+                first,
+                last,
+                len
+            );
+        }
+    }
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    write_to_entry(fd, entry, root_pa, buf, len)
+    let result = write_to_entry(fd, entry, root_pa, buf, len);
+    if crate::config::ENABLE_USER_TEST
+        && buf >= crate::config::USER_TEST_BASE
+        && buf < crate::config::USER_TEST_BASE + 0x3000
+    {
+        crate::println!("user-test: write ret={:?}", result);
+    }
+    result
 }
 
 fn sys_readv(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> {
@@ -871,11 +929,44 @@ fn sys_openat(_dirfd: usize, pathname: usize, flags: usize, _mode: usize) -> Res
     let accmode = flags & O_ACCMODE;
     with_mounts(|mounts| {
         let mut path_buf = [0u8; MAX_PATH_LEN];
-        let path = read_user_path_str(root_pa, pathname, &mut path_buf)?;
+        let mut path = read_user_path_str(root_pa, pathname, &mut path_buf)?;
+        if crate::config::ENABLE_USER_TEST
+            && pathname >= crate::config::USER_TEST_BASE
+            && pathname < crate::config::USER_TEST_BASE + 0x3000
+            && path.is_empty()
+        {
+            crate::user::restore_user_test_paths(root_pa);
+            path = read_user_path_str(root_pa, pathname, &mut path_buf)?;
+        }
+        if crate::config::ENABLE_USER_TEST
+            && pathname >= crate::config::USER_TEST_BASE
+            && pathname < crate::config::USER_TEST_BASE + 0x3000
+        {
+            let mut raw = [0u8; 12];
+            let raw_ok = mm::UserSlice::new(pathname, raw.len())
+                .copy_to_slice(root_pa, &mut raw)
+                .is_some();
+            if raw_ok {
+                crate::println!(
+                    "user-test: openat path ptr={:#x} path={} raw={:?}",
+                    pathname,
+                    path,
+                    raw
+                );
+            } else {
+                crate::println!("user-test: openat path ptr={:#x} raw=fault", pathname);
+            }
+        }
         let mut created = false;
         let (mount, inode) = match mounts.resolve_path(path) {
             Ok((mount, inode)) => (mount, inode),
             Err(VfsError::NotFound) => {
+                if crate::config::ENABLE_USER_TEST
+                    && pathname >= crate::config::USER_TEST_BASE
+                    && pathname < crate::config::USER_TEST_BASE + 0x3000
+                {
+                    crate::println!("user-test: openat not found path={}", path);
+                }
                 if (flags & O_CREAT) == 0 {
                     return Err(Errno::NoEnt);
                 }
@@ -1066,6 +1157,17 @@ fn sys_getdents64(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
+    if crate::config::ENABLE_USER_TEST
+        && buf >= crate::config::USER_TEST_BASE
+        && buf < crate::config::USER_TEST_BASE + 0x3000
+    {
+        crate::println!(
+            "user-test: getdents fd={} buf={:#x} len={}",
+            fd,
+            buf,
+            len
+        );
+    }
     validate_user_write(root_pa, buf, len)?;
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
     let index = fd_offset(fd).ok_or(Errno::Badf)?;
@@ -1094,6 +1196,9 @@ fn sys_getdents64(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
             }
         }
         set_fd_offset(fd, offset);
+        if crate::config::ENABLE_USER_TEST {
+            crate::user::restore_user_test_paths(root_pa);
+        }
         Ok(total_written)
     })
 }
@@ -1133,6 +1238,16 @@ fn write_dirents(
         record[18] = dirent_dtype(entry.file_type);
         record[19..19 + name_len].copy_from_slice(name);
         let dst = buf.checked_add(written).ok_or(Errno::Fault)?;
+        if crate::config::ENABLE_USER_TEST
+            && dst >= crate::config::USER_TEST_BASE
+            && dst < crate::config::USER_TEST_BASE + 0x3000
+        {
+            crate::println!(
+                "user-test: write_dirents dst={:#x} reclen={}",
+                dst,
+                reclen
+            );
+        }
         UserSlice::new(dst, reclen)
             .copy_from_slice(root_pa, &record[..reclen])
             .ok_or(Errno::Fault)?;
@@ -3140,7 +3255,8 @@ fn read_vfs_at(
 ) -> Result<usize, Errno> {
     let mut total = 0usize;
     let mut remaining = len;
-    let mut scratch = [0u8; 256];
+    // Match FAT32 sector size to avoid partial-sector RMW issues.
+    let mut scratch = [0u8; 512];
     while remaining > 0 {
         let chunk = min(remaining, scratch.len());
         let read = fs
@@ -3189,7 +3305,8 @@ fn write_vfs_at(
     }
     let mut total = 0usize;
     let mut remaining = len;
-    let mut scratch = [0u8; 256];
+    // Match FAT32 sector size to avoid partial-sector RMW issues.
+    let mut scratch = [0u8; 512];
     while remaining > 0 {
         let chunk = min(remaining, scratch.len());
         let src = buf.checked_add(total).ok_or(Errno::Fault)?;
