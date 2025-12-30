@@ -1,4 +1,28 @@
-* commit c615e9b5378ff80c32f1b74888bdfdc99b09e229 (HEAD -> bootstrap-riscv64)
+* commit 924e713e580b7b234b6ef84716c1d815e2903c07 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 17:26:21 +0800
+| 
+|     feat(fs): verify fat32 write read in ramdisk
+| 
+|  CHANGELOG.md                        |  3 ++-
+|  docs/design/06_fs_vfs.md            |  2 +-
+|  docs/design/10_testing_benchmark.md |  4 ++--
+|  docs/process/phase_4_fs.md          |  3 ++-
+|  modules/axruntime/src/fs.rs         | 29 ++++++++++++++++++++---------
+|  modules/axruntime/src/user.rs       | 16 ++++++++++++----
+|  tests/self/README.md                |  2 +-
+|  7 files changed, 40 insertions(+), 19 deletions(-)
+| 
+* commit 48a65a8a4368d14f13415cce5a510c58caca4a56
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 17:18:09 +0800
+| 
+|     chore(process): update git log
+| 
+|  docs/process/git-log.txt | 28 +++++++++++++++++++++++++++-
+|  1 file changed, 27 insertions(+), 1 deletion(-)
+| 
+* commit c615e9b5378ff80c32f1b74888bdfdc99b09e229
 | Author: +3队 <t202519359997698@eduxiji.net>
 | Date:   2025-12-30 17:17:52 +0800
 | 
