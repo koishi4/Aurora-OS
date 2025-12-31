@@ -81,6 +81,7 @@ pub fn exit_current(code: i32) -> bool {
         let _ = mm::UserPtr::new(clear_tid).write(root_pa, 0usize);
         let _ = futex::wake(root_pa, clear_tid, 1, true);
     }
+    crate::syscall::release_fd_table(task_id);
     // SAFETY: early boot single-hart; process table writes are serialized.
     unsafe {
         if idx >= MAX_PROCS || PROC_STATE[idx] == ProcState::Empty {

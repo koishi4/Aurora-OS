@@ -9,6 +9,7 @@ use axfs::mount::{MountId, MountPoint, MountTable};
 use crate::futex;
 use crate::mm::{self, UserAccess, UserPtr, UserSlice};
 use crate::{sbi, time};
+use crate::task::TaskId;
 use crate::trap::TrapFrame;
 
 #[repr(i32)]
@@ -292,6 +293,7 @@ const AT_SYMLINK_FOLLOW: usize = 0x400;
 const AT_EMPTY_PATH: usize = 0x1000;
 const FD_TABLE_BASE: usize = 3;
 const FD_TABLE_SLOTS: usize = 16;
+const MAX_PROCS: usize = crate::config::MAX_TASKS;
 const PIPE_SLOTS: usize = 8;
 const PIPE_BUFFER_SIZE: usize = 512;
 const MAX_PATH_LEN: usize = 128;
@@ -517,14 +519,14 @@ const EMPTY_FD_ENTRY: FdEntry = FdEntry {
     flags: 0,
 };
 
-// SAFETY: 单核早期阶段，fd 表由 syscall 串行访问。
-static mut FD_TABLE: [FdEntry; FD_TABLE_SLOTS] = [EMPTY_FD_ENTRY; FD_TABLE_SLOTS];
-// SAFETY: fd 偏移仅用于目录遍历，单核阶段顺序访问。
-static mut FD_OFFSETS: [usize; FD_TABLE_SLOTS] = [0; FD_TABLE_SLOTS];
-// SAFETY: 仅用于重定向标准 fd，单核顺序访问。
-static mut STDIO_REDIRECT: [Option<FdEntry>; 3] = [None, None, None];
-// SAFETY: 标准 fd 的状态标志在单核阶段顺序访问。
-static mut STDIO_FLAGS: [usize; 3] = [0; 3];
+// SAFETY: 单核早期阶段，fd 表按进程索引串行访问。
+static mut FD_TABLES: [[FdEntry; FD_TABLE_SLOTS]; MAX_PROCS] = [[EMPTY_FD_ENTRY; FD_TABLE_SLOTS]; MAX_PROCS];
+// SAFETY: fd 偏移仅用于目录遍历，单核阶段按进程顺序访问。
+static mut FD_OFFSETS: [[usize; FD_TABLE_SLOTS]; MAX_PROCS] = [[0; FD_TABLE_SLOTS]; MAX_PROCS];
+// SAFETY: 仅用于重定向标准 fd，单核阶段按进程顺序访问。
+static mut STDIO_REDIRECT: [[Option<FdEntry>; 3]; MAX_PROCS] = [[None; 3]; MAX_PROCS];
+// SAFETY: 标准 fd 的状态标志在单核阶段按进程顺序访问。
+static mut STDIO_FLAGS: [[usize; 3]; MAX_PROCS] = [[0; 3]; MAX_PROCS];
 // SAFETY: 控制台输入缓存仅在单核阶段顺序访问。
 static mut CONSOLE_STASH: i16 = -1;
 // SAFETY: pipe 表在早期阶段串行访问。
@@ -2528,6 +2530,15 @@ fn default_statfs() -> Statfs {
     }
 }
 
+fn current_proc_index() -> Option<usize> {
+    let idx = crate::runtime::current_task_id()?;
+    if idx < MAX_PROCS {
+        Some(idx)
+    } else {
+        None
+    }
+}
+
 fn stdio_kind(fd: usize) -> Option<FdKind> {
     match fd {
         0 => Some(FdKind::Stdin),
@@ -2539,14 +2550,15 @@ fn stdio_kind(fd: usize) -> Option<FdKind> {
 
 fn stdio_entry(fd: usize) -> Option<FdEntry> {
     let kind = stdio_kind(fd)?;
+    let proc_idx = current_proc_index()?;
     // SAFETY: 单核早期阶段访问重定向表/标志。
     unsafe {
-        if let Some(entry) = STDIO_REDIRECT[fd] {
+        if let Some(entry) = STDIO_REDIRECT[proc_idx][fd] {
             Some(entry)
         } else {
             Some(FdEntry {
                 kind,
-                flags: STDIO_FLAGS[fd],
+                flags: STDIO_FLAGS[proc_idx][fd],
             })
         }
     }
@@ -2556,9 +2568,10 @@ fn resolve_fd(fd: usize) -> Option<FdEntry> {
     if let Some(entry) = stdio_entry(fd) {
         return Some(entry);
     }
+    let proc_idx = current_proc_index()?;
     let idx = fd_table_index(fd)?;
     // SAFETY: 单核早期阶段，fd 表无并发访问。
-    let entry = unsafe { FD_TABLE[idx] };
+    let entry = unsafe { FD_TABLES[proc_idx][idx] };
     if entry.kind == FdKind::Empty {
         None
     } else {
@@ -2579,27 +2592,31 @@ fn fd_table_index(fd: usize) -> Option<usize> {
 }
 
 fn fd_offset(fd: usize) -> Option<usize> {
+    let proc_idx = current_proc_index()?;
     let idx = fd_table_index(fd)?;
     // SAFETY: 单核早期阶段，fd 表无并发访问。
-    let entry = unsafe { FD_TABLE[idx] };
+    let entry = unsafe { FD_TABLES[proc_idx][idx] };
     if entry.kind == FdKind::Empty {
         None
     } else {
         // SAFETY: 单核早期阶段，偏移顺序访问。
-        Some(unsafe { FD_OFFSETS[idx] })
+        Some(unsafe { FD_OFFSETS[proc_idx][idx] })
     }
 }
 
 fn set_fd_offset(fd: usize, offset: usize) {
+    let Some(proc_idx) = current_proc_index() else {
+        return;
+    };
     let Some(idx) = fd_table_index(fd) else {
         return;
     };
     // SAFETY: 单核早期阶段，偏移顺序访问。
     unsafe {
-        if FD_TABLE[idx].kind == FdKind::Empty {
+        if FD_TABLES[proc_idx][idx].kind == FdKind::Empty {
             return;
         }
-        FD_OFFSETS[idx] = offset;
+        FD_OFFSETS[proc_idx][idx] = offset;
     }
 }
 
@@ -2607,12 +2624,13 @@ fn alloc_fd(entry: FdEntry) -> Option<usize> {
     if entry.kind == FdKind::Empty {
         return None;
     }
+    let proc_idx = current_proc_index()?;
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
-        for (idx, slot) in FD_TABLE.iter_mut().enumerate() {
+        for (idx, slot) in FD_TABLES[proc_idx].iter_mut().enumerate() {
             if slot.kind == FdKind::Empty {
                 *slot = entry;
-                FD_OFFSETS[idx] = 0;
+                FD_OFFSETS[proc_idx][idx] = 0;
                 pipe_acquire(entry.kind);
                 return Some(FD_TABLE_BASE + idx);
             }
@@ -2625,27 +2643,29 @@ fn dup_to_fd(newfd: usize, entry: FdEntry) -> Result<usize, Errno> {
     if stdio_kind(newfd).is_some() {
         return set_stdio_redirect(newfd, entry);
     }
+    let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
     let idx = fd_table_index(newfd).ok_or(Errno::Badf)?;
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
-        let old = FD_TABLE[idx];
+        let old = FD_TABLES[proc_idx][idx];
         if old.kind != FdKind::Empty {
             pipe_release(old.kind);
         }
-        FD_TABLE[idx] = entry;
-        FD_OFFSETS[idx] = 0;
+        FD_TABLES[proc_idx][idx] = entry;
+        FD_OFFSETS[proc_idx][idx] = 0;
     }
     pipe_acquire(entry.kind);
     Ok(newfd)
 }
 
 fn close_fd(fd: usize) -> Result<usize, Errno> {
+    let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
     if stdio_kind(fd).is_some() {
         // SAFETY: 单核早期阶段访问重定向表。
         unsafe {
-            if let Some(old) = STDIO_REDIRECT[fd] {
+            if let Some(old) = STDIO_REDIRECT[proc_idx][fd] {
                 pipe_release(old.kind);
-                STDIO_REDIRECT[fd] = None;
+                STDIO_REDIRECT[proc_idx][fd] = None;
             }
         }
         return Ok(0);
@@ -2653,12 +2673,12 @@ fn close_fd(fd: usize) -> Result<usize, Errno> {
     let idx = fd_table_index(fd).ok_or(Errno::Badf)?;
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
-        let old = FD_TABLE[idx];
+        let old = FD_TABLES[proc_idx][idx];
         if old.kind == FdKind::Empty {
             return Err(Errno::Badf);
         }
-        FD_TABLE[idx] = EMPTY_FD_ENTRY;
-        FD_OFFSETS[idx] = 0;
+        FD_TABLES[proc_idx][idx] = EMPTY_FD_ENTRY;
+        FD_OFFSETS[proc_idx][idx] = 0;
         pipe_release(old.kind);
     }
     Ok(0)
@@ -2668,12 +2688,13 @@ fn set_stdio_redirect(fd: usize, entry: FdEntry) -> Result<usize, Errno> {
     if stdio_kind(fd).is_none() {
         return Err(Errno::Badf);
     }
+    let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
     // SAFETY: 单核早期阶段访问重定向表。
     unsafe {
-        if let Some(old) = STDIO_REDIRECT[fd] {
+        if let Some(old) = STDIO_REDIRECT[proc_idx][fd] {
             pipe_release(old.kind);
         }
-        STDIO_REDIRECT[fd] = Some(entry);
+        STDIO_REDIRECT[proc_idx][fd] = Some(entry);
     }
     pipe_acquire(entry.kind);
     Ok(fd)
@@ -2681,14 +2702,15 @@ fn set_stdio_redirect(fd: usize, entry: FdEntry) -> Result<usize, Errno> {
 
 fn set_fd_flags(fd: usize, flags: usize) -> Result<(), Errno> {
     let flags = flags & O_NONBLOCK;
+    let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
     if stdio_kind(fd).is_some() {
         // SAFETY: 单核早期阶段访问重定向表/标志。
         unsafe {
-            if let Some(mut entry) = STDIO_REDIRECT[fd] {
+            if let Some(mut entry) = STDIO_REDIRECT[proc_idx][fd] {
                 entry.flags = (entry.flags & O_ACCMODE) | flags;
-                STDIO_REDIRECT[fd] = Some(entry);
+                STDIO_REDIRECT[proc_idx][fd] = Some(entry);
             } else {
-                STDIO_FLAGS[fd] = (STDIO_FLAGS[fd] & O_ACCMODE) | flags;
+                STDIO_FLAGS[proc_idx][fd] = (STDIO_FLAGS[proc_idx][fd] & O_ACCMODE) | flags;
             }
         }
         return Ok(());
@@ -2696,12 +2718,69 @@ fn set_fd_flags(fd: usize, flags: usize) -> Result<(), Errno> {
     let idx = fd_table_index(fd).ok_or(Errno::Badf)?;
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
-        if FD_TABLE[idx].kind == FdKind::Empty {
+        if FD_TABLES[proc_idx][idx].kind == FdKind::Empty {
             return Err(Errno::Badf);
         }
-        FD_TABLE[idx].flags = (FD_TABLE[idx].flags & O_ACCMODE) | flags;
+        FD_TABLES[proc_idx][idx].flags = (FD_TABLES[proc_idx][idx].flags & O_ACCMODE) | flags;
     }
     Ok(())
+}
+
+fn clear_fd_table(idx: usize) {
+    if idx >= MAX_PROCS {
+        return;
+    }
+    // SAFETY: 单核早期阶段按进程顺序清理 fd 表。
+    unsafe {
+        for entry in FD_TABLES[idx].iter_mut() {
+            if entry.kind != FdKind::Empty {
+                pipe_release(entry.kind);
+                *entry = EMPTY_FD_ENTRY;
+            }
+        }
+        for offset in FD_OFFSETS[idx].iter_mut() {
+            *offset = 0;
+        }
+        for slot in STDIO_REDIRECT[idx].iter_mut() {
+            if let Some(entry) = *slot {
+                pipe_release(entry.kind);
+            }
+            *slot = None;
+        }
+        for flag in STDIO_FLAGS[idx].iter_mut() {
+            *flag = 0;
+        }
+    }
+}
+
+pub fn init_fd_table(task_id: TaskId) {
+    clear_fd_table(task_id);
+}
+
+pub fn clone_fd_table(parent: TaskId, child: TaskId) {
+    if parent >= MAX_PROCS || child >= MAX_PROCS {
+        return;
+    }
+    clear_fd_table(child);
+    // SAFETY: 单核早期阶段按进程顺序复制 fd 表。
+    unsafe {
+        FD_TABLES[child] = FD_TABLES[parent];
+        FD_OFFSETS[child] = FD_OFFSETS[parent];
+        STDIO_REDIRECT[child] = STDIO_REDIRECT[parent];
+        STDIO_FLAGS[child] = STDIO_FLAGS[parent];
+        for entry in FD_TABLES[child].iter() {
+            pipe_acquire(entry.kind);
+        }
+        for slot in STDIO_REDIRECT[child].iter() {
+            if let Some(entry) = *slot {
+                pipe_acquire(entry.kind);
+            }
+        }
+    }
+}
+
+pub fn release_fd_table(task_id: TaskId) {
+    clear_fd_table(task_id);
 }
 
 fn alloc_pipe() -> Option<usize> {

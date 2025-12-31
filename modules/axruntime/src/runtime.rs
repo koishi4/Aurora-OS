@@ -182,6 +182,7 @@ pub fn spawn_user(ctx: UserContext) -> Option<TaskId> {
         return None;
     }
     let _ = crate::process::init_process(task_id, 0, ctx.root_pa);
+    crate::syscall::init_fd_table(task_id);
     let _ = task::set_user_sp(task_id, ctx.user_sp);
     let _ = RUN_QUEUE.push(task_id);
     NEED_RESCHED.store(true, Ordering::Relaxed);
@@ -213,6 +214,11 @@ pub fn spawn_forked_user(
         .or_else(|| current_task_id().map(|id| id + 1))
         .unwrap_or(1);
     let pid = crate::process::init_process(task_id, parent_pid, child_root_pa);
+    if let Some(parent_task_id) = current_task_id() {
+        crate::syscall::clone_fd_table(parent_task_id, task_id);
+    } else {
+        crate::syscall::init_fd_table(task_id);
+    }
     let _ = RUN_QUEUE.push(task_id);
     NEED_RESCHED.store(true, Ordering::Relaxed);
     Some(pid)
