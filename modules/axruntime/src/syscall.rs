@@ -2490,6 +2490,38 @@ fn with_mounts<R>(f: impl FnOnce(&MountTable<'_, VFS_MOUNT_COUNT>) -> R) -> R {
     f(&mounts)
 }
 
+pub fn ext4_write_smoke() {
+    if rootfs_kind() != ROOTFS_KIND_EXT4 {
+        crate::println!("ext4: write skip (rootfs not ext4)");
+        return;
+    }
+    let payload = b"ext4: write ok\n";
+    let result = with_mounts(|mounts| {
+        let fs = mounts.fs_for(MountId::Root).ok_or(VfsError::NotFound)?;
+        let root = fs.root()?;
+        let name = "ext4-smoke.log";
+        let inode = match fs.lookup(root, name)? {
+            Some(inode) => inode,
+            None => fs.create(root, name, FileType::File, 0o644)?,
+        };
+        let _ = fs.truncate(inode, 0);
+        let written = fs.write_at(inode, 0, payload)?;
+        if written != payload.len() {
+            return Err(VfsError::Io);
+        }
+        let mut buf = [0u8; 32];
+        let read = fs.read_at(inode, 0, &mut buf)?;
+        if read != payload.len() || &buf[..read] != payload {
+            return Err(VfsError::Io);
+        }
+        Ok(())
+    });
+    match result {
+        Ok(()) => crate::println!("ext4: write ok"),
+        Err(err) => crate::println!("ext4: write failed ({:?})", err),
+    }
+}
+
 fn vfs_lookup_inode(root_pa: usize, pathname: usize) -> Result<(MountId, InodeId), Errno> {
     let mut buf = [0u8; MAX_PATH_LEN];
     let path = read_user_path_abs(root_pa, pathname, &mut buf)?;

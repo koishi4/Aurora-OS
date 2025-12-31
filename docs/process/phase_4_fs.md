@@ -46,6 +46,7 @@
 - 用户态自测增加 FAT32 文件写入回读路径，ramdisk 用例验证写入回读日志。
 - ext4 读路径将块读取 scratch 缓冲迁移到共享区，避免内核栈溢出。
 - ext4 增加最小 create/write/truncate 骨架（仅 direct blocks + bitmap 分配），补充 host 侧 `create_write_truncate` 自测。
+- QEMU 冒烟新增 ext4 写入自测开关：`EXT4_WRITE_TEST=1 EXPECT_EXT4=1 make test-qemu-smoke`，检查 `ext4: write ok` 日志。
 
 ## 问题与定位
 - ext4 extent 深度>0 与间接块读路径已经补齐，后续仍需覆盖写路径。

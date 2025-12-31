@@ -10,6 +10,8 @@ USER_TEST=${USER_TEST:-0}
 EXPECT_INIT=${EXPECT_INIT:-0}
 EXPECT_EXT4=${EXPECT_EXT4:-0}
 EXPECT_FAT32=${EXPECT_FAT32:-0}
+EXT4_WRITE_TEST=${EXT4_WRITE_TEST:-0}
+EXPECT_EXT4_WRITE=${EXPECT_EXT4_WRITE:-0}
 TARGET=riscv64gc-unknown-none-elf
 CRATE=axruntime
 QEMU_BIN=${QEMU_BIN:-qemu-system-riscv64}
@@ -22,6 +24,11 @@ LOG_FILE=${LOG_FILE:-"${LOG_DIR}/qemu-smoke.log"}
 
 if [[ "${ARCH}" != "riscv64" || "${PLATFORM}" != "qemu" ]]; then
   echo "Only ARCH=riscv64 PLATFORM=qemu is supported right now." >&2
+  exit 1
+fi
+
+if [[ "${EXT4_WRITE_TEST}" == "1" && -z "${FS}" ]]; then
+  echo "EXT4_WRITE_TEST=1 requires FS=path/to/ext4.img." >&2
   exit 1
 fi
 
@@ -105,6 +112,10 @@ if [[ "${EXPECT_INIT}" == "1" ]]; then
   fi
 fi
 
+if [[ "${EXT4_WRITE_TEST}" == "1" && "${EXPECT_EXT4_WRITE}" == "0" ]]; then
+  EXPECT_EXT4_WRITE=1
+fi
+
 if [[ "${EXPECT_EXT4}" == "1" ]]; then
   if ! grep -q "vfs: mounted ext4 rootfs" "${LOG_FILE}"; then
     echo "Smoke test failed: ext4 mount banner not found." >&2
@@ -116,6 +127,14 @@ fi
 if [[ "${EXPECT_EXT4}" == "1" && "${USER_TEST}" == "1" ]]; then
   if ! grep -q "Aurora ext4 test" "${LOG_FILE}"; then
     echo "Smoke test failed: /etc/issue banner not found." >&2
+    cat "${LOG_FILE}" >&2
+    exit 1
+  fi
+fi
+
+if [[ "${EXPECT_EXT4_WRITE}" == "1" ]]; then
+  if ! grep -q "ext4: write ok" "${LOG_FILE}"; then
+    echo "Smoke test failed: ext4 write banner not found." >&2
     cat "${LOG_FILE}" >&2
     exit 1
   fi

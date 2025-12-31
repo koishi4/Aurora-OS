@@ -7,4 +7,6 @@ pub const MAX_TASKS: usize = 8;
 pub const ENABLE_USER_TEST: bool = cfg!(feature = "user-test");
 /// 通过 `--features sched-demo` 启用调度 demo 任务与日志。
 pub const ENABLE_SCHED_DEMO: bool = cfg!(feature = "sched-demo");
+/// 通过 `--features ext4-write-test` 启用 ext4 写路径冒烟自测。
+pub const ENABLE_EXT4_WRITE_TEST: bool = cfg!(feature = "ext4-write-test");
 pub const USER_TEST_BASE: usize = 0x4000_0000;

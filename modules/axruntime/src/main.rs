@@ -90,6 +90,10 @@ pub extern "C" fn rust_main(hart_id: usize, dtb_addr: usize) -> ! {
 
     runtime::init();
 
+    if config::ENABLE_EXT4_WRITE_TEST {
+        syscall::ext4_write_smoke();
+    }
+
     if config::ENABLE_USER_TEST {
         if let Some(ctx) = user::prepare_user_test() {
             crate::println!("user: spawn user task entry={:#x}", ctx.entry);
