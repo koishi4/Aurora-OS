@@ -231,6 +231,9 @@ extern "C" fn trap_handler(tf: &mut TrapFrame) {
         tf.sepc = sepc.wrapping_add(4);
         return;
     } else if code == SCAUSE_STORE_PAGE_FAULT || code == SCAUSE_LOAD_PAGE_FAULT || code == SCAUSE_INST_PAGE_FAULT {
+        if crate::config::ENABLE_EXT4_WRITE_TEST {
+            crate::println!("PageFault: va={:#x} scause={:#x}", stval, scause);
+        }
         let root_pa = crate::mm::current_root_pa();
         if root_pa != 0 && crate::mm::handle_cow_fault(root_pa, stval) {
             return;

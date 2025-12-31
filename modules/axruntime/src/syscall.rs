@@ -593,6 +593,9 @@ struct PollFd {
 
 fn sys_exit(_code: usize) -> Result<usize, Errno> {
     let pid = crate::process::current_pid().unwrap_or(1);
+    if crate::config::ENABLE_EXT4_WRITE_TEST {
+        crate::println!("sys_exit: pid={} code={}", pid, _code);
+    }
     if pid == 1 {
         crate::sbi::shutdown();
     }
@@ -618,8 +621,27 @@ fn sys_execve(tf: &mut TrapFrame, pathname: usize, argv: usize, envp: usize) -> 
     validate_user_ptr_list(root_pa, argv)?;
     validate_user_ptr_list(root_pa, envp)?;
     // 通过 VFS 读取目标 ELF 镜像，统一路径与加载链路。
-    let image = execve_vfs_image(root_pa, pathname)?;
-    let ctx = crate::user::load_exec_elf(root_pa, image, argv, envp)?;
+    let image = match execve_vfs_image(root_pa, pathname) {
+        Ok(image) => image,
+        Err(err) => {
+            if crate::config::ENABLE_EXT4_WRITE_TEST {
+                crate::println!("sys_execve: image load failed {:?}", err);
+            }
+            return Err(err);
+        }
+    };
+    let ctx = match crate::user::load_exec_elf(root_pa, image, argv, envp) {
+        Ok(ctx) => ctx,
+        Err(err) => {
+            if crate::config::ENABLE_EXT4_WRITE_TEST {
+                crate::println!("sys_execve: load_elf failed {:?}", err);
+            }
+            return Err(err);
+        }
+    };
+    if crate::config::ENABLE_EXT4_WRITE_TEST {
+        crate::println!("sys_execve: success entry={:#x}", ctx.entry);
+    }
     // execve 成功后不返回，更新入口与用户栈并清理参数寄存器。
     tf.sepc = ctx.entry.wrapping_sub(4);
     tf.a0 = ctx.argc;
@@ -689,50 +711,72 @@ fn sys_clone(
     const CLONE_SUPPORTED: usize =
         CLONE_SIGNAL_MASK | CLONE_PARENT_SETTID | CLONE_CHILD_CLEARTID | CLONE_CHILD_SETTID;
 
-    // clone 目前按 fork 语义处理：仅支持最小 tid 写回标志位。
-    if (flags & !CLONE_SUPPORTED) != 0 {
-        return Err(Errno::Inval);
+    if crate::config::ENABLE_EXT4_WRITE_TEST {
+        crate::println!(
+            "sys_clone: enter flags={:#x} stack={:#x} ptid={:#x} ctid={:#x}",
+            flags,
+            stack,
+            ptid,
+            ctid
+        );
     }
-    let root_pa = mm::current_root_pa();
-    if root_pa == 0 {
-        return Err(Errno::Fault);
-    }
-    if (flags & CLONE_PARENT_SETTID) != 0 {
-        if ptid == 0
-            || mm::translate_user_ptr(root_pa, ptid, size_of::<usize>(), mm::UserAccess::Write).is_none()
-        {
+
+    let result = (|| {
+        // clone 目前按 fork 语义处理：仅支持最小 tid 写回标志位。
+        if (flags & !CLONE_SUPPORTED) != 0 {
+            return Err(Errno::Inval);
+        }
+        let root_pa = mm::current_root_pa();
+        if root_pa == 0 {
             return Err(Errno::Fault);
         }
-    }
-    if (flags & (CLONE_CHILD_SETTID | CLONE_CHILD_CLEARTID)) != 0 {
-        if ctid == 0
-            || mm::translate_user_ptr(root_pa, ctid, size_of::<usize>(), mm::UserAccess::Write).is_none()
-        {
-            return Err(Errno::Fault);
+        if (flags & CLONE_PARENT_SETTID) != 0 {
+            if ptid == 0
+                || mm::translate_user_ptr(root_pa, ptid, size_of::<usize>(), mm::UserAccess::Write)
+                    .is_none()
+            {
+                return Err(Errno::Fault);
+            }
+        }
+        if (flags & (CLONE_CHILD_SETTID | CLONE_CHILD_CLEARTID)) != 0 {
+            if ctid == 0
+                || mm::translate_user_ptr(root_pa, ctid, size_of::<usize>(), mm::UserAccess::Write)
+                    .is_none()
+            {
+                return Err(Errno::Fault);
+            }
+        }
+        let user_sp = if stack != 0 {
+            stack
+        } else {
+            let task_id = crate::runtime::current_task_id().ok_or(Errno::Fault)?;
+            crate::task::user_sp(task_id).ok_or(Errno::Fault)?
+        };
+        let child_root = mm::clone_user_root(root_pa).ok_or(Errno::NoMem)?;
+        let pid = crate::runtime::spawn_forked_user(tf, child_root, user_sp).ok_or(Errno::NoMem)?;
+        if (flags & CLONE_PARENT_SETTID) != 0 {
+            mm::UserPtr::new(ptid)
+                .write(root_pa, pid)
+                .ok_or(Errno::Fault)?;
+        }
+        if (flags & CLONE_CHILD_SETTID) != 0 {
+            mm::UserPtr::new(ctid)
+                .write(child_root, pid)
+                .ok_or(Errno::Fault)?;
+        }
+        if (flags & CLONE_CHILD_CLEARTID) != 0 {
+            let _ = crate::process::set_clear_tid(pid, ctid);
+        }
+        Ok(pid)
+    })();
+
+    if crate::config::ENABLE_EXT4_WRITE_TEST {
+        match &result {
+            Ok(pid) => crate::println!("sys_clone: ok pid={}", pid),
+            Err(err) => crate::println!("sys_clone: err {:?}", err),
         }
     }
-    let user_sp = if stack != 0 {
-        stack
-    } else {
-        let task_id = crate::runtime::current_task_id().ok_or(Errno::Fault)?;
-        crate::task::user_sp(task_id).ok_or(Errno::Fault)?
-    };
-    let child_root = mm::clone_user_root(root_pa).ok_or(Errno::NoMem)?;
-    let pid = crate::runtime::spawn_forked_user(tf, child_root, user_sp).ok_or(Errno::NoMem)?;
-    if (flags & CLONE_PARENT_SETTID) != 0 {
-        mm::UserPtr::new(ptid)
-            .write(root_pa, pid)
-            .ok_or(Errno::Fault)?;
-    }
-    if (flags & CLONE_CHILD_SETTID) != 0 {
-        mm::UserPtr::new(ctid)
-            .write(child_root, pid)
-            .ok_or(Errno::Fault)?;
-    }
-    if (flags & CLONE_CHILD_CLEARTID) != 0 {
-        let _ = crate::process::set_clear_tid(pid, ctid);
-    }
-    Ok(pid)
+    result
 }
 
 fn sys_read(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
@@ -1597,9 +1641,19 @@ fn sys_futex(
     const FUTEX_CMD_MASK: usize = 0x7f;
     const FUTEX_PRIVATE_FLAG: usize = 0x80;
 
+    if crate::config::ENABLE_EXT4_WRITE_TEST {
+        crate::println!(
+            "sys_futex: enter op={:#x} uaddr={:#x} val={} timeout={:#x}",
+            op,
+            uaddr,
+            val,
+            timeout
+        );
+    }
+
     let cmd = op & FUTEX_CMD_MASK;
     let private = (op & FUTEX_PRIVATE_FLAG) != 0;
-    match cmd {
+    let result = match cmd {
         FUTEX_WAIT => {
             let root_pa = mm::current_root_pa();
             if root_pa == 0 {
@@ -1618,7 +1672,15 @@ fn sys_futex(
             futex::wake(root_pa, uaddr, val, private).map_err(map_futex_err)
         }
         _ => Err(Errno::Inval),
+    };
+
+    if crate::config::ENABLE_EXT4_WRITE_TEST {
+        match &result {
+            Ok(ret) => crate::println!("sys_futex: ok ret={}", ret),
+            Err(err) => crate::println!("sys_futex: err {:?}", err),
+        }
     }
+    result
 }
 
 fn futex_timeout_ms(root_pa: usize, timeout: usize) -> Result<Option<u64>, Errno> {
@@ -2284,19 +2346,31 @@ fn sys_getcpu(cpu: usize, node: usize) -> Result<usize, Errno> {
 }
 
 fn sys_wait4(pid: usize, status: usize, options: usize, rusage: usize) -> Result<usize, Errno> {
-    let waited = crate::process::waitpid(pid as isize, status, options)?;
-    if waited == 0 || rusage == 0 {
-        return Ok(waited);
+    if crate::config::ENABLE_EXT4_WRITE_TEST {
+        crate::println!("sys_wait4: enter pid={} options={:#x}", pid, options);
     }
-    let root_pa = mm::current_root_pa();
-    if root_pa == 0 {
-        return Err(Errno::Fault);
+    let result = (|| {
+        let waited = crate::process::waitpid(pid as isize, status, options)?;
+        if waited == 0 || rusage == 0 {
+            return Ok(waited);
+        }
+        let root_pa = mm::current_root_pa();
+        if root_pa == 0 {
+            return Err(Errno::Fault);
+        }
+        // wait4 子进程统计占位：复用 getrusage 的最小填充。
+        UserPtr::new(rusage)
+            .write(root_pa, default_rusage())
+            .ok_or(Errno::Fault)?;
+        Ok(waited)
+    })();
+    if crate::config::ENABLE_EXT4_WRITE_TEST {
+        match &result {
+            Ok(waited) => crate::println!("sys_wait4: ok waited={}", waited),
+            Err(err) => crate::println!("sys_wait4: err {:?}", err),
+        }
     }
-    // wait4 子进程统计占位：复用 getrusage 的最小填充。
-    UserPtr::new(rusage)
-        .write(root_pa, default_rusage())
-        .ok_or(Errno::Fault)?;
-    Ok(waited)
+    result
 }
 
 // 占位 rusage：复用单调时间作为用户态时间，其余字段清零。
@@ -2497,6 +2571,9 @@ pub fn ext4_write_smoke() {
         crate::println!("ext4: write skip (rootfs not ext4)");
         return;
     }
+    if crate::config::ENABLE_EXT4_WRITE_TEST {
+        debug_read_issue();
+    }
     let payload = b"ext4: write ok\n";
     let result = with_mounts(|mounts| {
         let fs = mounts.fs_for(MountId::Root).ok_or(VfsError::NotFound)?;
@@ -2535,6 +2612,24 @@ fn maybe_ext4_write_smoke() {
         return;
     }
     ext4_write_smoke();
+}
+
+fn debug_read_issue() {
+    let result: axfs::VfsResult<()> = with_mounts(|mounts| {
+        let (mount, inode) = mounts.resolve_path("/etc/issue")?;
+        let fs = mounts.fs_for(mount).ok_or(VfsError::NotFound)?;
+        let mut buf = [0u8; 64];
+        let read = fs.read_at(inode, 0, &mut buf)?;
+        if read == 0 {
+            crate::println!("KERNEL_DEBUG: /etc/issue empty");
+            return Ok(());
+        }
+        crate::println!("KERNEL_DEBUG: /etc/issue read ok len={}", read);
+        Ok(())
+    });
+    if result.is_err() {
+        crate::println!("KERNEL_DEBUG: /etc/issue read failed");
+    }
 }
 
 fn vfs_lookup_inode(root_pa: usize, pathname: usize) -> Result<(MountId, InodeId), Errno> {

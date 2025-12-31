@@ -289,11 +289,16 @@ impl<'a> Ext4Fs<'a> {
             let block_index = (cur_offset / block_size as u64) as u32;
             let in_block = (cur_offset % block_size as u64) as usize;
             let to_copy = core::cmp::min(remaining, block_size - in_block);
-            let Some(phys) = self.map_block(inode, block_index)? else {
-                return Ok(total);
-            };
-            let block_offset = phys * block_size as u64 + in_block as u64;
-            read_bytes(&self.cache, block_offset, &mut buf[total..total + to_copy])?;
+            match self.map_block(inode, block_index)? {
+                Some(phys) => {
+                    let block_offset = phys * block_size as u64 + in_block as u64;
+                    read_bytes(&self.cache, block_offset, &mut buf[total..total + to_copy])?;
+                }
+                None => {
+                    // Sparse hole: zero-fill instead of treating as EOF.
+                    buf[total..total + to_copy].fill(0);
+                }
+            }
             total += to_copy;
             remaining -= to_copy;
             cur_offset += to_copy as u64;
