@@ -36,6 +36,9 @@
 - 使用 `net_bench` 完成 net-perf 脚本闭环验证，记录见 `docs/process/net_perf_baseline_2026-01-01.md`。
 - 增加 `scripts/net_perf_send.py` 作为 hostfwd 发送端，补齐 net-perf 吞吐注入路径。
 - `net_bench` 增加 8 字节长度头协议，保证吞吐统计稳定输出。
+- TCP 接收后触发 net poll，避免窗口更新停滞导致大包吞吐卡住。
+- sys_recvfrom 在 TCP 收包后主动触发 poll，保证长流量场景持续推进。
+- net-perf 默认发送 2048 字节作为保守基线，长流量窗口更新问题待进一步排查。
 
 ## 问题与定位
 - QEMU user-net 下 ARP probe 已发送但 RX 帧未进入，定位为 virtio 现代特性头部长度不匹配导致帧损坏。

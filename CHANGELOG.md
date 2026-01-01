@@ -84,6 +84,9 @@
 - Teach net perf baseline to archive the QEMU log and validate PERF_EXPECT markers against it.
 - Record net-perf baseline run with net_bench in docs/process/net_perf_baseline_2026-01-01.md.
 - Add net-perf sender helper, hostfwd wiring, auto host port selection, ready-wait handling, and a length-prefixed net_bench stream; record missing rx bytes explicitly.
+- Trigger net poll after TCP recv to refresh window updates for long streams.
+- Poll once after TCP recv in sys_recvfrom to keep long transfers flowing.
+- Set net-perf default send size to 2048 until long-stream window updates are stabilized.
 - Route faccessat/statx/readlinkat path resolution through memfs.
 - Route statfs path resolution through memfs.
 - Route path-based stub syscalls (mkdirat/unlinkat/linkat/renameat* and chmod/chown/utimensat) through memfs.

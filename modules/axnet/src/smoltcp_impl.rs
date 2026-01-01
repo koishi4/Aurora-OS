@@ -820,6 +820,7 @@ pub fn socket_recv(
                 Err(smoltcp::socket::tcp::RecvError::Finished) => return Ok((0, None)),
                 Err(smoltcp::socket::tcp::RecvError::InvalidState) => return Err(NetError::Invalid),
             };
+            NET_NEED_POLL.store(true, Ordering::Release);
             Ok((size, None))
         }
         AxSocketKind::Udp => {

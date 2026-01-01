@@ -1451,6 +1451,9 @@ fn sys_recvfrom(
             .ok_or(Errno::Fault)?;
         total += read;
         last_endpoint = endpoint;
+        if last_endpoint.is_none() {
+            let _ = axnet::poll(crate::time::uptime_ms());
+        }
         if read < chunk {
             break;
         }

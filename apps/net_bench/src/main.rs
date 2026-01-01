@@ -19,9 +19,11 @@ const LOCAL_IP: [u8; 4] = [10, 0, 2, 15];
 const PORT: u16 = 5201;
 
 const READY_MSG: &[u8] = b"net-bench: ready\n";
+const ACCEPT_MSG: &[u8] = b"net-bench: accept\n";
 const FAIL_MSG: &[u8] = b"net-bench: fail\n";
 const RX_PREFIX: &[u8] = b"net-bench: rx_bytes=";
 const RX_SUFFIX: &[u8] = b"\n";
+const TARGET_PREFIX: &[u8] = b"net-bench: target=";
 
 #[repr(C)]
 struct SockAddrIn {
@@ -151,11 +153,15 @@ pub extern "C" fn _start() -> ! {
 
     loop {
         let client = check(unsafe { syscall6(SYS_ACCEPT, server, 0, 0, 0, 0, 0) });
+        write_stdout(ACCEPT_MSG);
         let mut header = [0u8; 8];
         if !recv_exact(client, &mut header) {
             fail();
         }
         let target = u64::from_be_bytes(header);
+        write_stdout(TARGET_PREFIX);
+        write_u64(target);
+        write_stdout(RX_SUFFIX);
         let mut buf = [0u8; 4096];
         let mut total: u64 = 0;
         while total < target {
