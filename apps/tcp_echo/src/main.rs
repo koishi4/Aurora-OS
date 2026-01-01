@@ -12,6 +12,8 @@ const SYS_ACCEPT: usize = 202;
 const SYS_CONNECT: usize = 203;
 const SYS_SENDMSG: usize = 211;
 const SYS_RECVMSG: usize = 212;
+const SYS_GETSOCKNAME: usize = 204;
+const SYS_GETPEERNAME: usize = 205;
 const SYS_PPOLL: usize = 73;
 const SYS_GETSOCKOPT: usize = 209;
 const SYS_FCNTL: usize = 25;
@@ -219,6 +221,42 @@ fn syscall_ppoll(fds: &mut [PollFd], timeout: &Timespec) -> isize {
     }
 }
 
+fn syscall_getsockname(fd: usize, addr: &mut SockAddrIn) {
+    let mut len = core::mem::size_of::<SockAddrIn>();
+    let ret = unsafe {
+        syscall6(
+            SYS_GETSOCKNAME,
+            fd,
+            addr as *mut SockAddrIn as usize,
+            &mut len as *mut usize as usize,
+            0,
+            0,
+            0,
+        )
+    };
+    if ret < 0 || len < core::mem::size_of::<SockAddrIn>() {
+        fail();
+    }
+}
+
+fn syscall_getpeername(fd: usize, addr: &mut SockAddrIn) {
+    let mut len = core::mem::size_of::<SockAddrIn>();
+    let ret = unsafe {
+        syscall6(
+            SYS_GETPEERNAME,
+            fd,
+            addr as *mut SockAddrIn as usize,
+            &mut len as *mut usize as usize,
+            0,
+            0,
+            0,
+        )
+    };
+    if ret < 0 || len < core::mem::size_of::<SockAddrIn>() {
+        fail();
+    }
+}
+
 fn syscall_getsockopt(fd: usize, level: usize, opt: usize, val: &mut i32, len: &mut usize) {
     let ret = unsafe {
         syscall6(
@@ -275,6 +313,12 @@ fn iov_matches(a: &[u8], b: &[u8], expected: &[u8]) -> bool {
     slices_equal(b, &expected[a.len()..])
 }
 
+fn sockaddr_matches(addr: &SockAddrIn, ip: [u8; 4], port: u16) -> bool {
+    addr.sin_family == AF_INET
+        && addr.sin_port == port.to_be()
+        && addr.sin_addr == u32::from_be_bytes(ip)
+}
+
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     let server = syscall_socket(AF_INET, SOCK_STREAM, 0);
@@ -315,6 +359,29 @@ pub extern "C" fn _start() -> ! {
     syscall_fcntl(client, F_SETFL, 0);
 
     let accepted = syscall_accept(server);
+
+    let mut addr = SockAddrIn {
+        sin_family: 0,
+        sin_port: 0,
+        sin_addr: 0,
+        sin_zero: [0; 8],
+    };
+    syscall_getsockname(client, &mut addr);
+    if !sockaddr_matches(&addr, LOCAL_IP, CLIENT_PORT) {
+        fail();
+    }
+    syscall_getpeername(client, &mut addr);
+    if !sockaddr_matches(&addr, LOCAL_IP, SERVER_PORT) {
+        fail();
+    }
+    syscall_getsockname(accepted, &mut addr);
+    if !sockaddr_matches(&addr, LOCAL_IP, SERVER_PORT) {
+        fail();
+    }
+    syscall_getpeername(accepted, &mut addr);
+    if !sockaddr_matches(&addr, LOCAL_IP, CLIENT_PORT) {
+        fail();
+    }
 
     let mut send_iov = [
         Iovec {
