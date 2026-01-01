@@ -10,6 +10,9 @@ pub enum NetError {
     Unsupported,
     Invalid,
     NoMem,
+    InProgress,
+    IsConnected,
+    Unreachable,
 }
 
 /// Minimal net device interface for raw frame I/O.

@@ -16,6 +16,9 @@ NET=${NET:-0}
 EXPECT_NET=${EXPECT_NET:-0}
 NET_LOOPBACK_TEST=${NET_LOOPBACK_TEST:-0}
 EXPECT_NET_LOOPBACK=${EXPECT_NET_LOOPBACK:-0}
+TCP_ECHO_TEST=${TCP_ECHO_TEST:-0}
+EXPECT_TCP_ECHO=${EXPECT_TCP_ECHO:-0}
+EXPECT_EXT4_ISSUE=${EXPECT_EXT4_ISSUE:-}
 TARGET=riscv64gc-unknown-none-elf
 CRATE=axruntime
 QEMU_BIN=${QEMU_BIN:-qemu-system-riscv64}
@@ -41,13 +44,36 @@ if [[ "${NET_LOOPBACK_TEST}" == "1" && "${NET}" != "1" ]]; then
   exit 1
 fi
 
+if [[ "${TCP_ECHO_TEST}" == "1" ]]; then
+  USER_TEST=1
+  NET=1
+  if [[ -z "${FS}" ]]; then
+    TCP_ECHO_ELF="${ROOT}/build/tcp_echo.elf"
+    TCP_ECHO_IMAGE="${ROOT}/build/rootfs-tcp-echo.ext4"
+    MODE="${MODE}" OUT="${TCP_ECHO_ELF}" "${ROOT}/scripts/build_tcp_echo.sh"
+    OUT="${TCP_ECHO_IMAGE}" TCP_ECHO_ELF="${TCP_ECHO_ELF}" "${ROOT}/scripts/mkfs_ext4.sh"
+    FS="${TCP_ECHO_IMAGE}"
+  fi
+  if [[ "${EXPECT_EXT4}" == "0" ]]; then
+    EXPECT_EXT4=1
+  fi
+  if [[ "${EXPECT_NET}" == "0" ]]; then
+    EXPECT_NET=1
+  fi
+  if [[ -z "${EXPECT_EXT4_ISSUE}" ]]; then
+    EXPECT_EXT4_ISSUE=0
+  fi
+fi
+
 if ! command -v "${QEMU_BIN}" >/dev/null 2>&1; then
   echo "QEMU binary not found: ${QEMU_BIN}" >&2
   exit 1
 fi
 
 mkdir -p "${LOG_DIR}"
+export USER_TEST
 export NET_LOOPBACK_TEST
+export TCP_ECHO_TEST
 "${ROOT}/scripts/build.sh"
 
 OUT_DIR=debug
@@ -139,6 +165,16 @@ fi
 if [[ "${NET_LOOPBACK_TEST}" == "1" && "${EXPECT_NET_LOOPBACK}" == "0" ]]; then
   EXPECT_NET_LOOPBACK=1
 fi
+if [[ "${TCP_ECHO_TEST}" == "1" && "${EXPECT_TCP_ECHO}" == "0" ]]; then
+  EXPECT_TCP_ECHO=1
+fi
+if [[ -z "${EXPECT_EXT4_ISSUE}" ]]; then
+  if [[ "${EXPECT_EXT4}" == "1" && "${USER_TEST}" == "1" ]]; then
+    EXPECT_EXT4_ISSUE=1
+  else
+    EXPECT_EXT4_ISSUE=0
+  fi
+fi
 
 if [[ "${EXPECT_EXT4}" == "1" ]]; then
   if ! grep -q "vfs: mounted ext4 rootfs" "${LOG_FILE}"; then
@@ -148,7 +184,7 @@ if [[ "${EXPECT_EXT4}" == "1" ]]; then
   fi
 fi
 
-if [[ "${EXPECT_EXT4}" == "1" && "${USER_TEST}" == "1" ]]; then
+if [[ "${EXPECT_EXT4_ISSUE}" == "1" ]]; then
   if ! grep -q "Aurora ext4 test" "${LOG_FILE}"; then
     echo "Smoke test failed: /etc/issue banner not found." >&2
     cat "${LOG_FILE}" >&2
@@ -180,6 +216,14 @@ fi
 if [[ "${EXPECT_NET_LOOPBACK}" == "1" ]]; then
   if ! grep -q "net: tcp loopback ok" "${LOG_FILE}"; then
     echo "Smoke test failed: TCP loopback banner not found." >&2
+    cat "${LOG_FILE}" >&2
+    exit 1
+  fi
+fi
+
+if [[ "${EXPECT_TCP_ECHO}" == "1" ]]; then
+  if ! grep -q "tcp-echo: ok" "${LOG_FILE}"; then
+    echo "Smoke test failed: TCP echo banner not found." >&2
     cat "${LOG_FILE}" >&2
     exit 1
   fi

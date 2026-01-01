@@ -23,6 +23,7 @@ help:
 	@printf "  SCHED_DEMO=1 Enable scheduler demo tasks/logs during bring-up\n"
 	@printf "  NET=1        Enable virtio-net device in QEMU run/test\n"
 	@printf "  EXPECT_NET=1 Require virtio-net ready banner in smoke test\n"
+	@printf "  TCP_ECHO_TEST=1 Run user TCP echo test (requires NET=1 and ext4 rootfs)\n"
 
 fmt:
 	@./scripts/fmt.sh

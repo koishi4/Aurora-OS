@@ -170,3 +170,6 @@
 - Fix virtio-net modern header length and align TX buffer to restore ARP replies.
 - Add socket readiness tracking and poll integration for TCP accept/recv/send semantics.
 - Add TCP loopback self-test and smoke-test marker for socket semantics.
+- Add user-space tcp_echo app, build script, and ext4 rootfs integration for /tcp_echo.
+- Add TCP_ECHO_TEST smoke path with tcp-echo log validation.
+- Implement connect EINPROGRESS semantics and map connection failures to net-specific errno.

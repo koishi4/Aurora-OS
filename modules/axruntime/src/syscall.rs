@@ -30,7 +30,11 @@ pub enum Errno {
     Again = 11,
     NoMem = 12,
     Child = 10,
+    NetUnreach = 101,
+    IsConn = 106,
+    ConnRefused = 111,
     TimedOut = 110,
+    InProgress = 115,
 }
 
 impl Errno {
@@ -956,10 +960,44 @@ fn sys_bind(fd: usize, addr: usize, len: usize) -> Result<usize, Errno> {
 
 fn sys_connect(fd: usize, addr: usize, len: usize) -> Result<usize, Errno> {
     let root_pa = mm::current_root_pa();
-    let socket_id = resolve_socket_fd(fd)?;
+    let (socket_id, flags) = resolve_socket_entry(fd)?;
+    let nonblock = (flags & O_NONBLOCK) != 0;
     let (ip, port) = parse_sockaddr_in(root_pa, addr, len)?;
-    axnet::socket_connect(socket_id, ip, port).map_err(map_net_err)?;
-    Ok(0)
+    match axnet::socket_connect(socket_id, ip, port) {
+        Ok(()) => {}
+        Err(axnet::NetError::InProgress) => {
+            if nonblock || !can_block_current() {
+                return Err(Errno::InProgress);
+            }
+        }
+        Err(axnet::NetError::IsConnected) => return Err(Errno::IsConn),
+        Err(err) => return Err(map_net_err(err)),
+    }
+
+    if nonblock {
+        let revents = axnet::socket_poll(socket_id, POLLOUT | POLLHUP).map_err(map_net_err)?;
+        if (revents & POLLOUT) != 0 {
+            return Ok(0);
+        }
+        if (revents & POLLHUP) != 0 {
+            return Err(Errno::ConnRefused);
+        }
+        return Err(Errno::InProgress);
+    }
+
+    loop {
+        let revents = axnet::socket_poll(socket_id, POLLOUT | POLLHUP).map_err(map_net_err)?;
+        if (revents & POLLOUT) != 0 {
+            return Ok(0);
+        }
+        if (revents & POLLHUP) != 0 {
+            return Err(Errno::ConnRefused);
+        }
+        if !can_block_current() {
+            return Err(Errno::Again);
+        }
+        crate::runtime::block_current(crate::runtime::net_wait_queue());
+    }
 }
 
 fn sys_listen(fd: usize, backlog: usize) -> Result<usize, Errno> {
@@ -2776,6 +2814,9 @@ fn map_net_err(err: axnet::NetError) -> Errno {
         axnet::NetError::Unsupported => Errno::NoSys,
         axnet::NetError::Invalid => Errno::Inval,
         axnet::NetError::NoMem => Errno::NoMem,
+        axnet::NetError::InProgress => Errno::InProgress,
+        axnet::NetError::IsConnected => Errno::IsConn,
+        axnet::NetError::Unreachable => Errno::NetUnreach,
     }
 }
 

@@ -623,13 +623,23 @@ pub fn socket_connect(id: SocketId, addr: IpAddress, port: u16) -> Result<(), Ne
             set_socket_listening(id, false)?;
             let local_port = socket_local_port(id)?;
             let socket = state.sockets.get_mut::<TcpSocket>(handle);
+            let tcp_state = socket.state();
+            match tcp_state {
+                TcpState::SynSent | TcpState::SynReceived => return Err(NetError::InProgress),
+                TcpState::Listen => return Err(NetError::Invalid),
+                TcpState::Closed => {}
+                _ => return Err(NetError::IsConnected),
+            }
             let local = IpListenEndpoint {
                 addr: None,
                 port: local_port,
             };
             socket
                 .connect(state.iface.context(), (addr, port), local)
-                .map_err(|_| NetError::Invalid)?;
+                .map_err(|err| match err {
+                    smoltcp::socket::tcp::ConnectError::InvalidState => NetError::Invalid,
+                    smoltcp::socket::tcp::ConnectError::Unaddressable => NetError::Unreachable,
+                })?;
             NET_NEED_POLL.store(true, Ordering::Release);
             Ok(())
         }
