@@ -187,15 +187,8 @@ unsafe impl Sync for QueueCell {}
 static VIRTIO_NET_RX_QUEUE: QueueCell = QueueCell::new();
 static VIRTIO_NET_TX_QUEUE: QueueCell = QueueCell::new();
 
-#[repr(C, align(4096))]
-struct RxBuffer {
-    data: [[u8; NET_BUF_SIZE]; QUEUE_SIZE],
-}
-
 // SAFETY: RX buffer 只在锁保护下读写。
-static mut VIRTIO_NET_RX_BUFS: RxBuffer = RxBuffer {
-    data: [[0; NET_BUF_SIZE]; QUEUE_SIZE],
-};
+static mut RX_BUFFER_PTRS: [usize; QUEUE_SIZE] = [0; QUEUE_SIZE];
 // SAFETY: TX buffer 只在锁保护下使用。
 static mut VIRTIO_NET_TX_BUF: [u8; NET_BUF_SIZE] = [0; NET_BUF_SIZE];
 
@@ -241,8 +234,9 @@ impl NetDevice for VirtioNetDevice {
 
         // SAFETY: RX buffer 仅在 RX_LOCK 保护下访问。
         unsafe {
-            let src = &VIRTIO_NET_RX_BUFS.data[desc_id]
-                [VIRTIO_NET_HDR_LEN..VIRTIO_NET_HDR_LEN + payload_len];
+            let buf_base = RX_BUFFER_PTRS[desc_id];
+            let src_ptr = (buf_base + VIRTIO_NET_HDR_LEN) as *const u8;
+            let src = core::slice::from_raw_parts(src_ptr, payload_len);
             buf[..payload_len].copy_from_slice(src);
         }
         recycle_rx_desc(queue, queue_size, desc_id, base);
@@ -460,11 +454,15 @@ fn init_rx_buffers(base: usize, queue_size: usize) {
     let queue = VIRTIO_NET_RX_QUEUE.get();
     // 预投递 RX 描述符，设备写入后更新 used ring。
     for idx in 0..queue_size {
-        // SAFETY: RX buffer 在 init 阶段单线程写入。
-        let addr = unsafe { VIRTIO_NET_RX_BUFS.data[idx].as_ptr() as usize };
-        let phys = mm::kernel_virt_to_phys(addr) as u64;
+        let frame = mm::alloc_frame().expect("virtio-net: alloc rx buffer failed");
+        let pa = frame.addr().as_usize();
+        // SAFETY: 内核恒等映射，直接记录物理地址作为虚拟地址。
+        unsafe {
+            RX_BUFFER_PTRS[idx] = pa;
+        }
+        let phys = mm::kernel_virt_to_phys(pa) as u64;
         queue.desc[idx].addr = phys;
-        queue.desc[idx].len = NET_BUF_SIZE as u32;
+        queue.desc[idx].len = mm::PAGE_SIZE as u32;
         queue.desc[idx].flags = DESC_F_WRITE;
         queue.desc[idx].next = 0;
         queue.avail.ring[idx] = idx as u16;
