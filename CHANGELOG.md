@@ -78,7 +78,7 @@
 - Add axfs memfs scaffold and wire getdents64 to memfs directory entries.
 - Route openat/newfstatat path resolution through memfs metadata.
 - Add memfs unit tests for path resolution and metadata.
-- Add `apps/net_bench` as a lightweight TCP throughput sink for the net perf harness.
+- Add `apps/net_bench` and `scripts/build_net_bench.sh` as a lightweight TCP throughput sink for the net perf harness.
 - Route faccessat/statx/readlinkat path resolution through memfs.
 - Route statfs path resolution through memfs.
 - Route path-based stub syscalls (mkdirat/unlinkat/linkat/renameat* and chmod/chown/utimensat) through memfs.

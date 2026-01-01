@@ -39,7 +39,7 @@ make test-* -> scripts/test_*.sh
 - make test-oscomp（运行 tests/self 用例：ramdisk + ext4 + ext4-init + net + net-loopback + tcp-echo + udp-echo）
 - make test-net-baseline（顺序执行 net/net-loopback/tcp-echo/udp-echo 并记录日志）
 - make test-net-perf（需要自定义 /init 与用户态二进制，记录性能基线日志）
-- PERF_INIT_ELF=apps/net_bench/target/.../net_bench PERF_ROOTFS_DIR=apps/net_bench/rootfs make test-net-perf（net_bench 作为临时吞吐接收端）
+- PERF_INIT_ELF=build/net_bench.elf PERF_ROOTFS_DIR=apps/net_bench/rootfs make test-net-perf（net_bench 作为临时吞吐接收端，使用 `scripts/build_net_bench.sh` 生成 ELF）
 
 ## 网络基准计划
 - 连通性基线：ARP reply 与 UDP echo 持续通过，作为 RX/IRQ 健康指标。

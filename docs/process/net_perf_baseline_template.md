@@ -27,7 +27,7 @@ make test-net-perf ARCH=riscv64 PLATFORM=qemu
 
 示例（net_bench）：
 ```bash
-PERF_INIT_ELF=apps/net_bench/target/riscv64gc-unknown-none-elf/release/net_bench \
+PERF_INIT_ELF=build/net_bench.elf \
 PERF_ROOTFS_DIR=apps/net_bench/rootfs \
 PERF_EXPECT="net-bench: ready" \
 make test-net-perf ARCH=riscv64 PLATFORM=qemu
