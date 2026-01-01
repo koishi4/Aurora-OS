@@ -9,6 +9,7 @@ const SYS_SOCKET: usize = 198;
 const SYS_BIND: usize = 200;
 const SYS_SENDTO: usize = 206;
 const SYS_RECVFROM: usize = 207;
+const SYS_SETSOCKOPT: usize = 208;
 const SYS_SENDMSG: usize = 211;
 const SYS_RECVMSG: usize = 212;
 const SYS_SENDMMSG: usize = 269;
@@ -17,6 +18,10 @@ const SYS_CLOSE: usize = 57;
 
 const AF_INET: u16 = 2;
 const SOCK_DGRAM: usize = 2;
+const SOL_SOCKET: usize = 1;
+const SO_RCVTIMEO: usize = 20;
+const ETIMEDOUT: isize = -110;
+const EAGAIN: isize = -11;
 
 const LOCAL_IP: [u8; 4] = [10, 0, 2, 15];
 const SERVER_PORT: u16 = 22445;
@@ -61,6 +66,12 @@ struct MMsgHdr {
     msg_hdr: MsgHdr,
     msg_len: u32,
     msg_len_pad: u32,
+}
+
+#[repr(C)]
+struct Timeval {
+    tv_sec: i64,
+    tv_usec: i64,
 }
 
 #[inline(always)]
@@ -170,6 +181,10 @@ fn syscall_recvmsg(fd: usize, msg: &mut MsgHdr) -> usize {
     check(unsafe { syscall6(SYS_RECVMSG, fd, msg as *mut MsgHdr as usize, 0, 0, 0, 0) })
 }
 
+fn syscall_recvmsg_ret(fd: usize, msg: &mut MsgHdr) -> isize {
+    unsafe { syscall6(SYS_RECVMSG, fd, msg as *mut MsgHdr as usize, 0, 0, 0, 0) }
+}
+
 fn syscall_sendmmsg(fd: usize, msgvec: &mut [MMsgHdr]) -> usize {
     check(unsafe {
         syscall6(
@@ -196,6 +211,23 @@ fn syscall_recvmmsg(fd: usize, msgvec: &mut [MMsgHdr]) -> usize {
             0,
         )
     })
+}
+
+fn syscall_setsockopt(fd: usize, level: usize, optname: usize, optval: &Timeval) {
+    let ret = unsafe {
+        syscall6(
+            SYS_SETSOCKOPT,
+            fd,
+            level,
+            optname,
+            optval as *const Timeval as usize,
+            core::mem::size_of::<Timeval>(),
+            0,
+        )
+    };
+    if ret < 0 {
+        fail();
+    }
 }
 
 fn syscall_close(fd: usize) {
@@ -242,6 +274,46 @@ pub extern "C" fn _start() -> ! {
 
     syscall_bind(server, &server_addr);
     syscall_bind(client, &client_addr);
+
+    let timeout = Timeval {
+        tv_sec: 0,
+        tv_usec: 200_000,
+    };
+    syscall_setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout);
+    let mut timeout_buf = [0u8; 8];
+    let mut timeout_addr = SockAddrIn {
+        sin_family: 0,
+        sin_port: 0,
+        sin_addr: 0,
+        sin_zero: [0; 8],
+    };
+    let mut timeout_iov = [Iovec {
+        iov_base: timeout_buf.as_mut_ptr() as usize,
+        iov_len: timeout_buf.len(),
+    }];
+    let mut timeout_msg = MsgHdr {
+        msg_name: &mut timeout_addr as *mut SockAddrIn as usize,
+        msg_namelen: core::mem::size_of::<SockAddrIn>() as u32,
+        msg_namelen_pad: 0,
+        msg_iov: timeout_iov.as_mut_ptr() as usize,
+        msg_iovlen: timeout_iov.len(),
+        msg_control: 0,
+        msg_controllen: 0,
+        msg_flags: 0,
+        msg_flags_pad: 0,
+    };
+    let ret = syscall_recvmsg_ret(client, &mut timeout_msg);
+    if ret >= 0 {
+        fail();
+    }
+    if ret != ETIMEDOUT && ret != EAGAIN {
+        fail();
+    }
+    let timeout_off = Timeval {
+        tv_sec: 0,
+        tv_usec: 0,
+    };
+    syscall_setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout_off);
 
     let mut send_iov = [Iovec {
         iov_base: SEND_MSG.as_ptr() as usize,
