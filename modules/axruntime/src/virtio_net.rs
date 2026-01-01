@@ -341,6 +341,7 @@ pub fn handle_irq(irq: u32) -> bool {
         mmio_write32(base, MMIO_INTERRUPT_ACK, status);
         fence(Ordering::SeqCst);
     }
+    axnet::notify_irq();
     true
 }
 

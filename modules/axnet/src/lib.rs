@@ -1,5 +1,7 @@
 #![no_std]
 
+mod smoltcp_impl;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NetError {
     NotReady,
@@ -7,6 +9,7 @@ pub enum NetError {
     BufferTooSmall,
     Unsupported,
     Invalid,
+    NoMem,
 }
 
 /// Minimal net device interface for raw frame I/O.
@@ -15,4 +18,16 @@ pub trait NetDevice {
     fn recv(&self, buf: &mut [u8]) -> Result<usize, NetError>;
     fn send(&self, buf: &[u8]) -> Result<(), NetError>;
     fn poll(&self) -> bool;
+}
+
+pub use smoltcp_impl::{
+    init, notify_irq, ping_gateway_once, poll, socket_accept, socket_bind, socket_close,
+    socket_connect, socket_create, socket_listen, socket_recv, socket_send, NetEvent, SocketId,
+};
+pub use smoltcp::wire::{IpAddress, Ipv4Address};
+
+#[allow(dead_code)]
+pub enum AxSocket<'a> {
+    Tcp(smoltcp::socket::tcp::Socket<'a>),
+    Udp(smoltcp::socket::udp::Socket<'a>),
 }

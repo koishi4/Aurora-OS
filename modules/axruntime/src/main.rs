@@ -82,6 +82,12 @@ pub extern "C" fn rust_main(hart_id: usize, dtb_addr: usize) -> ! {
     plic::init(dtb_info.plic);
     fs::init(dtb_info.virtio_mmio_devices());
     virtio_net::init(dtb_info.virtio_mmio_devices());
+    if let Some(dev) = virtio_net::device() {
+        if axnet::init(dev).is_ok() {
+            crate::println!("axnet: interface up (static 10.0.2.15/24)");
+            let _ = axnet::ping_gateway_once();
+        }
+    }
 
     let timebase = dtb_info.timebase_frequency.unwrap_or(10_000_000);
     let tick_hz = config::DEFAULT_TICK_HZ;

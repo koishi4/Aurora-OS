@@ -1,0 +1,512 @@
+#![allow(dead_code)]
+
+use core::mem::MaybeUninit;
+use core::ptr;
+use core::sync::atomic::{AtomicBool, AtomicU16, Ordering};
+
+use smoltcp::iface::{Config, Interface, SocketHandle, SocketSet, SocketStorage};
+use smoltcp::phy::{Device, DeviceCapabilities, Medium, RxToken, TxToken};
+use smoltcp::socket::icmp::{
+    Endpoint as IcmpEndpoint, PacketBuffer as IcmpPacketBuffer, PacketMetadata as IcmpPacketMetadata,
+    Socket as IcmpSocket,
+};
+use smoltcp::socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer};
+use smoltcp::socket::udp::{PacketBuffer as UdpPacketBuffer, PacketMetadata as UdpPacketMetadata, Socket as UdpSocket};
+use smoltcp::time::Instant;
+use smoltcp::wire::{EthernetAddress, Icmpv4Packet, Icmpv4Repr, IpAddress, IpCidr, IpEndpoint, IpListenEndpoint, Ipv4Address};
+
+use crate::{NetDevice, NetError};
+
+const NET_MTU: usize = 1500;
+const NET_BUF_SIZE: usize = 2048;
+const MAX_SOCKETS: usize = 8;
+const SOCKET_STORAGE_LEN: usize = MAX_SOCKETS + 1;
+const ICMP_META_LEN: usize = 4;
+const ICMP_BUF_LEN: usize = 256;
+const TCP_BUF_LEN: usize = 2048;
+const UDP_BUF_LEN: usize = 2048;
+const UDP_META_LEN: usize = 4;
+
+const NET_IPV4_ADDR: [u8; 4] = [10, 0, 2, 15];
+const NET_IPV4_GATEWAY: [u8; 4] = [10, 0, 2, 2];
+const NET_IPV4_PREFIX: u8 = 24;
+
+static NET_READY: AtomicBool = AtomicBool::new(false);
+static NET_NEED_POLL: AtomicBool = AtomicBool::new(false);
+static NET_PING_REQUESTED: AtomicBool = AtomicBool::new(false);
+static NEXT_EPHEMERAL_PORT: AtomicU16 = AtomicU16::new(49152);
+
+static mut RX_BUF: [u8; NET_BUF_SIZE] = [0; NET_BUF_SIZE];
+static mut TX_BUF: [u8; NET_BUF_SIZE] = [0; NET_BUF_SIZE];
+static mut ICMP_RX_META: [IcmpPacketMetadata; ICMP_META_LEN] = [IcmpPacketMetadata::EMPTY; ICMP_META_LEN];
+static mut ICMP_RX_BUF: [u8; ICMP_BUF_LEN] = [0; ICMP_BUF_LEN];
+static mut ICMP_TX_META: [IcmpPacketMetadata; ICMP_META_LEN] = [IcmpPacketMetadata::EMPTY; ICMP_META_LEN];
+static mut ICMP_TX_BUF: [u8; ICMP_BUF_LEN] = [0; ICMP_BUF_LEN];
+static mut TCP_RX_BUF: [[u8; TCP_BUF_LEN]; MAX_SOCKETS] = [[0; TCP_BUF_LEN]; MAX_SOCKETS];
+static mut TCP_TX_BUF: [[u8; TCP_BUF_LEN]; MAX_SOCKETS] = [[0; TCP_BUF_LEN]; MAX_SOCKETS];
+static mut UDP_RX_META: [[UdpPacketMetadata; UDP_META_LEN]; MAX_SOCKETS] =
+    [[UdpPacketMetadata::EMPTY; UDP_META_LEN]; MAX_SOCKETS];
+static mut UDP_RX_BUF: [[u8; UDP_BUF_LEN]; MAX_SOCKETS] = [[0; UDP_BUF_LEN]; MAX_SOCKETS];
+static mut UDP_TX_META: [[UdpPacketMetadata; UDP_META_LEN]; MAX_SOCKETS] =
+    [[UdpPacketMetadata::EMPTY; UDP_META_LEN]; MAX_SOCKETS];
+static mut UDP_TX_BUF: [[u8; UDP_BUF_LEN]; MAX_SOCKETS] = [[0; UDP_BUF_LEN]; MAX_SOCKETS];
+
+struct SmolDevice {
+    dev: &'static dyn NetDevice,
+}
+
+struct SmolRxToken {
+    len: usize,
+}
+
+struct SmolTxToken<'a> {
+    dev: &'a dyn NetDevice,
+}
+
+impl Device for SmolDevice {
+    type RxToken<'a> = SmolRxToken where Self: 'a;
+    type TxToken<'a> = SmolTxToken<'a> where Self: 'a;
+
+    fn capabilities(&self) -> DeviceCapabilities {
+        let mut caps = DeviceCapabilities::default();
+        caps.max_transmission_unit = NET_MTU;
+        caps.medium = Medium::Ethernet;
+        caps
+    }
+
+    fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
+        if !self.dev.poll() {
+            return None;
+        }
+        // SAFETY: single-token receive; buffer is reused once token is consumed.
+        let len = unsafe { self.dev.recv(&mut RX_BUF).ok()? };
+        Some((SmolRxToken { len }, SmolTxToken { dev: self.dev }))
+    }
+
+    fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
+        Some(SmolTxToken { dev: self.dev })
+    }
+}
+
+impl RxToken for SmolRxToken {
+    fn consume<R, F>(self, f: F) -> R
+    where
+        F: FnOnce(&mut [u8]) -> R,
+    {
+        // SAFETY: the RX buffer remains valid until the token is dropped.
+        let slice = unsafe { &mut RX_BUF[..self.len] };
+        f(slice)
+    }
+}
+
+impl TxToken for SmolTxToken<'_> {
+    fn consume<R, F>(self, len: usize, f: F) -> R
+    where
+        F: FnOnce(&mut [u8]) -> R,
+    {
+        if len > NET_BUF_SIZE {
+            return f(&mut []);
+        }
+        // SAFETY: TX buffer is used by a single token at a time.
+        let buf = unsafe { &mut TX_BUF[..len] };
+        let result = f(buf);
+        let _ = self.dev.send(buf);
+        result
+    }
+}
+
+struct NetState {
+    iface: Interface,
+    sockets: SocketSet<'static>,
+    device: SmolDevice,
+    icmp_handle: SocketHandle,
+    ping_ident: u16,
+    ping_seq: u16,
+}
+
+// SAFETY: global net state is serialized by single-hart boot and idle loop.
+static mut NET_STATE: Option<NetState> = None;
+
+pub fn init(dev: &'static dyn NetDevice) -> Result<(), NetError> {
+    if NET_READY.load(Ordering::Acquire) {
+        return Ok(());
+    }
+
+    let mac = dev.mac_address();
+    let hw_addr = EthernetAddress(mac);
+    let ip = IpCidr::new(IpAddress::v4(NET_IPV4_ADDR[0], NET_IPV4_ADDR[1], NET_IPV4_ADDR[2], NET_IPV4_ADDR[3]), NET_IPV4_PREFIX);
+
+    let mut device = SmolDevice { dev };
+    let mut sockets = unsafe { SocketSet::new(&mut SOCKET_STORAGE[..]) };
+    let icmp_rx = unsafe { IcmpPacketBuffer::new(&mut ICMP_RX_META[..], &mut ICMP_RX_BUF[..]) };
+    let icmp_tx = unsafe { IcmpPacketBuffer::new(&mut ICMP_TX_META[..], &mut ICMP_TX_BUF[..]) };
+    let icmp_socket = IcmpSocket::new(icmp_rx, icmp_tx);
+    let icmp_handle = sockets.add(icmp_socket);
+
+    let mut config = Config::new(hw_addr.into());
+    config.random_seed = 0x1234_5678;
+    let mut iface = Interface::new(config, &mut device, Instant::from_millis(0));
+    iface.update_ip_addrs(|addrs| {
+        let _ = addrs.push(ip);
+    });
+    let gateway = Ipv4Address::new(
+        NET_IPV4_GATEWAY[0],
+        NET_IPV4_GATEWAY[1],
+        NET_IPV4_GATEWAY[2],
+        NET_IPV4_GATEWAY[3],
+    );
+    let _ = iface.routes_mut().add_default_ipv4_route(gateway);
+
+    let ping_ident = u16::from_le_bytes([mac[4], mac[5]]);
+    let state = NetState {
+        iface,
+        sockets,
+        device,
+        icmp_handle,
+        ping_ident,
+        ping_seq: 1,
+    };
+
+    unsafe {
+        NET_STATE = Some(state);
+    }
+    NET_READY.store(true, Ordering::Release);
+    NET_NEED_POLL.store(true, Ordering::Release);
+    Ok(())
+}
+
+pub fn notify_irq() {
+    NET_NEED_POLL.store(true, Ordering::Release);
+}
+
+pub enum NetEvent {
+    IcmpEchoReply { seq: u16, from: IpAddress },
+}
+
+pub fn poll(now_ms: u64) -> Option<NetEvent> {
+    if !NET_READY.load(Ordering::Acquire) {
+        return None;
+    }
+    if !NET_NEED_POLL.swap(false, Ordering::AcqRel) {
+        return None;
+    }
+    let timestamp = Instant::from_millis(now_ms as i64);
+    // SAFETY: NET_STATE is only mutated here after init.
+    let Some(state) = (unsafe { NET_STATE.as_mut() }) else {
+        return None;
+    };
+    if NET_PING_REQUESTED.swap(false, Ordering::AcqRel) {
+        let gateway = IpAddress::Ipv4(Ipv4Address::new(
+            NET_IPV4_GATEWAY[0],
+            NET_IPV4_GATEWAY[1],
+            NET_IPV4_GATEWAY[2],
+            NET_IPV4_GATEWAY[3],
+        ));
+        let socket = state.sockets.get_mut::<IcmpSocket>(state.icmp_handle);
+        if !socket.is_open() {
+            let _ = socket.bind(IcmpEndpoint::Ident(state.ping_ident));
+        }
+        if socket.can_send() {
+            let payload = b"aurora";
+            let repr = Icmpv4Repr::EchoRequest {
+                ident: state.ping_ident,
+                seq_no: state.ping_seq,
+                data: payload,
+            };
+            let caps = state.device.capabilities();
+            let _ = socket.send_with(repr.buffer_len(), gateway, |buf| {
+                let mut pkt = Icmpv4Packet::new_unchecked(buf);
+                repr.emit(&mut pkt, &caps.checksum);
+                repr.buffer_len()
+            });
+            state.ping_seq = state.ping_seq.wrapping_add(1);
+            NET_NEED_POLL.store(true, Ordering::Release);
+        }
+    }
+
+    let _ = state
+        .iface
+        .poll(timestamp, &mut state.device, &mut state.sockets);
+
+    let socket = state.sockets.get_mut::<IcmpSocket>(state.icmp_handle);
+    if socket.can_recv() {
+        if let Ok((payload, from)) = socket.recv() {
+            if let Ok(pkt) = Icmpv4Packet::new_checked(payload) {
+                if let Ok(repr) = Icmpv4Repr::parse(&pkt, &state.device.capabilities().checksum) {
+                    if let Icmpv4Repr::EchoReply { ident, seq_no, .. } = repr {
+                        if ident == state.ping_ident {
+                            return Some(NetEvent::IcmpEchoReply { seq: seq_no, from });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+pub fn ping_gateway_once() -> Result<(), NetError> {
+    if !NET_READY.load(Ordering::Acquire) {
+        return Err(NetError::NotReady);
+    }
+    NET_PING_REQUESTED.store(true, Ordering::Release);
+    NET_NEED_POLL.store(true, Ordering::Release);
+    Ok(())
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AxSocketKind {
+    Tcp,
+    Udp,
+}
+
+#[derive(Clone, Copy)]
+struct SocketSlot {
+    used: bool,
+    kind: AxSocketKind,
+    local_port: u16,
+    handle: MaybeUninit<SocketHandle>,
+}
+
+const EMPTY_SOCKET_SLOT: SocketSlot = SocketSlot {
+    used: false,
+    kind: AxSocketKind::Tcp,
+    local_port: 0,
+    handle: MaybeUninit::uninit(),
+};
+
+static mut SOCKET_TABLE: [SocketSlot; MAX_SOCKETS] = [EMPTY_SOCKET_SLOT; MAX_SOCKETS];
+
+pub type SocketId = usize;
+
+pub fn socket_create(domain: i32, sock_type: i32, _protocol: i32) -> Result<SocketId, NetError> {
+    if !NET_READY.load(Ordering::Acquire) {
+        return Err(NetError::NotReady);
+    }
+    if domain != 2 {
+        return Err(NetError::Unsupported);
+    }
+    let kind = match sock_type & 0xf {
+        1 => AxSocketKind::Tcp,
+        2 => AxSocketKind::Udp,
+        _ => return Err(NetError::Unsupported),
+    };
+    let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
+    let slot = reserve_socket_slot(kind).ok_or(NetError::NoMem)?;
+    let handle = match kind {
+        AxSocketKind::Tcp => {
+            let rx = unsafe { TcpSocketBuffer::new(&mut TCP_RX_BUF[slot][..]) };
+            let tx = unsafe { TcpSocketBuffer::new(&mut TCP_TX_BUF[slot][..]) };
+            state.sockets.add(TcpSocket::new(rx, tx))
+        }
+        AxSocketKind::Udp => {
+            let rx = unsafe {
+                UdpPacketBuffer::new(&mut UDP_RX_META[slot][..], &mut UDP_RX_BUF[slot][..])
+            };
+            let tx = unsafe {
+                UdpPacketBuffer::new(&mut UDP_TX_META[slot][..], &mut UDP_TX_BUF[slot][..])
+            };
+            state.sockets.add(UdpSocket::new(rx, tx))
+        }
+    };
+    set_socket_handle(slot, handle);
+    Ok(slot)
+}
+
+pub fn socket_bind(id: SocketId, addr: IpAddress, port: u16) -> Result<(), NetError> {
+    let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
+    let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
+    match kind {
+        AxSocketKind::Tcp => {
+            set_socket_local_port(id, port)?;
+            let socket = state.sockets.get_mut::<TcpSocket>(handle);
+            if socket.is_open() {
+                return Err(NetError::Invalid);
+            }
+            if port == 0 {
+                return Err(NetError::Invalid);
+            }
+            Ok(())
+        }
+        AxSocketKind::Udp => {
+            let socket = state.sockets.get_mut::<UdpSocket>(handle);
+            socket.bind((addr, port)).map_err(|_| NetError::Invalid)?;
+            Ok(())
+        }
+    }
+}
+
+pub fn socket_connect(id: SocketId, addr: IpAddress, port: u16) -> Result<(), NetError> {
+    let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
+    let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
+    match kind {
+        AxSocketKind::Tcp => {
+            let local_port = socket_local_port(id)?;
+            let socket = state.sockets.get_mut::<TcpSocket>(handle);
+            let local = IpListenEndpoint {
+                addr: None,
+                port: local_port,
+            };
+            socket
+                .connect(state.iface.context(), (addr, port), local)
+                .map_err(|_| NetError::Invalid)?;
+            NET_NEED_POLL.store(true, Ordering::Release);
+            Ok(())
+        }
+        AxSocketKind::Udp => Err(NetError::Unsupported),
+    }
+}
+
+pub fn socket_listen(id: SocketId, _backlog: usize) -> Result<(), NetError> {
+    let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
+    let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
+    match kind {
+        AxSocketKind::Tcp => {
+            let local_port = socket_local_port(id)?;
+            let socket = state.sockets.get_mut::<TcpSocket>(handle);
+            socket
+                .listen(IpListenEndpoint { addr: None, port: local_port })
+                .map_err(|_| NetError::Invalid)?;
+            NET_NEED_POLL.store(true, Ordering::Release);
+            Ok(())
+        }
+        AxSocketKind::Udp => Err(NetError::Unsupported),
+    }
+}
+
+pub fn socket_accept(_id: SocketId) -> Result<SocketId, NetError> {
+    Err(NetError::Unsupported)
+}
+
+pub fn socket_send(id: SocketId, buf: &[u8], addr: Option<(IpAddress, u16)>) -> Result<usize, NetError> {
+    let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
+    let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
+    let sent = match kind {
+        AxSocketKind::Tcp => {
+            let socket = state.sockets.get_mut::<TcpSocket>(handle);
+            socket.send_slice(buf).map_err(|_| NetError::WouldBlock)?
+        }
+        AxSocketKind::Udp => {
+            let socket = state.sockets.get_mut::<UdpSocket>(handle);
+            let Some((addr, port)) = addr else {
+                return Err(NetError::Invalid);
+            };
+            socket
+                .send_slice(buf, IpEndpoint::new(addr, port))
+                .map_err(|_| NetError::WouldBlock)?;
+            buf.len()
+        }
+    };
+    NET_NEED_POLL.store(true, Ordering::Release);
+    Ok(sent)
+}
+
+pub fn socket_recv(
+    id: SocketId,
+    buf: &mut [u8],
+) -> Result<(usize, Option<(IpAddress, u16)>), NetError> {
+    let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
+    let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
+    match kind {
+        AxSocketKind::Tcp => {
+            let socket = state.sockets.get_mut::<TcpSocket>(handle);
+            let size = socket.recv_slice(buf).map_err(|_| NetError::WouldBlock)?;
+            Ok((size, None))
+        }
+        AxSocketKind::Udp => {
+            let socket = state.sockets.get_mut::<UdpSocket>(handle);
+            let (size, endpoint) = socket.recv_slice(buf).map_err(|_| NetError::WouldBlock)?;
+            Ok((size, Some((endpoint.endpoint.addr, endpoint.endpoint.port))))
+        }
+    }
+}
+
+pub fn socket_close(id: SocketId) -> Result<(), NetError> {
+    let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
+    let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
+    let _ = state.sockets.remove(handle);
+    release_socket_slot(id);
+    NET_NEED_POLL.store(true, Ordering::Release);
+    match kind {
+        AxSocketKind::Tcp | AxSocketKind::Udp => Ok(()),
+    }
+}
+
+fn reserve_socket_slot(kind: AxSocketKind) -> Option<SocketId> {
+    // SAFETY: single-hart early stage, socket table is serialized.
+    unsafe {
+        for (idx, slot) in SOCKET_TABLE.iter_mut().enumerate() {
+            if !slot.used {
+                slot.used = true;
+                slot.kind = kind;
+                slot.local_port = 0;
+                return Some(idx);
+            }
+        }
+    }
+    None
+}
+
+fn set_socket_handle(id: SocketId, handle: SocketHandle) {
+    // SAFETY: socket slot is reserved and unique for this id.
+    unsafe {
+        if let Some(slot) = SOCKET_TABLE.get_mut(id) {
+            slot.handle.write(handle);
+        }
+    }
+}
+
+fn set_socket_local_port(id: SocketId, port: u16) -> Result<(), NetError> {
+    unsafe {
+        let Some(slot) = SOCKET_TABLE.get_mut(id) else {
+            return Err(NetError::Invalid);
+        };
+        if !slot.used {
+            return Err(NetError::Invalid);
+        }
+        slot.local_port = port;
+        Ok(())
+    }
+}
+
+fn socket_local_port(id: SocketId) -> Result<u16, NetError> {
+    unsafe {
+        let Some(slot) = SOCKET_TABLE.get(id) else {
+            return Err(NetError::Invalid);
+        };
+        if !slot.used {
+            return Err(NetError::Invalid);
+        }
+        if slot.local_port != 0 {
+            return Ok(slot.local_port);
+        }
+    }
+    let port = NEXT_EPHEMERAL_PORT.fetch_add(1, Ordering::Relaxed);
+    let _ = set_socket_local_port(id, port);
+    Ok(port)
+}
+
+fn socket_handle(id: SocketId) -> Option<(AxSocketKind, SocketHandle)> {
+    // SAFETY: SocketHandle is a plain index and can be copied by value.
+    unsafe {
+        let slot = SOCKET_TABLE.get(id)?;
+        if !slot.used {
+            return None;
+        }
+        let handle = ptr::read(slot.handle.as_ptr());
+        Some((slot.kind, handle))
+    }
+}
+
+fn release_socket_slot(id: SocketId) {
+    // SAFETY: single-hart early stage, socket table is serialized.
+    unsafe {
+        if let Some(slot) = SOCKET_TABLE.get_mut(id) {
+            slot.used = false;
+            slot.local_port = 0;
+        }
+    }
+}
+
+static mut SOCKET_STORAGE: [SocketStorage<'static>; SOCKET_STORAGE_LEN] =
+    [SocketStorage::EMPTY; SOCKET_STORAGE_LEN];

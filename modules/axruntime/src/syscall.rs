@@ -171,6 +171,13 @@ fn dispatch(tf: &mut TrapFrame, ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_SETGROUPS => sys_setgroups(ctx.args[0], ctx.args[1]),
         SYS_GETCPU => sys_getcpu(ctx.args[0], ctx.args[1]),
         SYS_WAIT4 => sys_wait4(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_SOCKET => sys_socket(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_BIND => sys_bind(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_CONNECT => sys_connect(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_LISTEN => sys_listen(ctx.args[0], ctx.args[1]),
+        SYS_ACCEPT => sys_accept(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_SENDTO => sys_sendto(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4], ctx.args[5]),
+        SYS_RECVFROM => sys_recvfrom(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4], ctx.args[5]),
         _ => Err(Errno::NoSys),
     }
 }
@@ -225,6 +232,13 @@ const SYS_RT_SIGPROCMASK: usize = 135;
 const SYS_FCNTL: usize = 25;
 const SYS_UMASK: usize = 166;
 const SYS_PRCTL: usize = 167;
+const SYS_SOCKET: usize = 198;
+const SYS_BIND: usize = 200;
+const SYS_LISTEN: usize = 201;
+const SYS_ACCEPT: usize = 202;
+const SYS_CONNECT: usize = 203;
+const SYS_SENDTO: usize = 206;
+const SYS_RECVFROM: usize = 207;
 const SYS_LSEEK: usize = 62;
 const SYS_SCHED_SETAFFINITY: usize = 122;
 const SYS_SCHED_GETAFFINITY: usize = 123;
@@ -485,6 +499,7 @@ enum FdKind {
     Vfs(VfsHandle),
     PipeRead(usize),
     PipeWrite(usize),
+    Socket(axnet::SocketId),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -590,6 +605,20 @@ struct PollFd {
     events: i16,
     revents: i16,
 }
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct SockAddrIn {
+    sin_family: u16,
+    sin_port: u16,
+    sin_addr: u32,
+    sin_zero: [u8; 8],
+}
+
+const AF_INET: u16 = 2;
+const SOCK_STREAM: usize = 1;
+const SOCK_DGRAM: usize = 2;
+const SOCK_NONBLOCK: usize = 0x800;
 
 fn sys_exit(_code: usize) -> Result<usize, Errno> {
     let pid = crate::process::current_pid().unwrap_or(1);
@@ -899,6 +928,132 @@ fn sys_pipe2(pipefd: usize, flags: usize) -> Result<usize, Errno> {
         return Err(Errno::Fault);
     }
     Ok(0)
+}
+
+fn sys_socket(domain: usize, sock_type: usize, protocol: usize) -> Result<usize, Errno> {
+    let socket_id = axnet::socket_create(domain as i32, sock_type as i32, protocol as i32)
+        .map_err(map_net_err)?;
+    let flags = if (sock_type & SOCK_NONBLOCK) != 0 {
+        O_NONBLOCK
+    } else {
+        0
+    };
+    let entry = FdEntry {
+        kind: FdKind::Socket(socket_id),
+        flags,
+        offset: 0,
+    };
+    alloc_fd(entry).ok_or(Errno::MFile)
+}
+
+fn sys_bind(fd: usize, addr: usize, len: usize) -> Result<usize, Errno> {
+    let root_pa = mm::current_root_pa();
+    let socket_id = resolve_socket_fd(fd)?;
+    let (ip, port) = parse_sockaddr_in(root_pa, addr, len)?;
+    axnet::socket_bind(socket_id, ip, port).map_err(map_net_err)?;
+    Ok(0)
+}
+
+fn sys_connect(fd: usize, addr: usize, len: usize) -> Result<usize, Errno> {
+    let root_pa = mm::current_root_pa();
+    let socket_id = resolve_socket_fd(fd)?;
+    let (ip, port) = parse_sockaddr_in(root_pa, addr, len)?;
+    axnet::socket_connect(socket_id, ip, port).map_err(map_net_err)?;
+    Ok(0)
+}
+
+fn sys_listen(fd: usize, backlog: usize) -> Result<usize, Errno> {
+    let socket_id = resolve_socket_fd(fd)?;
+    axnet::socket_listen(socket_id, backlog).map_err(map_net_err)?;
+    Ok(0)
+}
+
+fn sys_accept(fd: usize, addr: usize, addrlen: usize) -> Result<usize, Errno> {
+    let socket_id = resolve_socket_fd(fd)?;
+    let new_id = axnet::socket_accept(socket_id).map_err(map_net_err)?;
+    let entry = FdEntry {
+        kind: FdKind::Socket(new_id),
+        flags: 0,
+        offset: 0,
+    };
+    let newfd = alloc_fd(entry).ok_or(Errno::MFile)?;
+    write_sockaddr_in(mm::current_root_pa(), addr, addrlen, None)?;
+    Ok(newfd)
+}
+
+fn sys_sendto(
+    fd: usize,
+    buf: usize,
+    len: usize,
+    _flags: usize,
+    addr: usize,
+    addrlen: usize,
+) -> Result<usize, Errno> {
+    let root_pa = mm::current_root_pa();
+    let socket_id = resolve_socket_fd(fd)?;
+    let endpoint = if addr != 0 {
+        let (ip, port) = parse_sockaddr_in(root_pa, addr, addrlen)?;
+        Some((ip, port))
+    } else {
+        None
+    };
+    if len == 0 {
+        return Ok(0);
+    }
+    let mut total = 0usize;
+    let mut remaining = len;
+    let mut scratch = [0u8; 512];
+    while remaining > 0 {
+        let chunk = core::cmp::min(remaining, scratch.len());
+        let src = buf.checked_add(total).ok_or(Errno::Fault)?;
+        UserSlice::new(src, chunk)
+            .copy_to_slice(root_pa, &mut scratch[..chunk])
+            .ok_or(Errno::Fault)?;
+        let sent = axnet::socket_send(socket_id, &scratch[..chunk], endpoint)
+            .map_err(map_net_err)?;
+        total += sent;
+        if sent < chunk {
+            break;
+        }
+        remaining = remaining.saturating_sub(sent);
+    }
+    Ok(total)
+}
+
+fn sys_recvfrom(
+    fd: usize,
+    buf: usize,
+    len: usize,
+    _flags: usize,
+    addr: usize,
+    addrlen: usize,
+) -> Result<usize, Errno> {
+    let root_pa = mm::current_root_pa();
+    let socket_id = resolve_socket_fd(fd)?;
+    if len == 0 {
+        return Ok(0);
+    }
+    let mut total = 0usize;
+    let mut remaining = len;
+    let mut scratch = [0u8; 512];
+    let mut last_endpoint = None;
+    while remaining > 0 {
+        let chunk = core::cmp::min(remaining, scratch.len());
+        let (read, endpoint) = axnet::socket_recv(socket_id, &mut scratch[..chunk])
+            .map_err(map_net_err)?;
+        let dst = buf.checked_add(total).ok_or(Errno::Fault)?;
+        UserSlice::new(dst, read)
+            .copy_from_slice(root_pa, &scratch[..read])
+            .ok_or(Errno::Fault)?;
+        total += read;
+        last_endpoint = endpoint;
+        if read < chunk {
+            break;
+        }
+        remaining = remaining.saturating_sub(read);
+    }
+    write_sockaddr_in(root_pa, addr, addrlen, last_endpoint)?;
+    Ok(total)
 }
 
 fn sys_openat(_dirfd: usize, pathname: usize, flags: usize, _mode: usize) -> Result<usize, Errno> {
@@ -2574,6 +2729,16 @@ fn map_vfs_err(err: VfsError) -> Errno {
     }
 }
 
+fn map_net_err(err: axnet::NetError) -> Errno {
+    match err {
+        axnet::NetError::NotReady | axnet::NetError::WouldBlock => Errno::Again,
+        axnet::NetError::BufferTooSmall => Errno::Range,
+        axnet::NetError::Unsupported => Errno::NoSys,
+        axnet::NetError::Invalid => Errno::Inval,
+        axnet::NetError::NoMem => Errno::NoMem,
+    }
+}
+
 fn validate_user_ptr_list(root_pa: usize, ptr: usize) -> Result<(), Errno> {
     if ptr == 0 {
         return Ok(());
@@ -2957,6 +3122,9 @@ fn close_fd(fd: usize) -> Result<usize, Errno> {
             return Err(Errno::Badf);
         }
         FD_TABLES[proc_idx][idx] = EMPTY_FD_ENTRY;
+        if let FdKind::Socket(socket_id) = old.kind {
+            let _ = axnet::socket_close(socket_id);
+        }
         pipe_release(old.kind);
     }
     Ok(0)
@@ -2970,7 +3138,10 @@ fn set_stdio_redirect(fd: usize, entry: FdEntry) -> Result<usize, Errno> {
     // SAFETY: 单核早期阶段访问重定向表。
     unsafe {
         if let Some(old) = STDIO_REDIRECT[proc_idx][fd] {
-            pipe_release(old.kind);
+        if let FdKind::Socket(socket_id) = old.kind {
+            let _ = axnet::socket_close(socket_id);
+        }
+        pipe_release(old.kind);
         }
         STDIO_REDIRECT[proc_idx][fd] = Some(entry);
     }
@@ -3503,6 +3674,67 @@ fn ppoll_single_waiter_queue(fd: i32, events: u16) -> Option<&'static crate::tas
     }
 }
 
+fn resolve_socket_fd(fd: usize) -> Result<axnet::SocketId, Errno> {
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    match entry.kind {
+        FdKind::Socket(id) => Ok(id),
+        _ => Err(Errno::Badf),
+    }
+}
+
+fn parse_sockaddr_in(root_pa: usize, addr: usize, len: usize) -> Result<(axnet::IpAddress, u16), Errno> {
+    if addr == 0 || len < size_of::<SockAddrIn>() {
+        return Err(Errno::Inval);
+    }
+    let sock = UserPtr::<SockAddrIn>::new(addr)
+        .read(root_pa)
+        .ok_or(Errno::Fault)?;
+    if sock.sin_family != AF_INET {
+        return Err(Errno::Inval);
+    }
+    let port = u16::from_be(sock.sin_port);
+    let ip_bytes = u32::from_be(sock.sin_addr).to_be_bytes();
+    let ip = axnet::Ipv4Address::new(ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3]);
+    Ok((axnet::IpAddress::Ipv4(ip), port))
+}
+
+fn write_sockaddr_in(
+    root_pa: usize,
+    addr: usize,
+    addrlen: usize,
+    endpoint: Option<(axnet::IpAddress, u16)>,
+) -> Result<(), Errno> {
+    if addr == 0 || addrlen == 0 {
+        return Ok(());
+    }
+    let Some((ip, port)) = endpoint else {
+        return Ok(());
+    };
+    let mut len = UserPtr::<u32>::new(addrlen)
+        .read(root_pa)
+        .ok_or(Errno::Fault)? as usize;
+    let expected = size_of::<SockAddrIn>();
+    if len < expected {
+        return Err(Errno::Inval);
+    }
+    let ip = match ip {
+        axnet::IpAddress::Ipv4(addr) => addr,
+    };
+    let bytes = ip.as_bytes();
+    let sock = SockAddrIn {
+        sin_family: AF_INET,
+        sin_port: port.to_be(),
+        sin_addr: u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
+        sin_zero: [0; 8],
+    };
+    UserPtr::new(addr).write(root_pa, sock).ok_or(Errno::Fault)?;
+    len = expected;
+    UserPtr::new(addrlen)
+        .write(root_pa, len as u32)
+        .ok_or(Errno::Fault)?;
+    Ok(())
+}
+
 fn read_from_entry(fd: usize, entry: FdEntry, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     match entry.kind {
         FdKind::Stdin => {
@@ -3519,6 +3751,7 @@ fn read_from_entry(fd: usize, entry: FdEntry, root_pa: usize, buf: usize, len: u
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             pipe_read(pipe_id, root_pa, buf, len, nonblock)
         }
+        FdKind::Socket(socket_id) => read_socket(root_pa, socket_id, buf, len),
         FdKind::Stdout | FdKind::Stderr | FdKind::PipeWrite(_) => Err(Errno::Badf),
         FdKind::Empty => Err(Errno::Badf),
     }
@@ -3638,9 +3871,56 @@ fn write_to_entry(fd: usize, entry: FdEntry, root_pa: usize, buf: usize, len: us
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             pipe_write(pipe_id, root_pa, buf, len, nonblock)
         }
+        FdKind::Socket(socket_id) => write_socket(root_pa, socket_id, buf, len),
         FdKind::Stdin | FdKind::PipeRead(_) => Err(Errno::Badf),
         FdKind::Empty => Err(Errno::Badf),
     }
+}
+
+fn read_socket(root_pa: usize, socket_id: axnet::SocketId, buf: usize, len: usize) -> Result<usize, Errno> {
+    if len == 0 {
+        return Ok(0);
+    }
+    let mut total = 0usize;
+    let mut remaining = len;
+    let mut scratch = [0u8; 512];
+    while remaining > 0 {
+        let chunk = core::cmp::min(remaining, scratch.len());
+        let (read, _) = axnet::socket_recv(socket_id, &mut scratch[..chunk]).map_err(map_net_err)?;
+        let dst = buf.checked_add(total).ok_or(Errno::Fault)?;
+        UserSlice::new(dst, read)
+            .copy_from_slice(root_pa, &scratch[..read])
+            .ok_or(Errno::Fault)?;
+        total += read;
+        if read < chunk {
+            break;
+        }
+        remaining = remaining.saturating_sub(read);
+    }
+    Ok(total)
+}
+
+fn write_socket(root_pa: usize, socket_id: axnet::SocketId, buf: usize, len: usize) -> Result<usize, Errno> {
+    if len == 0 {
+        return Ok(0);
+    }
+    let mut total = 0usize;
+    let mut remaining = len;
+    let mut scratch = [0u8; 512];
+    while remaining > 0 {
+        let chunk = core::cmp::min(remaining, scratch.len());
+        let src = buf.checked_add(total).ok_or(Errno::Fault)?;
+        UserSlice::new(src, chunk)
+            .copy_to_slice(root_pa, &mut scratch[..chunk])
+            .ok_or(Errno::Fault)?;
+        let sent = axnet::socket_send(socket_id, &scratch[..chunk], None).map_err(map_net_err)?;
+        total += sent;
+        if sent < chunk {
+            break;
+        }
+        remaining = remaining.saturating_sub(sent);
+    }
+    Ok(total)
 }
 
 fn read_user_byte(root_pa: usize, addr: usize) -> Result<u8, Errno> {

@@ -569,6 +569,13 @@ pub fn wake_all(queue: &TaskWaitQueue) -> usize {
 
 pub fn idle_loop() -> ! {
     loop {
+        if let Some(event) = axnet::poll(crate::time::uptime_ms()) {
+            match event {
+                axnet::NetEvent::IcmpEchoReply { seq, from } => {
+                    crate::println!("net: icmp echo reply seq={} from={}", seq, from);
+                }
+            }
+        }
         yield_if_needed();
         crate::trap::enable_interrupts();
         crate::cpu::wait_for_interrupt();
