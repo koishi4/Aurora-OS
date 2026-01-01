@@ -188,6 +188,7 @@ pub fn spawn_user(ctx: UserContext) -> Option<TaskId> {
     let _ = crate::process::init_process(task_id, 0, ctx.root_pa);
     crate::syscall::init_fd_table(task_id);
     let _ = task::set_user_sp(task_id, ctx.user_sp);
+    let _ = task::set_heap_top(task_id, ctx.heap_top);
     let _ = RUN_QUEUE.push(task_id);
     NEED_RESCHED.store(true, Ordering::Relaxed);
     Some(task_id)

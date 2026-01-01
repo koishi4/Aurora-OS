@@ -669,8 +669,8 @@ fn sys_execve(tf: &mut TrapFrame, pathname: usize, argv: usize, envp: usize) -> 
             return Err(err);
         }
     };
-    let (ctx, heap_top) = match crate::user::load_exec_elf(root_pa, image, argv, envp) {
-        Ok(result) => result,
+    let ctx = match crate::user::load_exec_elf(root_pa, image, argv, envp) {
+        Ok(ctx) => ctx,
         Err(err) => {
             if cfg!(feature = "user-tcp-echo") {
                 crate::println!("sys_execve: load elf failed ({:?})", err);
@@ -690,7 +690,7 @@ fn sys_execve(tf: &mut TrapFrame, pathname: usize, argv: usize, envp: usize) -> 
     crate::trap::set_user_stack(ctx.user_sp);
     if let Some(task_id) = crate::runtime::current_task_id() {
         let _ = crate::task::set_user_context(task_id, ctx.root_pa, ctx.entry, ctx.user_sp);
-        let _ = crate::task::set_heap_top(task_id, heap_top);
+        let _ = crate::task::set_heap_top(task_id, ctx.heap_top);
     }
     let _ = crate::process::update_current_root(ctx.root_pa);
     if ctx.root_pa != root_pa {

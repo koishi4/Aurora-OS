@@ -15,6 +15,7 @@ pub struct UserContext {
     pub argc: usize,
     pub argv: usize,
     pub envp: usize,
+    pub heap_top: usize,
 }
 
 const PAGE_SIZE: usize = 4096;
@@ -260,6 +261,7 @@ pub fn load_user_image(root_pa: usize) -> Option<UserContext> {
         argc: 0,
         argv: 0,
         envp: 0,
+        heap_top: USER_MESSAGE_PAGE_VA + PAGE_SIZE,
     })
 }
 
@@ -268,10 +270,10 @@ pub fn load_exec_elf(
     image: &[u8],
     argv: usize,
     envp: usize,
-) -> Result<(UserContext, usize), Errno> {
+) -> Result<UserContext, Errno> {
     let header = ElfHeader::parse(image)?;
     let root_pa = mm::alloc_user_root().ok_or(Errno::NoMem)?;
-    let max_vaddr = match load_elf_segments(root_pa, image, &header) {
+    let heap_top = match load_elf_segments(root_pa, image, &header) {
         Ok(max_vaddr) => max_vaddr,
         Err(err) => {
             // execve 失败时释放新地址空间，避免泄漏页表页与用户页。
@@ -306,18 +308,16 @@ pub fn load_exec_elf(
     mm::flush_icache();
     mm::flush_tlb();
 
-    Ok((
-        UserContext {
-            entry: header.entry as usize,
-            user_sp,
-            root_pa,
-            satp: mm::satp_for_root(root_pa),
-            argc,
-            argv: argv_ptr,
-            envp: envp_ptr,
-        },
-        max_vaddr,
-    ))
+    Ok(UserContext {
+        entry: header.entry as usize,
+        user_sp,
+        root_pa,
+        satp: mm::satp_for_root(root_pa),
+        argc,
+        argv: argv_ptr,
+        envp: envp_ptr,
+        heap_top,
+    })
 }
 
 fn build_user_stack(

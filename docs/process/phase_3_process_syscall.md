@@ -51,6 +51,7 @@
 - 增加 execve `/init` VFS 链路：从 VFS 读取 ELF，解析 PT_LOAD 段并映射，构建 argv/envp 栈布局后切换入口。
 - execve 失败路径补充地址空间释放，避免页表与用户页泄漏。
 - execve 记录初始 heap_top 并增加 brk：按页映射堆区并清零，满足 Rust 运行时初始化路径。
+- TaskWaitQueue 操作加入关中断保护，避免中断重入破坏等待队列状态。
 - 增加最小进程表（state/ppid/exit_code），以 TaskId+1 作为早期 PID 占位。
 - 增加 wait4/waitpid：父进程阻塞等待队列、WNOHANG 支持、Zombie 回收与 exit_code 回写。
 - waitpid 等待改为循环阻塞重试，避免递归栈增长。
