@@ -325,6 +325,8 @@ const O_ACCMODE: usize = 3;
 const SOL_SOCKET: usize = 1;
 const SO_REUSEADDR: usize = 2;
 const SO_ERROR: usize = 4;
+const SO_RCVTIMEO: usize = 20;
+const SO_SNDTIMEO: usize = 21;
 const SHUT_RD: usize = 0;
 const SHUT_WR: usize = 1;
 const SHUT_RDWR: usize = 2;
@@ -533,6 +535,8 @@ struct FdEntry {
     kind: FdKind,
     flags: usize,
     offset: usize,
+    recv_timeout_ms: u64,
+    send_timeout_ms: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -560,6 +564,8 @@ const EMPTY_FD_ENTRY: FdEntry = FdEntry {
     kind: FdKind::Empty,
     flags: 0,
     offset: 0,
+    recv_timeout_ms: 0,
+    send_timeout_ms: 0,
 };
 
 // SAFETY: 单核早期阶段，fd 表按进程索引串行访问。
@@ -983,6 +989,8 @@ fn sys_pipe2(pipefd: usize, flags: usize) -> Result<usize, Errno> {
         kind: FdKind::PipeRead(pipe_id),
         flags: status_flags,
         offset: 0,
+        recv_timeout_ms: 0,
+        send_timeout_ms: 0,
     }) {
         Some(fd) => fd,
         None => {
@@ -994,6 +1002,8 @@ fn sys_pipe2(pipefd: usize, flags: usize) -> Result<usize, Errno> {
         kind: FdKind::PipeWrite(pipe_id),
         flags: status_flags,
         offset: 0,
+        recv_timeout_ms: 0,
+        send_timeout_ms: 0,
     }) {
         Some(fd) => fd,
         None => {
@@ -1022,6 +1032,8 @@ fn sys_socket(domain: usize, sock_type: usize, protocol: usize) -> Result<usize,
         kind: FdKind::Socket(socket_id),
         flags,
         offset: 0,
+        recv_timeout_ms: 0,
+        send_timeout_ms: 0,
     };
     alloc_fd(entry).ok_or(Errno::MFile)
 }
@@ -1055,8 +1067,8 @@ fn sys_getpeername(fd: usize, addr: usize, addrlen: usize) -> Result<usize, Errn
 
 fn sys_connect(fd: usize, addr: usize, len: usize) -> Result<usize, Errno> {
     let root_pa = mm::current_root_pa();
-    let (socket_id, flags) = resolve_socket_entry(fd)?;
-    let nonblock = (flags & O_NONBLOCK) != 0;
+    let (socket_id, entry) = resolve_socket_entry(fd)?;
+    let nonblock = (entry.flags & O_NONBLOCK) != 0;
     if cfg!(feature = "user-tcp-echo") && TCP_CONNECT_LOGGED.swap(1, Ordering::Relaxed) == 0 {
         crate::println!("sys_connect: fd={} nonblock={}", fd, nonblock);
     }
@@ -1101,6 +1113,44 @@ fn sys_connect(fd: usize, addr: usize, len: usize) -> Result<usize, Errno> {
     }
 }
 
+fn read_timeval_ms(root_pa: usize, ptr: usize, len: usize) -> Result<u64, Errno> {
+    if ptr == 0 || len < size_of::<Timeval>() {
+        return Err(Errno::Inval);
+    }
+    let tv = UserPtr::<Timeval>::new(ptr)
+        .read(root_pa)
+        .ok_or(Errno::Fault)?;
+    if tv.tv_sec < 0 || tv.tv_usec < 0 || tv.tv_usec >= 1_000_000 {
+        return Err(Errno::Inval);
+    }
+    let ms = (tv.tv_sec as u64)
+        .saturating_mul(1000)
+        .saturating_add((tv.tv_usec as u64 + 999) / 1000);
+    Ok(ms)
+}
+
+fn write_timeval_ms(root_pa: usize, ptr: usize, len_ptr: usize, ms: u64) -> Result<(), Errno> {
+    if ptr == 0 || len_ptr == 0 {
+        return Err(Errno::Fault);
+    }
+    let mut len = UserPtr::<u32>::new(len_ptr)
+        .read(root_pa)
+        .ok_or(Errno::Fault)? as usize;
+    if len < size_of::<Timeval>() {
+        return Err(Errno::Inval);
+    }
+    let tv = Timeval {
+        tv_sec: (ms / 1000) as i64,
+        tv_usec: ((ms % 1000) * 1000) as i64,
+    };
+    UserPtr::new(ptr).write(root_pa, tv).ok_or(Errno::Fault)?;
+    len = size_of::<Timeval>();
+    UserPtr::new(len_ptr)
+        .write(root_pa, len as u32)
+        .ok_or(Errno::Fault)?;
+    Ok(())
+}
+
 fn sys_setsockopt(
     fd: usize,
     level: usize,
@@ -1123,6 +1173,14 @@ fn sys_setsockopt(
                 .ok_or(Errno::Fault)?;
             Ok(0)
         }
+        SO_RCVTIMEO => {
+            let timeout_ms = read_timeval_ms(root_pa, optval, optlen)?;
+            set_socket_timeout(fd, Some(timeout_ms), None)
+        }
+        SO_SNDTIMEO => {
+            let timeout_ms = read_timeval_ms(root_pa, optval, optlen)?;
+            set_socket_timeout(fd, None, Some(timeout_ms))
+        }
         _ => Err(Errno::Inval),
     }
 }
@@ -1142,32 +1200,56 @@ fn sys_getsockopt(
     if optlen == 0 {
         return Err(Errno::Fault);
     }
-    let len = UserPtr::<u32>::new(optlen)
-        .read(root_pa)
-        .ok_or(Errno::Fault)? as usize;
-    if len < size_of::<u32>() || optval == 0 {
-        return Err(Errno::Inval);
-    }
-    let value = match optname {
+    match optname {
         SO_ERROR => {
-            if let Some(err) = axnet::socket_take_error(socket_id).map_err(map_net_err)? {
+            let len = UserPtr::<u32>::new(optlen)
+                .read(root_pa)
+                .ok_or(Errno::Fault)? as usize;
+            if len < size_of::<u32>() || optval == 0 {
+                return Err(Errno::Inval);
+            }
+            let value = if let Some(err) = axnet::socket_take_error(socket_id).map_err(map_net_err)? {
                 map_net_err(err) as i32
             } else if axnet::socket_connecting(socket_id).map_err(map_net_err)? {
                 Errno::InProgress as i32
             } else {
                 0
-            }
+            };
+            UserPtr::new(optval)
+                .write(root_pa, value as u32)
+                .ok_or(Errno::Fault)?;
+            UserPtr::new(optlen)
+                .write(root_pa, size_of::<u32>() as u32)
+                .ok_or(Errno::Fault)?;
+            Ok(0)
         }
-        SO_REUSEADDR => 0,
-        _ => return Err(Errno::Inval),
-    };
-    UserPtr::new(optval)
-        .write(root_pa, value as u32)
-        .ok_or(Errno::Fault)?;
-    UserPtr::new(optlen)
-        .write(root_pa, size_of::<u32>() as u32)
-        .ok_or(Errno::Fault)?;
-    Ok(0)
+        SO_REUSEADDR => {
+            let len = UserPtr::<u32>::new(optlen)
+                .read(root_pa)
+                .ok_or(Errno::Fault)? as usize;
+            if len < size_of::<u32>() || optval == 0 {
+                return Err(Errno::Inval);
+            }
+            UserPtr::new(optval)
+                .write(root_pa, 0u32)
+                .ok_or(Errno::Fault)?;
+            UserPtr::new(optlen)
+                .write(root_pa, size_of::<u32>() as u32)
+                .ok_or(Errno::Fault)?;
+            Ok(0)
+        }
+        SO_RCVTIMEO => {
+            let (recv_ms, _) = socket_timeouts(fd)?;
+            write_timeval_ms(root_pa, optval, optlen, recv_ms)?;
+            Ok(0)
+        }
+        SO_SNDTIMEO => {
+            let (_, send_ms) = socket_timeouts(fd)?;
+            write_timeval_ms(root_pa, optval, optlen, send_ms)?;
+            Ok(0)
+        }
+        _ => Err(Errno::Inval),
+    }
 }
 
 fn sys_shutdown(fd: usize, how: usize) -> Result<usize, Errno> {
@@ -1186,8 +1268,9 @@ fn sys_listen(fd: usize, backlog: usize) -> Result<usize, Errno> {
 }
 
 fn sys_accept(fd: usize, addr: usize, addrlen: usize) -> Result<usize, Errno> {
-    let (socket_id, flags) = resolve_socket_entry(fd)?;
-    let nonblock = (flags & O_NONBLOCK) != 0;
+    let (socket_id, entry) = resolve_socket_entry(fd)?;
+    let nonblock = (entry.flags & O_NONBLOCK) != 0;
+    let timeout_ms = entry.recv_timeout_ms;
     if cfg!(feature = "user-tcp-echo") && TCP_ACCEPT_LOGGED.swap(1, Ordering::Relaxed) == 0 {
         crate::println!("sys_accept: fd={} nonblock={}", fd, nonblock);
     }
@@ -1197,8 +1280,10 @@ fn sys_accept(fd: usize, addr: usize, addrlen: usize) -> Result<usize, Errno> {
                 replace_socket_fd(fd, listener_id)?;
                 let entry = FdEntry {
                     kind: FdKind::Socket(accepted_id),
-                    flags: flags & O_NONBLOCK,
+                    flags: entry.flags & O_NONBLOCK,
                     offset: 0,
+                    recv_timeout_ms: entry.recv_timeout_ms,
+                    send_timeout_ms: entry.send_timeout_ms,
                 };
                 let newfd = alloc_fd(entry).ok_or(Errno::MFile)?;
                 write_sockaddr_in(mm::current_root_pa(), addr, addrlen, remote)?;
@@ -1211,7 +1296,13 @@ fn sys_accept(fd: usize, addr: usize, addrlen: usize) -> Result<usize, Errno> {
                 if cfg!(feature = "user-tcp-echo") && TCP_ACCEPT_LOGGED.swap(2, Ordering::Relaxed) == 1 {
                     crate::println!("sys_accept: blocking");
                 }
-                crate::runtime::block_current(crate::runtime::net_wait_queue());
+                if timeout_ms == 0 {
+                    crate::runtime::block_current(crate::runtime::net_wait_queue());
+                } else if crate::runtime::wait_timeout_ms(crate::runtime::net_wait_queue(), timeout_ms)
+                    == crate::wait::WaitResult::Timeout
+                {
+                    return Err(Errno::TimedOut);
+                }
             }
             Err(err) => return Err(map_net_err(err)),
         }
@@ -1227,8 +1318,9 @@ fn sys_sendto(
     addrlen: usize,
 ) -> Result<usize, Errno> {
     let root_pa = mm::current_root_pa();
-    let (socket_id, flags) = resolve_socket_entry(fd)?;
-    let nonblock = (flags & O_NONBLOCK) != 0;
+    let (socket_id, entry) = resolve_socket_entry(fd)?;
+    let nonblock = (entry.flags & O_NONBLOCK) != 0;
+    let timeout_ms = entry.send_timeout_ms;
     let endpoint = if addr != 0 {
         let (ip, port) = parse_sockaddr_in(root_pa, addr, addrlen)?;
         Some((ip, port))
@@ -1256,7 +1348,13 @@ fn sys_sendto(
                 if nonblock || !can_block_current() {
                     return Err(Errno::Again);
                 }
-                crate::runtime::block_current(crate::runtime::net_wait_queue());
+                if timeout_ms == 0 {
+                    crate::runtime::block_current(crate::runtime::net_wait_queue());
+                } else if crate::runtime::wait_timeout_ms(crate::runtime::net_wait_queue(), timeout_ms)
+                    == crate::wait::WaitResult::Timeout
+                {
+                    return Err(Errno::TimedOut);
+                }
                 continue;
             }
             Err(err) => return Err(map_net_err(err)),
@@ -1279,8 +1377,9 @@ fn sys_recvfrom(
     addrlen: usize,
 ) -> Result<usize, Errno> {
     let root_pa = mm::current_root_pa();
-    let (socket_id, flags) = resolve_socket_entry(fd)?;
-    let nonblock = (flags & O_NONBLOCK) != 0;
+    let (socket_id, entry) = resolve_socket_entry(fd)?;
+    let nonblock = (entry.flags & O_NONBLOCK) != 0;
+    let timeout_ms = entry.recv_timeout_ms;
     if cfg!(feature = "user-tcp-echo") && TCP_RECV_LOGGED.swap(1, Ordering::Relaxed) == 0 {
         crate::println!("sys_recv: fd={} nonblock={}", fd, nonblock);
     }
@@ -1305,7 +1404,13 @@ fn sys_recvfrom(
                 if cfg!(feature = "user-tcp-echo") && TCP_RECV_LOGGED.swap(2, Ordering::Relaxed) == 1 {
                     crate::println!("sys_recv: blocking");
                 }
-                crate::runtime::block_current(crate::runtime::net_wait_queue());
+                if timeout_ms == 0 {
+                    crate::runtime::block_current(crate::runtime::net_wait_queue());
+                } else if crate::runtime::wait_timeout_ms(crate::runtime::net_wait_queue(), timeout_ms)
+                    == crate::wait::WaitResult::Timeout
+                {
+                    return Err(Errno::TimedOut);
+                }
                 continue;
             }
             Err(err) => return Err(map_net_err(err)),
@@ -1389,6 +1494,8 @@ fn sys_openat(_dirfd: usize, pathname: usize, flags: usize, _mode: usize) -> Res
             kind: FdKind::Vfs(handle),
             flags: status_flags,
             offset: 0,
+            recv_timeout_ms: 0,
+            send_timeout_ms: 0,
         })
         .ok_or(Errno::MFile)
     })
@@ -3259,6 +3366,8 @@ fn stdio_entry(fd: usize) -> Option<FdEntry> {
                 kind,
                 flags: STDIO_FLAGS[proc_idx][fd],
                 offset: 0,
+                recv_timeout_ms: 0,
+                send_timeout_ms: 0,
             })
         }
     }
@@ -3981,12 +4090,62 @@ fn resolve_socket_fd(fd: usize) -> Result<axnet::SocketId, Errno> {
     }
 }
 
-fn resolve_socket_entry(fd: usize) -> Result<(axnet::SocketId, usize), Errno> {
+fn resolve_socket_entry(fd: usize) -> Result<(axnet::SocketId, FdEntry), Errno> {
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
     match entry.kind {
-        FdKind::Socket(id) => Ok((id, entry.flags)),
+        FdKind::Socket(id) => Ok((id, entry)),
         _ => Err(Errno::Badf),
     }
+}
+
+fn socket_timeouts(fd: usize) -> Result<(u64, u64), Errno> {
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    if !matches!(entry.kind, FdKind::Socket(_)) {
+        return Err(Errno::Badf);
+    }
+    Ok((entry.recv_timeout_ms, entry.send_timeout_ms))
+}
+
+fn set_socket_timeout(
+    fd: usize,
+    recv_timeout_ms: Option<u64>,
+    send_timeout_ms: Option<u64>,
+) -> Result<usize, Errno> {
+    let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
+    if stdio_kind(fd).is_some() {
+        // SAFETY: 单核早期阶段访问重定向表。
+        unsafe {
+            if let Some(mut entry) = STDIO_REDIRECT[proc_idx][fd] {
+                if !matches!(entry.kind, FdKind::Socket(_)) {
+                    return Err(Errno::Badf);
+                }
+                if let Some(value) = recv_timeout_ms {
+                    entry.recv_timeout_ms = value;
+                }
+                if let Some(value) = send_timeout_ms {
+                    entry.send_timeout_ms = value;
+                }
+                STDIO_REDIRECT[proc_idx][fd] = Some(entry);
+                return Ok(0);
+            }
+        }
+        return Err(Errno::Badf);
+    }
+    let idx = fd_table_index(fd).ok_or(Errno::Badf)?;
+    // SAFETY: 单核早期阶段，fd 表串行更新。
+    unsafe {
+        let entry = &mut FD_TABLES[proc_idx][idx];
+        if entry.kind == FdKind::Empty || !matches!(entry.kind, FdKind::Socket(_)) {
+            return Err(Errno::Badf);
+        }
+        if let Some(value) = recv_timeout_ms {
+            entry.recv_timeout_ms = value;
+        }
+        if let Some(value) = send_timeout_ms {
+            entry.send_timeout_ms = value;
+        }
+    }
+    Ok(0)
 }
 
 fn parse_sockaddr_in(root_pa: usize, addr: usize, len: usize) -> Result<(axnet::IpAddress, u16), Errno> {

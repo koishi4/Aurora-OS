@@ -186,6 +186,7 @@
 - Implement connect EINPROGRESS semantics and map connection failures to net-specific errno.
 - Add minimal getsockopt/setsockopt/shutdown support with SO_ERROR tracking for TCP connects.
 - Add getsockname/getpeername support for socket address queries.
+- Add SO_RCVTIMEO/SO_SNDTIMEO handling with timeout-aware socket waits.
 - Fix sockaddr_in IP parsing to honor network byte order for local TCP connects.
 - Keep net polling active while TCP handshake is pending to avoid stalled connects.
 - Grow RISC-V boot stack to 64KB to avoid deep syscall stack overflows.
