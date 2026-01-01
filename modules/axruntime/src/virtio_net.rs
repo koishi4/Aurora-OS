@@ -63,6 +63,7 @@ static VIRTIO_NET_RX_USED: AtomicUsize = AtomicUsize::new(0);
 static VIRTIO_NET_TX_USED: AtomicUsize = AtomicUsize::new(0);
 static VIRTIO_NET_IRQ_LOGGED: AtomicBool = AtomicBool::new(false);
 static VIRTIO_NET_RX_USED_LOGGED: AtomicBool = AtomicBool::new(false);
+static LOG_ONCE: AtomicBool = AtomicBool::new(false);
 
 static VIRTIO_NET_DEVICE: VirtioNetDevice = VirtioNetDevice;
 
@@ -218,6 +219,14 @@ impl NetDevice for VirtioNetDevice {
         let used_idx = unsafe { ptr::read_volatile(&queue.used.idx) };
         let last_used = VIRTIO_NET_RX_USED.load(Ordering::Acquire) as u16;
         if used_idx == last_used {
+            if !LOG_ONCE.load(Ordering::Relaxed) {
+                crate::println!(
+                    "virtio-net: poll stalled? used_idx={} last_used={}",
+                    used_idx,
+                    last_used
+                );
+                LOG_ONCE.store(true, Ordering::Relaxed);
+            }
             return Err(NetError::WouldBlock);
         }
 
@@ -343,10 +352,10 @@ pub fn handle_irq(irq: u32) -> bool {
     if base == 0 {
         return false;
     }
-    if !VIRTIO_NET_IRQ_LOGGED.swap(true, Ordering::AcqRel) {
-        crate::println!("virtio-net: irq received");
-    }
     let status = mmio_read32(base, MMIO_INTERRUPT_STATUS);
+    if !VIRTIO_NET_IRQ_LOGGED.swap(true, Ordering::AcqRel) {
+        crate::println!("virtio-net: irq status={:#x}", status);
+    }
     if status != 0 {
         mmio_write32(base, MMIO_INTERRUPT_ACK, status);
         fence(Ordering::SeqCst);
@@ -381,10 +390,10 @@ fn try_init_device(base: usize, irq: u32) -> bool {
     }
     write_driver_features(base, driver_features);
 
-    let status = mmio_read32(base, MMIO_STATUS) | STATUS_FEATURES_OK;
-    mmio_write32(base, MMIO_STATUS, status);
+    let features_status = mmio_read32(base, MMIO_STATUS) | STATUS_FEATURES_OK;
+    mmio_write32(base, MMIO_STATUS, features_status);
     if (mmio_read32(base, MMIO_STATUS) & STATUS_FEATURES_OK) == 0 {
-        mmio_write32(base, MMIO_STATUS, status | STATUS_FAILED);
+        mmio_write32(base, MMIO_STATUS, features_status | STATUS_FAILED);
         return false;
     }
 
@@ -397,10 +406,16 @@ fn try_init_device(base: usize, irq: u32) -> bool {
         return false;
     }
 
+    fill_rx_queue(rx_queue_size);
+
     let status = mmio_read32(base, MMIO_STATUS) | STATUS_DRIVER_OK;
     mmio_write32(base, MMIO_STATUS, status);
-    // Notify RX buffers only after DRIVER_OK per VirtIO spec.
-    init_rx_buffers(base, rx_queue_size);
+    if (mmio_read32(base, MMIO_STATUS) & STATUS_FAILED) != 0 {
+        crate::println!("virtio-net: device set STATUS_FAILED after DRIVER_OK");
+        return false;
+    }
+    // 在 DRIVER_OK 后通知设备处理 RX 队列。
+    mmio_write32(base, MMIO_QUEUE_NOTIFY, RX_QUEUE_INDEX);
 
     VIRTIO_NET_BASE.store(base, Ordering::Release);
     VIRTIO_NET_IRQ.store(irq as usize, Ordering::Release);
@@ -450,7 +465,7 @@ fn setup_queue(base: usize, queue_index: u32, queue: &mut VirtioNetQueue) -> usi
     queue_size
 }
 
-fn init_rx_buffers(base: usize, queue_size: usize) {
+fn fill_rx_queue(queue_size: usize) {
     let queue = VIRTIO_NET_RX_QUEUE.get();
     // 预投递 RX 描述符，设备写入后更新 used ring。
     for idx in 0..queue_size {
@@ -466,10 +481,12 @@ fn init_rx_buffers(base: usize, queue_size: usize) {
         queue.desc[idx].flags = DESC_F_WRITE;
         queue.desc[idx].next = 0;
         queue.avail.ring[idx] = idx as u16;
+        if idx == 0 {
+            crate::println!("virtio-net: rx desc[0] pa={:#x}", pa);
+        }
     }
     queue.avail.idx = queue_size as u16;
     fence(Ordering::SeqCst);
-    mmio_write32(base, MMIO_QUEUE_NOTIFY, RX_QUEUE_INDEX);
 }
 
 fn recycle_rx_desc(queue: &mut VirtioNetQueue, queue_size: usize, desc_id: usize, base: usize) {
