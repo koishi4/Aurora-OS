@@ -391,10 +391,10 @@ fn try_init_device(base: usize, irq: u32) -> bool {
         return false;
     }
 
-    init_rx_buffers(base, rx_queue_size);
-
     let status = mmio_read32(base, MMIO_STATUS) | STATUS_DRIVER_OK;
     mmio_write32(base, MMIO_STATUS, status);
+    // Notify RX buffers only after DRIVER_OK per VirtIO spec.
+    init_rx_buffers(base, rx_queue_size);
 
     VIRTIO_NET_BASE.store(base, Ordering::Release);
     VIRTIO_NET_IRQ.store(irq as usize, Ordering::Release);
