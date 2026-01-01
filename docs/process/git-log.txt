@@ -1,0 +1,3517 @@
+* commit c615e9b5378ff80c32f1b74888bdfdc99b09e229 (HEAD -> bootstrap-riscv64)
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 17:17:52 +0800
+| 
+|     feat(fs): add fat32 write growth and ramdisk self-test
+| 
+|  CHANGELOG.md                        |   2 +
+|  docs/design/06_fs_vfs.md            |   4 +-
+|  docs/design/10_testing_benchmark.md |   4 +-
+|  docs/process/phase_4_fs.md          |   5 +-
+|  modules/axfs/src/fat32.rs           | 319 +++++++++++++++++++++++++++++-----
+|  modules/axruntime/src/user.rs       |  34 +++-
+|  scripts/test_oscomp.sh              |   5 +-
+|  scripts/test_qemu_smoke.sh          |   9 +
+|  tests/self/README.md                |   2 +-
+|  9 files changed, 327 insertions(+), 57 deletions(-)
+| 
+* commit 833681f234ae9f421a4a83593a0d0d349fbfc668
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:52:41 +0800
+| 
+|     chore(process): update git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 160f8e2f79feae029ad44f73c529a5213297c43f
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:52:22 +0800
+| 
+|     feat(fs): add minimal fat32 write
+| 
+|  CHANGELOG.md               |   1 +
+|  docs/design/06_fs_vfs.md   |   1 +
+|  docs/process/phase_4_fs.md |   1 +
+|  modules/axfs/src/fat32.rs  | 165 ++++++++++++++++++++++++++++++++++++++++++-
+|  4 files changed, 166 insertions(+), 2 deletions(-)
+| 
+* commit f4e8561e427f0253fd22d4d467fdc95de5b2e4da
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:47:15 +0800
+| 
+|     chore(process): update git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit ef9b69907def5ad4da24f55d847cb0b028ad4e4a
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:47:02 +0800
+| 
+|     test(syscall): cover devfs write in user test
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/10_testing_benchmark.md     |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/user.rs           | 33 +++++++++++++++++++++++++++----
+|  4 files changed, 32 insertions(+), 6 deletions(-)
+| 
+* commit 51553311095870116511372790dc76c698465b6a
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:38:37 +0800
+| 
+|     chore(process): update git log
+| 
+|  docs/process/git-log.txt | 24 +++++++++++++++++++++++-
+|  1 file changed, 23 insertions(+), 1 deletion(-)
+| 
+* commit 63bc23c2121eb653cb8d25b6257a6e2abc24c55a
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:38:17 +0800
+| 
+|     feat(fs): add writable memfs tmp log
+| 
+|  CHANGELOG.md                     |   1 +
+|  docs/design/06_fs_vfs.md         |   1 +
+|  docs/process/phase_4_fs.md       |   1 +
+|  modules/axfs/src/memfs.rs        | 161 ++++++++++++++++++++++++++++++++++++-
+|  modules/axruntime/src/syscall.rs |   5 ++
+|  5 files changed, 166 insertions(+), 3 deletions(-)
+| 
+* commit 31a5706c3fac0c436f0a668204468003e5e401ff
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:29:26 +0800
+| 
+|     chore(process): update git log
+| 
+|  docs/process/git-log.txt | 24 +++++++++++++++++++++++-
+|  1 file changed, 23 insertions(+), 1 deletion(-)
+| 
+* commit 46898427c8ec1f946c69d0c16e25ab79a8ac6f08
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:29:09 +0800
+| 
+|     test(fs): add ext4 large read fixture
+| 
+|  docs/design/10_testing_benchmark.md |  2 +-
+|  docs/process/phase_4_fs.md          |  2 +-
+|  modules/axfs/src/ext4.rs            | 12 ++++++++++++
+|  scripts/mkfs_ext4.sh                |  6 ++++++
+|  tests/self/README.md                |  2 +-
+|  5 files changed, 21 insertions(+), 3 deletions(-)
+| 
+* commit 1ac9e0f2ab7264be4adfa2503cbe9363b1c0ece9
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:24:46 +0800
+| 
+|     chore(process): update git log
+| 
+|  docs/process/git-log.txt | 20 +++++++++++++++++++-
+|  1 file changed, 19 insertions(+), 1 deletion(-)
+| 
+* commit fc3e67668c4860b10fa65872194ca946555c80df
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:24:33 +0800
+| 
+|     test(scripts): normalize ext4 image path
+| 
+|  scripts/test_oscomp.sh | 15 +++++++++++++++
+|  1 file changed, 15 insertions(+)
+| 
+* commit 766026e280b19b777034c56df74116b84caa159b
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:19:27 +0800
+| 
+|     chore(process): update git log
+| 
+|  docs/process/git-log.txt | 39 ++++++++++++++++++++++++++++++++++++++-
+|  1 file changed, 38 insertions(+), 1 deletion(-)
+| 
+* commit 3e2ae9bbac95a8f908fc459acba754c2873c8652
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:19:05 +0800
+| 
+|     test(fs): enumerate ext4 dirs in host check
+| 
+|  docs/design/10_testing_benchmark.md |  2 +-
+|  docs/process/phase_4_fs.md          |  2 +-
+|  modules/axfs/src/ext4.rs            | 37 ++++++++++++++++++++++++++++++++---
+|  tests/self/README.md                |  2 +-
+|  4 files changed, 37 insertions(+), 6 deletions(-)
+| 
+* commit d0fcd48f455c391c340dda2f6b924074944af808
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 16:13:37 +0800
+| 
+|     feat(fs): add init issue check and ext4 scratch
+| 
+|  CHANGELOG.md                        |  2 ++
+|  docs/design/10_testing_benchmark.md |  2 +-
+|  docs/process/phase_4_fs.md          |  2 ++
+|  modules/axfs/src/ext4.rs            | 62 +++++++++++++++++++++++++++++++----
+|  modules/axruntime/src/user.rs       | 46 +++++++++++++++++++++++---
+|  scripts/test_qemu_smoke.sh          |  8 +++++
+|  tests/self/README.md                |  1 +
+|  tools/build_init_elf.py             | 41 ++++++++++++++++++++---
+|  8 files changed, 147 insertions(+), 17 deletions(-)
+| 
+* commit 3b6af11b48d8131c10bc717e6cf0d47a3a15938d
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 15:25:13 +0800
+| 
+|     chore(process): update git log
+| 
+|  docs/process/git-log.txt | 25 ++++++++++++++++++++++++-
+|  1 file changed, 24 insertions(+), 1 deletion(-)
+| 
+* commit 99f411d233042a81c9dee7afb480d9e3a3d0da48
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 15:25:00 +0800
+| 
+|     feat(fs): add /etc/issue to ext4 selftest
+| 
+|  CHANGELOG.md                        | 2 +-
+|  docs/design/10_testing_benchmark.md | 2 +-
+|  docs/process/phase_4_fs.md          | 2 +-
+|  modules/axfs/src/ext4.rs            | 8 ++++++++
+|  scripts/mkfs_ext4.sh                | 2 ++
+|  tests/self/README.md                | 2 +-
+|  6 files changed, 14 insertions(+), 4 deletions(-)
+| 
+* commit d6504f40c068d924a2e3d56d6d0f0cd5ba1a498f
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 15:20:27 +0800
+| 
+|     chore(process): update git log
+| 
+|  docs/process/git-log.txt | 20 +++++++++++++++++++-
+|  1 file changed, 19 insertions(+), 1 deletion(-)
+| 
+* commit 57ae05a3ff1633f85be8d185e18e82000195fbbe
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 15:20:14 +0800
+| 
+|     fix(fs): import vec macro for ext4 test
+| 
+|  modules/axfs/src/ext4.rs | 2 +-
+|  1 file changed, 1 insertion(+), 1 deletion(-)
+| 
+* commit be69487a64ab31ddc6106ebdef75af2646209ff3
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 15:19:28 +0800
+| 
+|     chore(process): update git log
+| 
+|  docs/process/git-log.txt | 27 ++++++++++++++++++++++++++-
+|  1 file changed, 26 insertions(+), 1 deletion(-)
+| 
+* commit e4153cde655c1922e7a3f0f2449d3328f2b4f40e
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 15:16:15 +0800
+| 
+|     feat(fs): log ext4 mount and extend tests
+| 
+|  CHANGELOG.md                        |  2 ++
+|  docs/design/10_testing_benchmark.md |  2 +-
+|  docs/process/phase_4_fs.md          |  5 +++--
+|  modules/axfs/src/ext4.rs            | 15 ++++++++++++---
+|  modules/axruntime/src/syscall.rs    | 18 +++++++++++++++++-
+|  scripts/test_oscomp.sh              |  4 +++-
+|  scripts/test_qemu_smoke.sh          |  9 +++++++++
+|  tests/self/README.md                |  1 +
+|  8 files changed, 48 insertions(+), 8 deletions(-)
+| 
+* commit 5cf1a2ee84375a53e1e51f6fd8bc67be149bb57c
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 14:56:20 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 30 +++++++++++++++++++++++++++++-
+|  1 file changed, 29 insertions(+), 1 deletion(-)
+| 
+* commit b35d4d1c7ba14b2b058e373cde0bf8a49aa97b8e
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 14:55:54 +0800
+| 
+|     feat(test): add ext4-init selftest case
+| 
+|  CHANGELOG.md                        |  2 ++
+|  docs/design/10_testing_benchmark.md |  5 ++--
+|  docs/process/phase_4_fs.md          |  2 ++
+|  modules/axfs/src/ext4.rs            | 50 +++++++++++++++++++++++++++++++++++
+|  modules/axruntime/src/virtio_blk.rs | 43 +++++++++++++++++++++++-------
+|  scripts/gdb.sh                      |  1 +
+|  scripts/run.sh                      |  1 +
+|  scripts/test_oscomp.sh              | 14 ++++++++++
+|  scripts/test_qemu_smoke.sh          |  3 +++
+|  tests/self/README.md                |  4 +++
+|  tests/self/cases.txt                |  1 +
+|  11 files changed, 115 insertions(+), 11 deletions(-)
+| 
+* commit c8b44a50a0514bc4d1d39395c67586eab4694017
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 14:13:38 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 20 +++++++++++++++++++-
+|  1 file changed, 19 insertions(+), 1 deletion(-)
+| 
+* commit b48425d5f6e6b7aa6f9a77e3c515536a03b2bd10
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 14:13:25 +0800
+| 
+|     chore(process): record fs self-test run
+| 
+|  docs/process/phase_4_fs.md | 1 +
+|  1 file changed, 1 insertion(+)
+| 
+* commit 00d0a9ed029742f4fa0cbec23e6b4cc701539eb3
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 14:06:50 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit c29678ab05e504572c2da38138e28c18fb8ecd18
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 14:06:33 +0800
+| 
+|     feat(driver): wait on virtio-blk IRQs
+| 
+|  CHANGELOG.md                        |   1 +
+|  docs/process/phase_4_fs.md          |   1 +
+|  modules/axruntime/src/virtio_blk.rs | 160 +++++++++++++++++++++-------------
+|  3 files changed, 102 insertions(+), 60 deletions(-)
+| 
+* commit b4fff578f8ee819b1ec46de2532575bb89e9157a
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 13:05:14 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 25 ++++++++++++++++++++++++-
+|  1 file changed, 24 insertions(+), 1 deletion(-)
+| 
+* commit 274a998f2d64e8c3f0a2fd57bfc16f45e6489d41
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 13:04:51 +0800
+| 
+|     fix(runtime): stabilize user address space switching
+| 
+|  CHANGELOG.md                            |  4 ++--
+|  docs/process/phase_3_process_syscall.md |  2 ++
+|  modules/axruntime/src/mm.rs             |  8 ++++++++
+|  modules/axruntime/src/process.rs        |  4 +++-
+|  modules/axruntime/src/runtime.rs        | 13 ++++++++++++-
+|  modules/axruntime/src/user.rs           | 11 +++++++----
+|  6 files changed, 34 insertions(+), 8 deletions(-)
+| 
+* commit 5c7da2b858262ae8f3e124614f2d64ff9502d795
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 11:40:49 +0800
+| 
+|     chore(process): refresh git history
+| 
+|  docs/process/git-log.txt | 20 +++++++++++++++++++-
+|  1 file changed, 19 insertions(+), 1 deletion(-)
+| 
+* commit f9071d6ae392bd312d771b121494a8d97286792c
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 11:40:33 +0800
+| 
+|     test: add internal selftest suite
+| 
+|  CHANGELOG.md                             |   1 +
+|  Makefile                                 |   4 +-
+|  docs/design/10_testing_benchmark.md      |   6 +-
+|  docs/process/git-log.txt                 |  11 ++-
+|  docs/process/phase_4_fs.md               |   2 +-
+|  docs/process/phase_6_oscomp_hardening.md |  10 +--
+|  scripts/test_oscomp.sh                   | 107 +++++++++++++++++------------
+|  scripts/test_qemu_smoke.sh               |  13 +++-
+|  tests/self/README.md                     |  12 ++++
+|  tests/self/cases.txt                     |   3 +
+|  10 files changed, 112 insertions(+), 57 deletions(-)
+| 
+* commit e5d448d9b4fc37baef7d986d56b315b7b89813ee
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 11:24:16 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 20 +++++++++++++++++++-
+|  1 file changed, 19 insertions(+), 1 deletion(-)
+| 
+* commit c0b363fbaf1826b9dda207ce36531b0e307f7ce5
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 11:24:04 +0800
+| 
+|     chore: restore gitignore
+| 
+|  .gitignore | 16 ++++++++++++++++
+|  1 file changed, 16 insertions(+)
+| 
+* commit 0e7cbc85eeda7866cd6e80a0824da484b810d8af
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 10:19:58 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 31 ++++++++++++++++++++++++++++++-
+|  1 file changed, 30 insertions(+), 1 deletion(-)
+| 
+* commit 2970a09e2a1383b4a73eff41424fd3f6ac90499b
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 10:19:46 +0800
+| 
+|     feat(runtime): add oscomp runner and PLIC IRQs
+| 
+|  CHANGELOG.md                             |  2 +
+|  docs/design/02_trap_interrupt.md         |  4 ++
+|  docs/design/08_driver_model.md           |  4 +-
+|  docs/design/10_testing_benchmark.md      |  1 +
+|  docs/process/phase_6_oscomp_hardening.md |  6 ++-
+|  modules/axruntime/src/dtb.rs             | 74 ++++++++++++++++++++++++--
+|  modules/axruntime/src/fs.rs              |  4 +-
+|  modules/axruntime/src/main.rs            | 22 ++++++--
+|  modules/axruntime/src/plic.rs            | 71 +++++++++++++++++++++++++
+|  modules/axruntime/src/trap.rs            | 19 +++++++
+|  modules/axruntime/src/virtio_blk.rs      | 44 +++++++++++++---
+|  scripts/test_oscomp.sh                   | 83 +++++++++++++++++++++++++++++-
+|  12 files changed, 311 insertions(+), 23 deletions(-)
+| 
+* commit 39fc01f17c3efa1cbb66bbdad1080f7a645236ce
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 10:02:34 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 20 +++++++++++++++++++-
+|  1 file changed, 19 insertions(+), 1 deletion(-)
+| 
+* commit 8ef3efc161fa17424c428cd851f09ea2493e16c0
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 10:02:19 +0800
+| 
+|     docs(process): update fs verification steps
+| 
+|  docs/process/phase_4_fs.md | 4 +++-
+|  1 file changed, 3 insertions(+), 1 deletion(-)
+| 
+* commit 507178a250ad64ea9608f5d5b169ed5fa0aa626e
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 10:01:44 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 20 +++++++++++++++++++-
+|  1 file changed, 19 insertions(+), 1 deletion(-)
+| 
+* commit 7cd47d2b76885b808de6b2604a946b9b7e8a5dbe
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 10:01:34 +0800
+| 
+|     fix(driver): drop unnecessary unsafe in virtio-blk
+| 
+|  modules/axruntime/src/virtio_blk.rs | 62 ++++++++++++++++-------------------
+|  1 file changed, 29 insertions(+), 33 deletions(-)
+| 
+* commit 16230482da9bd62bc475c587766a503f0c0f4e34
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 10:00:42 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 20 +++++++++++++++++++-
+|  1 file changed, 19 insertions(+), 1 deletion(-)
+| 
+* commit 75a68c691baaf0194fe8fa2ce8fe6bf8dbf2068f
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 10:00:28 +0800
+| 
+|     fix(fs): correct ext4 helper placement
+| 
+|  modules/axfs/src/ext4.rs | 162 +++++++++++++++++++++++----------------------
+|  1 file changed, 82 insertions(+), 80 deletions(-)
+| 
+* commit a8314f7fec97f997c7b65f3d2452398d22be31f6
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 09:57:58 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit fff3e1ab2fefbcc9246dac9bf0c79b5260e4154a
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 09:57:48 +0800
+| 
+|     feat(fs): extend ext4 extent and indirect reads
+| 
+|  CHANGELOG.md               |   1 +
+|  docs/design/06_fs_vfs.md   |   2 +-
+|  docs/process/phase_4_fs.md |   4 +-
+|  modules/axfs/src/ext4.rs   | 368 +++++++++++++++++++++++++++++++++++++++----
+|  4 files changed, 342 insertions(+), 33 deletions(-)
+| 
+* commit 60366050bfcd72b46c2078f528401db8652877ac
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 09:57:06 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 32 +++++++++++++++++++++++++++++++-
+|  1 file changed, 31 insertions(+), 1 deletion(-)
+| 
+* commit 26dd4a0fef79b72207de5243bb9b4508634a2827
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-30 09:56:53 +0800
+| 
+|     feat(driver): add virtio-blk rootfs support
+| 
+|  CHANGELOG.md                        |   1 +
+|  Makefile                            |   6 +-
+|  docs/design/06_fs_vfs.md            |   3 +-
+|  docs/design/08_driver_model.md      |   4 +
+|  docs/process/phase_4_fs.md          |   3 +
+|  modules/axruntime/src/dtb.rs        |  56 ++++-
+|  modules/axruntime/src/fs.rs         |  29 +++
+|  modules/axruntime/src/main.rs       |  12 +-
+|  modules/axruntime/src/mm.rs         |  26 ++-
+|  modules/axruntime/src/syscall.rs    |  14 +-
+|  modules/axruntime/src/virtio_blk.rs | 419 ++++++++++++++++++++++++++++++++++
+|  scripts/mkfs_ext4.sh                |  22 ++
+|  tools/build_init_elf.py             |  89 ++++++++
+|  13 files changed, 676 insertions(+), 8 deletions(-)
+| 
+* commit e8a45def458ba41d410ee7b72bd138d52c13bce5
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 23:52:56 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 34 +++++++++++++++++++++++++++++++++-
+|  1 file changed, 33 insertions(+), 1 deletion(-)
+| 
+* commit e6836446efe1d3f7f5eee72ee17812cf4a5652d9
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 23:52:29 +0800
+| 
+|     feat(fs): add FAT32/ext4 read path and VFS fds
+| 
+|  CHANGELOG.md                            |   5 +
+|  crates/axvfs/src/lib.rs                 |  36 ++
+|  docs/design/05_syscall_abi.md           |  10 +-
+|  docs/design/06_fs_vfs.md                |   6 +-
+|  docs/process/phase_3_process_syscall.md |  12 +-
+|  docs/process/phase_4_fs.md              |  10 +-
+|  modules/axfs/src/devfs.rs               |  58 ++-
+|  modules/axfs/src/ext4.rs                | 392 ++++++++++++++++++-
+|  modules/axfs/src/fat32.rs               | 607 +++++++++++++++++++++++++++++-
+|  modules/axfs/src/lib.rs                 |   2 +-
+|  modules/axfs/src/memfs.rs               |  99 ++---
+|  modules/axfs/src/procfs.rs              |  50 ++-
+|  modules/axruntime/src/fs.rs             |  68 ++++
+|  modules/axruntime/src/main.rs           |   1 +
+|  modules/axruntime/src/syscall.rs        | 360 ++++++++++--------
+|  15 files changed, 1438 insertions(+), 278 deletions(-)
+| 
+* commit 7b966a125d7fb2495167a10fd655484844f64159
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 23:05:43 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit bb152efedf4c8af68d403b2f8fc3db4e57ad63a3
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 23:05:28 +0800
+| 
+|     feat(fs): add /proc directory handle
+| 
+|  CHANGELOG.md                     |  1 +
+|  docs/process/phase_4_fs.md       |  1 +
+|  modules/axruntime/src/syscall.rs | 16 ++++++++++++----
+|  3 files changed, 14 insertions(+), 4 deletions(-)
+| 
+* commit 3be79a90df2cbd7ef9acf8965624a7bb86b3f306
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 23:02:36 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 24 +++++++++++++++++++++++-
+|  1 file changed, 23 insertions(+), 1 deletion(-)
+| 
+* commit d6e544b2dbf5ee5eb13d9bbe9584a386c2b6bde7
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 23:02:19 +0800
+| 
+|     feat(fs): add ext4 superblock scaffold
+| 
+|  CHANGELOG.md               |   1 +
+|  docs/design/06_fs_vfs.md   |   1 +
+|  docs/process/phase_4_fs.md |   1 +
+|  modules/axfs/src/ext4.rs   | 207 +++++++++++++++++++++++++++++++++++++++++++
+|  modules/axfs/src/lib.rs    |   1 +
+|  5 files changed, 211 insertions(+)
+| 
+* commit cc91f0add22670e4fc5d5aca8dce06f8f62fd9f7
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:59:40 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 24 +++++++++++++++++++++++-
+|  1 file changed, 23 insertions(+), 1 deletion(-)
+| 
+* commit 1ce789cb0c7b267f7b977aa8d0e681b602ff439c
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:59:31 +0800
+| 
+|     feat(fs): add fat32 bpb scaffold
+| 
+|  CHANGELOG.md               |   1 +
+|  docs/design/06_fs_vfs.md   |   1 +
+|  docs/process/phase_4_fs.md |   1 +
+|  modules/axfs/src/fat32.rs  | 249 +++++++++++++++++++++++++++++++++++++++++++
+|  modules/axfs/src/lib.rs    |   1 +
+|  5 files changed, 253 insertions(+)
+| 
+* commit f29f9c2737a794b7eed8e8721f3689d5908b6ce0
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:56:51 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 24 +++++++++++++++++++++++-
+|  1 file changed, 23 insertions(+), 1 deletion(-)
+| 
+* commit d1fabd1b7168cd900bd5141e884175f60169192c
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:56:38 +0800
+| 
+|     feat(fs): add block device scaffold
+| 
+|  CHANGELOG.md               |  1 +
+|  docs/design/06_fs_vfs.md   |  2 +-
+|  docs/process/phase_4_fs.md |  1 +
+|  modules/axfs/src/block.rs  | 99 ++++++++++++++++++++++++++++++++++++++++++++
+|  modules/axfs/src/lib.rs    |  1 +
+|  5 files changed, 103 insertions(+), 1 deletion(-)
+| 
+* commit 59c912ac6626d92ff2310100b30b784c61d374d2
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:53:52 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 28 +++++++++++++++++++++++++++-
+|  1 file changed, 27 insertions(+), 1 deletion(-)
+| 
+* commit d12dea8f530cc22b0265c283f8e967637ea52e82
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:53:40 +0800
+| 
+|     feat(fs): add mount table with devfs/procfs stubs
+| 
+|  CHANGELOG.md                     |   1 +
+|  docs/design/06_fs_vfs.md         |   1 +
+|  docs/process/phase_4_fs.md       |   2 +
+|  modules/axfs/src/devfs.rs        | 127 ++++++++++++++++++++++
+|  modules/axfs/src/lib.rs          |   3 +
+|  modules/axfs/src/memfs.rs        |  34 +++++-
+|  modules/axfs/src/mount.rs        | 190 ++++++++++++++++++++++++++++++++
+|  modules/axfs/src/procfs.rs       |  70 ++++++++++++
+|  modules/axruntime/src/syscall.rs | 215 +++++++++++++++++++++++--------------
+|  9 files changed, 560 insertions(+), 83 deletions(-)
+| 
+* commit a6eae960ae56766742c529f2d53b3cb128c99498
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:30:49 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit 30a7fa5f80e4a50deed54809e648cf2836b08eb6
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:30:34 +0800
+| 
+|     fix(syscall): add ppoll sleep fallback for multi-fd waits
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 23 +++++++++++++++++------
+|  3 files changed, 19 insertions(+), 6 deletions(-)
+| 
+* commit c477f7324cdd592c97ac2edb97c9b06c3934e1bb
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:23:56 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 24 +++++++++++++++++++++++-
+|  1 file changed, 23 insertions(+), 1 deletion(-)
+| 
+* commit d636a9202e6d94416755b2c135e1e4d6462f8143
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:23:28 +0800
+| 
+|     feat(fs): add memfs dev writes and readlink
+| 
+|  CHANGELOG.md                     |  1 +
+|  docs/design/06_fs_vfs.md         |  1 +
+|  docs/process/phase_4_fs.md       |  1 +
+|  modules/axfs/src/memfs.rs        | 32 ++++++++++++++++--
+|  modules/axruntime/src/syscall.rs | 69 ++++++++++++++++++++++++++++++++------
+|  5 files changed, 91 insertions(+), 13 deletions(-)
+| 
+* commit db1963c7cd6baea9dae1156cb2a0813e0292d61f
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:14:35 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit 931175cd2ed341e2299b938a63766d8d0dcb590e
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:14:19 +0800
+| 
+|     feat(fs): track offsets for memfs reads
+| 
+|  CHANGELOG.md                     |  1 +
+|  docs/process/phase_4_fs.md       |  1 +
+|  modules/axruntime/src/syscall.rs | 46 +++++++++++++-------------------------
+|  3 files changed, 17 insertions(+), 31 deletions(-)
+| 
+* commit 2e2cb6a0e62d3c65e890e4b2c20ed55353882b26
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:10:59 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 6d1cb92b18256fb71b812067b8de202f08893000
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:10:46 +0800
+| 
+|     feat(fs): read dev nodes via memfs
+| 
+|  CHANGELOG.md                     |  1 +
+|  docs/process/phase_4_fs.md       |  1 +
+|  modules/axfs/src/memfs.rs        | 44 +++++++++++++++++++++++++++-----------
+|  modules/axruntime/src/syscall.rs | 34 ++++++++++++++++++++++++-----
+|  4 files changed, 62 insertions(+), 18 deletions(-)
+| 
+* commit 7f10c943c0033db6865d563a74e64d60b1435077
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:08:19 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit ae7fabe6f402975fc43d9b3556ecc6dac2c5ccde
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:08:06 +0800
+| 
+|     feat(fs): validate memfs parents for create stubs
+| 
+|  CHANGELOG.md                     |  1 +
+|  docs/process/phase_4_fs.md       |  1 +
+|  modules/axfs/src/memfs.rs        | 61 ++++++++++++++++++++++++++++++++++++++
+|  modules/axruntime/src/syscall.rs | 14 +++++++++
+|  4 files changed, 77 insertions(+)
+| 
+* commit c569b6467e2f6f1ec795798b3901806daa5ebc14
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:04:06 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit 3016248dd2795b25f2742211b27ff552ac508cc5
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:03:54 +0800
+| 
+|     feat(fs): use memfs metadata in fstat
+| 
+|  CHANGELOG.md                     |  1 +
+|  docs/process/phase_4_fs.md       |  1 +
+|  modules/axruntime/src/syscall.rs | 14 ++++++++++++--
+|  3 files changed, 14 insertions(+), 2 deletions(-)
+| 
+* commit 9221d0ff54b8763c3faf9bcbfc942ea30ec92ed5
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:01:41 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 25 ++++++++++++++++++++++++-
+|  1 file changed, 24 insertions(+), 1 deletion(-)
+| 
+* commit a8057fdb7e69f91100585572db186dbbee6b7639
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 22:01:26 +0800
+| 
+|     feat(fs): add memfs init read path
+| 
+|  CHANGELOG.md                     |  1 +
+|  docs/design/06_fs_vfs.md         |  1 +
+|  docs/process/phase_4_fs.md       |  1 +
+|  modules/axfs/src/lib.rs          |  2 +-
+|  modules/axfs/src/memfs.rs        | 55 +++++++++++++++++++++++++++++-----
+|  modules/axruntime/src/syscall.rs | 61 ++++++++++++++++++--------------------
+|  6 files changed, 81 insertions(+), 40 deletions(-)
+| 
+* commit b5960e9239fe752758f637b81796ff4008873fc2
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:55:24 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit 754c10f19fa8c51ceb9d18090fe9e0bc884bbec2
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:55:10 +0800
+| 
+|     feat(fs): route remaining stubs via memfs
+| 
+|  CHANGELOG.md                     |   1 +
+|  docs/process/phase_4_fs.md       |   1 +
+|  modules/axruntime/src/syscall.rs | 111 +++++++++++++------------------------
+|  3 files changed, 42 insertions(+), 71 deletions(-)
+| 
+* commit 30efc959efa95f95ccedb5766e1e8de0cddfe5b9
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:49:14 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit dc22d1755e5a5ec9741d1a26c12d26dffd17589d
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:49:03 +0800
+| 
+|     feat(fs): route statfs via memfs
+| 
+|  CHANGELOG.md                     |  1 +
+|  docs/process/phase_4_fs.md       |  1 +
+|  modules/axruntime/src/syscall.rs | 14 +++++---------
+|  3 files changed, 7 insertions(+), 9 deletions(-)
+| 
+* commit 4be38673184d88a339832262c359556743970427
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:47:58 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit b8e1439c248f995c1d1bc02817f8046d4803c1a2
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:47:46 +0800
+| 
+|     feat(fs): route access/statx/readlink via memfs
+| 
+|  CHANGELOG.md                     |  1 +
+|  docs/process/phase_4_fs.md       |  1 +
+|  modules/axruntime/src/syscall.rs | 22 +++++++++-------------
+|  3 files changed, 11 insertions(+), 13 deletions(-)
+| 
+* commit 4428a386f671255016f7b72f4847eb80d4321176
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:45:59 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 796925ebe8691d9eda79f58f7c4aeb2e768f2aad
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:45:45 +0800
+| 
+|     test(fs): add memfs unit tests
+| 
+|  CHANGELOG.md               |  1 +
+|  docs/process/phase_4_fs.md |  1 +
+|  modules/axfs/src/lib.rs    |  3 +++
+|  modules/axfs/src/memfs.rs  | 26 ++++++++++++++++++++++++++
+|  4 files changed, 31 insertions(+)
+| 
+* commit 175de9580c682eedadf43a613fdc4f3c985e23b8
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:44:40 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 25 ++++++++++++++++++++++++-
+|  1 file changed, 24 insertions(+), 1 deletion(-)
+| 
+* commit af67408c348acb16207383d0e5fccec81f45e5ce
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:44:30 +0800
+| 
+|     feat(fs): resolve openat/newfstatat via memfs
+| 
+|  CHANGELOG.md                     |  1 +
+|  docs/design/06_fs_vfs.md         |  1 +
+|  docs/process/phase_4_fs.md       |  1 +
+|  modules/axfs/src/lib.rs          |  2 +
+|  modules/axfs/src/memfs.rs        | 48 +++++++++++++++++++-
+|  modules/axruntime/src/syscall.rs | 89 +++++++++++++++++++++++++++-----------
+|  6 files changed, 114 insertions(+), 28 deletions(-)
+| 
+* commit 7fb693deb71b3019dcd5654d95c55b14380de015
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:27:39 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 29 ++++++++++++++++++++++++++++-
+|  1 file changed, 28 insertions(+), 1 deletion(-)
+| 
+* commit 7c50ba2d24f41e59d4ab96a74aee95d835b1cecf
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:27:27 +0800
+| 
+|     feat(fs): add memfs scaffold and hook getdents64
+| 
+|  CHANGELOG.md                     |   1 +
+|  Cargo.lock                       |  10 +++
+|  Cargo.toml                       |   1 +
+|  docs/design/06_fs_vfs.md         |   1 +
+|  docs/process/phase_4_fs.md       |   3 +-
+|  modules/axfs/Cargo.toml          |   7 ++
+|  modules/axfs/src/lib.rs          |   3 +
+|  modules/axfs/src/memfs.rs        | 166 +++++++++++++++++++++++++++++++++++++
+|  modules/axruntime/Cargo.toml     |   1 +
+|  modules/axruntime/src/syscall.rs |  38 ++-------
+|  10 files changed, 201 insertions(+), 30 deletions(-)
+| 
+* commit 0540e5d8af23af421e308eff74ea3cc1a784a837
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:15:46 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 26 +++++++++++++++++++++++++-
+|  1 file changed, 25 insertions(+), 1 deletion(-)
+| 
+* commit 5a6d8d4b0f37ab36973399f9d84525d2a6ab6077
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:15:36 +0800
+| 
+|     feat(vfs): add axvfs trait scaffold
+| 
+|  CHANGELOG.md               |  1 +
+|  Cargo.lock                 |  4 +++
+|  Cargo.toml                 |  1 +
+|  crates/axvfs/Cargo.toml    |  6 ++++
+|  crates/axvfs/src/lib.rs    | 69 ++++++++++++++++++++++++++++++++++++++++++++
+|  docs/design/06_fs_vfs.md   |  1 +
+|  docs/process/phase_4_fs.md |  1 +
+|  7 files changed, 83 insertions(+)
+| 
+* commit 5600a5aa25e6fb56b1b7a2d4ce6a8d4d0446514f
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:08:06 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit 3f8757bea93644bb1e254741c963d9ab498fe061
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:07:57 +0800
+| 
+|     refactor(syscall): reuse classify_path in openat
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 52 +++++++++++++++----------------
+|  3 files changed, 28 insertions(+), 26 deletions(-)
+| 
+* commit 32029688db5205c785b3727b663959788cd23ae6
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:00:32 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 8caa0a13215a33de60c7ff50f7456690335f8224
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 21:00:16 +0800
+| 
+|     feat(syscall): load execve image via init memfile
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 25 +++++++++++++++++--------
+|  4 files changed, 20 insertions(+), 10 deletions(-)
+| 
+* commit 1e5733333f13d37b0b7216dbdb6edd72dbe18b4d
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:53:31 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit dfc27afe2430e0e5ecce8e95d22b429fbd434a6a
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:53:19 +0800
+| 
+|     feat(syscall): add /init memfile support
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 81 +++++++++++++++++++++++++------
+|  4 files changed, 68 insertions(+), 18 deletions(-)
+| 
+* commit 960ff600d1d5f6a7805fb9ef0e2c98ab16656f8b
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:46:50 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 8157ba763cf974e26d8ddf48b2756e8fa9e81779
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:46:39 +0800
+| 
+|     test(user): cover getdents64 paths
+| 
+|  CHANGELOG.md                            |   1 +
+|  docs/design/10_testing_benchmark.md     |   2 +-
+|  docs/process/phase_3_process_syscall.md |   4 +-
+|  modules/axruntime/src/user.rs           | 103 +++++++++++++++++-------------
+|  4 files changed, 63 insertions(+), 47 deletions(-)
+| 
+* commit f787e316e33a34f2b39acdcdf82ebee847484ef9
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:32:40 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 70570b79157e0da57417164e11b2db33fba51b79
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:32:27 +0800
+| 
+|     feat(syscall): add static dir entries for getdents64
+| 
+|  CHANGELOG.md                            |   1 +
+|  docs/design/05_syscall_abi.md           |   1 +
+|  docs/process/phase_3_process_syscall.md |   1 +
+|  modules/axruntime/src/syscall.rs        | 265 +++++++++++++++++++++++-------
+|  4 files changed, 207 insertions(+), 61 deletions(-)
+| 
+* commit 76d70702fd7042641527672688ba9b306e02be44
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:18:24 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit a169f4294f7962e418095b76057db56b82919c2e
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:18:11 +0800
+| 
+|     feat(syscall): fill wait4 rusage placeholder
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 70 +++++++++++++++++++------------
+|  4 files changed, 46 insertions(+), 27 deletions(-)
+| 
+* commit 372c196a2564223dac98e20b0993e638bd734f73
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:14:31 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 888924a9acd94fb3ac9b5eabd5a66d2ad308d421
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:14:16 +0800
+| 
+|     feat(syscall): key shared futex by physical address
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/futex.rs          | 13 ++++++++-----
+|  4 files changed, 11 insertions(+), 7 deletions(-)
+| 
+* commit 5ddd999d48ac0657a06e32fe1634b1ad9a8bc7c1
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:08:31 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 25 ++++++++++++++++++++++++-
+|  1 file changed, 24 insertions(+), 1 deletion(-)
+| 
+* commit 44b1b02a136b5debabd522f307cfae6a3071b254
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:08:19 +0800
+| 
+|     feat(syscall): key private futex by address space
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/futex.rs          | 50 ++++++++++++++++++++++---------
+|  modules/axruntime/src/process.rs        |  2 +-
+|  modules/axruntime/src/syscall.rs        | 12 ++++++--
+|  6 files changed, 50 insertions(+), 17 deletions(-)
+| 
+* commit ae93c2133d1cb0b822cfa3b32e28b097fd7db858
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:02:14 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit bcb2d707830ce4c1ce163a1a139a9eaacf3dff8a
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 20:02:04 +0800
+| 
+|     feat(syscall): wake all futex waiters
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/futex.rs          | 19 ++++++++++++-------
+|  4 files changed, 15 insertions(+), 7 deletions(-)
+| 
+* commit 1bf767af2b47bbe33a0458d9121ca7e33b4d50d9
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:58:39 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 24 +++++++++++++++++++++++-
+|  1 file changed, 23 insertions(+), 1 deletion(-)
+| 
+* commit 50c49d0a4d4ff2d27570ffafde075e19412475ae
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:58:26 +0800
+| 
+|     feat(syscall): reclaim futex slots
+| 
+|  CHANGELOG.md                             |  1 +
+|  docs/design/05_syscall_abi.md            |  1 +
+|  docs/process/phase_3_process_syscall.md  |  1 +
+|  modules/axruntime/src/futex.rs           | 22 ++++++++++++++++++++--
+|  modules/axruntime/src/task_wait_queue.rs |  6 ++++++
+|  5 files changed, 29 insertions(+), 2 deletions(-)
+| 
+* commit c1a6c0c5713dd522619c9702cce4658c4e8d8190
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:54:31 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 26 +++++++++++++++++++++++++-
+|  1 file changed, 25 insertions(+), 1 deletion(-)
+| 
+* commit 4a964d8415176e7ac6cc405295d418d4fa4bb50b
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:54:18 +0800
+| 
+|     feat(syscall): support futex timeout
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/design/10_testing_benchmark.md     |  2 +-
+|  docs/process/phase_3_process_syscall.md |  6 +--
+|  modules/axruntime/src/futex.rs          | 24 +++++++++---
+|  modules/axruntime/src/syscall.rs        | 24 +++++++++++-
+|  modules/axruntime/src/user.rs           | 62 +++++++++++++++++--------------
+|  7 files changed, 82 insertions(+), 39 deletions(-)
+| 
+* commit 1be2c4d5a6da1937fa11897d7b1e2f6b9591269e
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:43:47 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 29 ++++++++++++++++++++++++++++-
+|  1 file changed, 28 insertions(+), 1 deletion(-)
+| 
+* commit e40f3824fe2ee12c526edc595eda820838634137
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:43:34 +0800
+| 
+|     feat(syscall): add futex wait wake
+| 
+|  CHANGELOG.md                            |   1 +
+|  docs/design/04_task_process.md          |   2 +-
+|  docs/design/05_syscall_abi.md           |   1 +
+|  docs/design/10_testing_benchmark.md     |   2 +-
+|  docs/process/phase_3_process_syscall.md |   7 +-
+|  modules/axruntime/src/futex.rs          | 106 ++++++++++++++++++++++++++++++
+|  modules/axruntime/src/main.rs           |   1 +
+|  modules/axruntime/src/process.rs        |   4 +-
+|  modules/axruntime/src/syscall.rs        |  38 +++++++++++
+|  modules/axruntime/src/user.rs           |  45 +++++++------
+|  10 files changed, 181 insertions(+), 26 deletions(-)
+| 
+* commit dec5330e4f6991c8789c3f09b8e061747cee0550
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:34:22 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 27 ++++++++++++++++++++++++++-
+|  1 file changed, 26 insertions(+), 1 deletion(-)
+| 
+* commit ebf6bae962273b79fcf8aa0d46eed879492db657
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:34:07 +0800
+| 
+|     feat(proc): handle child tid clear
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/04_task_process.md          |  1 +
+|  docs/design/05_syscall_abi.md           |  4 +--
+|  docs/design/10_testing_benchmark.md     |  2 +-
+|  docs/process/phase_3_process_syscall.md |  7 +++---
+|  modules/axruntime/src/process.rs        | 41 +++++++++++++++++++++++++++++++
+|  modules/axruntime/src/syscall.rs        | 10 ++++++--
+|  modules/axruntime/src/user.rs           |  2 +-
+|  8 files changed, 59 insertions(+), 9 deletions(-)
+| 
+* commit 4c7c5c945dc2dfdded312ee13e5579f70aea47b7
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:27:16 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 20332bbc3fd5fbf633b8258ebd970b0813081131
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:27:03 +0800
+| 
+|     test(user): cover clone tid writeback
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/10_testing_benchmark.md     |  2 +-
+|  docs/process/phase_3_process_syscall.md |  4 +-
+|  modules/axruntime/src/user.rs           | 63 ++++++++++++++++++-------------
+|  4 files changed, 41 insertions(+), 29 deletions(-)
+| 
+* commit 79f43ddb3829341dab04b15ea4174e55a8cbd7ba
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:17:30 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 93cef623e70cdeac2a69391fe65ee57fbf86a3bc
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:17:09 +0800
+| 
+|     feat(syscall): support clone tid flags
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 40 +++++++++++++++++++++++++++----
+|  4 files changed, 39 insertions(+), 5 deletions(-)
+| 
+* commit 513f40967fda19e59fed2b8063f529a5fbd22fa7
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:11:53 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 26 +++++++++++++++++++++++++-
+|  1 file changed, 25 insertions(+), 1 deletion(-)
+| 
+* commit d1804684514fbd42bb36c86fbd171903a6b9c648
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 19:11:32 +0800
+| 
+|     fix(proc): harden execve waitpid clone paths
+| 
+|  CHANGELOG.md                            |  3 +
+|  docs/design/03_memory.md                |  1 +
+|  docs/design/05_syscall_abi.md           |  2 +
+|  docs/process/phase_3_process_syscall.md |  3 +
+|  modules/axruntime/src/mm.rs             | 37 ++++++++----
+|  modules/axruntime/src/process.rs        | 98 ++++++++++++++++---------------
+|  modules/axruntime/src/user.rs           | 25 ++++++--
+|  7 files changed, 103 insertions(+), 66 deletions(-)
+| 
+* commit 1930503f119b0cb9d50b360ca8538de0c52656c7
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 18:57:42 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 25 ++++++++++++++++++++++++-
+|  1 file changed, 24 insertions(+), 1 deletion(-)
+| 
+* commit c8d4bfa120d721737fc619cfefe5548c5684418e
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 18:57:29 +0800
+| 
+|     feat(trap): enable idle interrupts for blocking
+| 
+|  CHANGELOG.md                            |  3 ++-
+|  docs/design/10_testing_benchmark.md     |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/runtime.rs        |  1 +
+|  modules/axruntime/src/trap.rs           |  7 +++++++
+|  modules/axruntime/src/user.rs           | 16 ++++++++--------
+|  6 files changed, 20 insertions(+), 11 deletions(-)
+| 
+* commit 349c4b4696abfe4ae1f8093ff2f8b6c7f392116d
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 18:51:21 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit b3bbaccced45202f017b04530f6723d529fb1322
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 18:51:04 +0800
+| 
+|     test(user): cover ppoll multi-fd scan
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/10_testing_benchmark.md     |  2 +-
+|  docs/process/phase_3_process_syscall.md |  6 +--
+|  modules/axruntime/src/user.rs           | 81 +++++++++++++++++++------------
+|  4 files changed, 56 insertions(+), 34 deletions(-)
+| 
+* commit f4795bce29262a53b82508b5a5492f868c688c87
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 18:34:56 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 24 +++++++++++++++++++++++-
+|  1 file changed, 23 insertions(+), 1 deletion(-)
+| 
+* commit ab4a55848e9de072b342a81c34faf219312b9169
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 18:34:38 +0800
+| 
+|     feat(sched): enable user task preemption
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/02_trap_interrupt.md        |  1 +
+|  docs/design/04_task_process.md          |  1 +
+|  docs/process/phase_3_process_syscall.md |  3 ++-
+|  modules/axruntime/src/runtime.rs        | 42 +++++++++++++++++--------------
+|  5 files changed, 28 insertions(+), 20 deletions(-)
+| 
+* commit 07c94a9317201b36a1430fa901b284e0fea3a517
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 18:25:10 +0800
+| 
+|     chore(process): refresh git log
+| 
+|  docs/process/git-log.txt | 36 +++++++++++++++++++++++++++++++++++-
+|  1 file changed, 35 insertions(+), 1 deletion(-)
+| 
+* commit f284efbfe6b529b037ed7c84c9e67852917e219d
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 18:23:53 +0800
+| 
+|     fix(syscall): use sleep-retry for ppoll multi-fd
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 12 +++++++-----
+|  4 files changed, 10 insertions(+), 8 deletions(-)
+| 
+* commit f46de40ff935168e9098981f4ffaa3474fad277e
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 18:18:56 +0800
+| 
+|     feat(process): fix forked resume and extend user test
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/10_testing_benchmark.md     |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/runtime.rs        |  2 +
+|  modules/axruntime/src/user.rs           | 97 +++++++++++++++++--------------
+|  5 files changed, 57 insertions(+), 47 deletions(-)
+| 
+* commit 83242c675b09be4a1b2de11b3f4c78cb7dd015de
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 17:44:30 +0800
+| 
+|     chore(docs): update git history logs
+| 
+|  docs/process/git-log.txt | 28 +++++++++++++++++++++++++++-
+|  1 file changed, 27 insertions(+), 1 deletion(-)
+| 
+* commit fd964493ec377108fcd6b4b171df3b3585032ebb
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 17:44:19 +0800
+| 
+|     feat(mm): add frame refcounting for CoW cleanup
+| 
+|  CHANGELOG.md                            |   1 +
+|  docs/design/03_memory.md                |   4 +-
+|  docs/design/04_task_process.md          |   1 +
+|  docs/process/phase_2_mm.md              |   3 +-
+|  docs/process/phase_3_process_syscall.md |   1 +
+|  modules/axruntime/src/mm.rs             | 200 ++++++++++++++++++++++++++++--
+|  modules/axruntime/src/process.rs        |  24 +++-
+|  modules/axruntime/src/runtime.rs        |   4 +-
+|  modules/axruntime/src/syscall.rs        |   4 +
+|  9 files changed, 229 insertions(+), 13 deletions(-)
+| 
+* commit 4b339c8936d7c5bc6520b988fea241a5ec7d10cf
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 17:03:08 +0800
+| 
+|     chore(docs): update git history logs
+| 
+|  docs/process/git-log.txt | 30 +++++++++++++++++++++++++++++-
+|  1 file changed, 29 insertions(+), 1 deletion(-)
+| 
+* commit ecc566fe7b5edf0cfd38ec9f5ed1932e43e3261d
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 17:02:50 +0800
+| 
+|     feat(proc): add clone syscall and CoW fork
+| 
+|  CHANGELOG.md                            |   2 +
+|  docs/design/02_trap_interrupt.md        |   1 +
+|  docs/design/03_memory.md                |   8 +-
+|  docs/design/04_task_process.md          |   2 +
+|  docs/design/05_syscall_abi.md           |   2 +
+|  docs/process/phase_2_mm.md              |  13 +-
+|  docs/process/phase_3_process_syscall.md |   1 +
+|  modules/axruntime/src/mm.rs             | 199 +++++++++++++++++++++++++++++-
+|  modules/axruntime/src/runtime.rs        |  28 +++++
+|  modules/axruntime/src/syscall.rs        |  27 ++++
+|  modules/axruntime/src/trap.rs           |   8 ++
+|  11 files changed, 284 insertions(+), 7 deletions(-)
+| 
+* commit be7bac0bbd5162302abac36d0e068c62b9683073
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 16:47:21 +0800
+| 
+|     chore(docs): update git history logs
+| 
+|  docs/process/git-log.txt | 34 +++++++++++++++++++++++++++++++++-
+|  1 file changed, 33 insertions(+), 1 deletion(-)
+| 
+* commit f0baeffcab7738fc9b1f3ae92286cb8e64b4fe10
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 16:47:03 +0800
+| 
+|     feat(proc): add execve ELF loader and waitpid support
+| 
+|  CHANGELOG.md                            |   4 +-
+|  arch/riscv64/trap.S                     |  43 +++
+|  docs/design/02_trap_interrupt.md        |   4 +-
+|  docs/design/04_task_process.md          |  14 +
+|  docs/design/05_syscall_abi.md           |   4 +-
+|  docs/design/10_testing_benchmark.md     |   2 +-
+|  docs/process/phase_3_process_syscall.md |   7 +-
+|  modules/axruntime/src/main.rs           |   8 +-
+|  modules/axruntime/src/mm.rs             |  45 ++++
+|  modules/axruntime/src/process.rs        | 146 ++++++++++
+|  modules/axruntime/src/runtime.rs        |  96 +++++++
+|  modules/axruntime/src/syscall.rs        |  33 ++-
+|  modules/axruntime/src/task.rs           | 123 +++++++++
+|  modules/axruntime/src/trap.rs           |  25 ++
+|  modules/axruntime/src/user.rs           | 430 +++++++++++++++++++++++++++++-
+|  15 files changed, 966 insertions(+), 18 deletions(-)
+| 
+* commit fa58c81b2eb0f2d5a6bd7fc37c261c2859b47a81
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 16:08:40 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 25 ++++++++++++++++++++++++-
+|  1 file changed, 24 insertions(+), 1 deletion(-)
+| 
+* commit 3a18eca310b5975345d8ba71719046f0c2010675
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 16:08:23 +0800
+| 
+|     feat(syscall): add execve builtin loader
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 42 ++++++++++++++++++++--
+|  modules/axruntime/src/trap.rs           |  7 ++++
+|  modules/axruntime/src/user.rs           | 59 ++++++++++++++++++-------------
+|  6 files changed, 85 insertions(+), 26 deletions(-)
+| 
+* commit 9305dea9e2f11f7d2442bc304bfe17e989e79044
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 15:58:00 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 25 ++++++++++++++++++++++++-
+|  1 file changed, 24 insertions(+), 1 deletion(-)
+| 
+* commit 43cb22e91255b9660c16b1009182d86ffe80a536
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 15:57:49 +0800
+| 
+|     feat(sched): enable timer preemption
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/02_trap_interrupt.md        |  2 +-
+|  docs/design/04_task_process.md          |  4 ++--
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/runtime.rs        | 25 +++++++++++++++++++++++++
+|  modules/axruntime/src/trap.rs           |  1 +
+|  6 files changed, 31 insertions(+), 3 deletions(-)
+| 
+* commit b67d13097757d17811371c443ad7788fed30de30
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 15:53:36 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 25 ++++++++++++++++++++++++-
+|  1 file changed, 24 insertions(+), 1 deletion(-)
+| 
+* commit e506b3fa72274cad218fdb67ba088530c2d81408
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 15:53:26 +0800
+| 
+|     feat(syscall): add stdin poll readiness and pipe smoke
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/design/10_testing_benchmark.md     |  2 +-
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 64 ++++++++++++++++++++++++++++---
+|  modules/axruntime/src/user.rs           | 46 +++++++++++++++++++++-
+|  6 files changed, 107 insertions(+), 9 deletions(-)
+| 
+* commit 72629d77ef9eda21e97443dcb8e6fba68bea9d99
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 15:39:46 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 38b65aebb5b2f5a2f5245000187cbf124690da6a
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 15:39:32 +0800
+| 
+|     feat(syscall): wake poll waiters on pipe events
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 22 +++++++++++++++-------
+|  4 files changed, 18 insertions(+), 10 deletions(-)
+| 
+* commit 1c14c4573bd9704dbd03c8147382cdc419ddc11b
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 15:29:35 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 92035cb03e442477e69c26ae178839fff5af32f8
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 15:29:26 +0800
+| 
+|     test(user): add poll sleep smoke
+| 
+|  CHANGELOG.md                            | 2 +-
+|  docs/design/10_testing_benchmark.md     | 2 +-
+|  docs/process/phase_3_process_syscall.md | 2 +-
+|  modules/axruntime/src/user.rs           | 8 +++++++-
+|  4 files changed, 10 insertions(+), 4 deletions(-)
+| 
+* commit 4a54d933a93e3d3835366bfce574b810877710e4
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 15:19:59 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit e530ca51b3c80efa16665fef919adfde1cb3ba9a
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 15:19:49 +0800
+| 
+|     feat(syscall): add poll wait wrapper
+| 
+|  CHANGELOG.md                            |   2 +-
+|  docs/design/05_syscall_abi.md           |   2 +-
+|  docs/process/phase_3_process_syscall.md |   2 +-
+|  modules/axruntime/src/syscall.rs        | 156 +++++++++++++++++++-----------
+|  4 files changed, 105 insertions(+), 57 deletions(-)
+| 
+* commit 3e1e5e1487656d4ba502d6a10cb5dc316718de52
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 15:13:05 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 0227e142a33f897ed86358d3bcf4f9fa71c63367
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 15:12:54 +0800
+| 
+|     feat(syscall): support multi-fd ppoll wait loop
+| 
+|  CHANGELOG.md                            |   2 +-
+|  docs/design/05_syscall_abi.md           |   2 +-
+|  docs/process/phase_3_process_syscall.md |   2 +-
+|  modules/axruntime/src/syscall.rs        | 117 ++++++++++++++++++------------
+|  4 files changed, 73 insertions(+), 50 deletions(-)
+| 
+* commit f9a074deacedca800cad63f81ffcc15d4cdb35f3
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 14:56:28 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 3f73aa01a70dc97fbe37a7ec9e262f527e6db9a5
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 14:56:16 +0800
+| 
+|     feat(syscall): honor O_NONBLOCK for pipes
+| 
+|  CHANGELOG.md                            |   1 +
+|  docs/design/05_syscall_abi.md           |   2 +-
+|  docs/process/phase_3_process_syscall.md |   1 +
+|  modules/axruntime/src/syscall.rs        | 210 ++++++++++++++++++++----------
+|  4 files changed, 143 insertions(+), 71 deletions(-)
+| 
+* commit 3ea1daa185d42b929d659d2196462854a53846db
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 14:40:56 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 27d15c648ef3a78bc99df7857b2c3c036faff9c2
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 14:40:40 +0800
+| 
+|     feat(syscall): report pipe readiness in ppoll
+| 
+|  CHANGELOG.md                            |   2 +-
+|  docs/design/05_syscall_abi.md           |   2 +-
+|  docs/process/phase_3_process_syscall.md |   2 +-
+|  modules/axruntime/src/syscall.rs        | 165 ++++++++++++++++++++++++++++--
+|  4 files changed, 160 insertions(+), 11 deletions(-)
+| 
+* commit 637325867cc3dba7a7df4181cfc510964eb5cbf2
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 14:27:18 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 053729564a3b45824c1cacda294ac6c9cc0b9728
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 14:27:02 +0800
+| 
+|     feat(syscall): add pipe blocking semantics
+| 
+|  CHANGELOG.md                            |   2 +-
+|  docs/design/05_syscall_abi.md           |   2 +-
+|  docs/process/phase_3_process_syscall.md |   2 +-
+|  modules/axruntime/src/syscall.rs        | 109 ++++++++++++++++++++++++------
+|  4 files changed, 90 insertions(+), 25 deletions(-)
+| 
+* commit 336adfc172ca73b95596afd9b758069341cfdc36
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 13:23:03 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 026ea8882c908ce70100813dcec405432cc38cc6
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 13:22:41 +0800
+| 
+|     feat(syscall): add pipe2 and fd table stubs
+| 
+|  CHANGELOG.md                            |   1 +
+|  docs/design/05_syscall_abi.md           |   3 +-
+|  docs/process/phase_3_process_syscall.md |   1 +
+|  modules/axruntime/src/syscall.rs        | 557 +++++++++++++++++++++---------
+|  4 files changed, 403 insertions(+), 159 deletions(-)
+| 
+* commit 086bae2a6701237e7cfe5b67a9eb878463a69b09
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 13:02:35 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 15 ++++++++++++++-
+|  1 file changed, 14 insertions(+), 1 deletion(-)
+| 
+* commit 03db7758939f5eaf695a8af92aef10dc0cf5866f
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 13:02:12 +0800
+| 
+|     feat(syscall): add path metadata stubs
+| 
+|  CHANGELOG.md                            |   3 +
+|  docs/design/05_syscall_abi.md           |   3 +
+|  docs/process/git-log.txt                |  11 +-
+|  docs/process/phase_3_process_syscall.md |   3 +
+|  modules/axruntime/src/syscall.rs        | 294 ++++++++++++++++++++++++++++++
+|  5 files changed, 313 insertions(+), 1 deletion(-)
+| 
+* commit b245d7034433dd70c6f4efc49facfafb6e4af923
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:50:12 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 4a527ee03e190b0ba0e7127261dc23e644798509
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:49:51 +0800
+| 
+|     feat(syscall): add mkdirat/unlinkat stubs
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 33 +++++++++++++++++++++++++++++++
+|  4 files changed, 36 insertions(+), 3 deletions(-)
+| 
+* commit 00c7f7b03b3bbc28f72f7dbb6ce5f438b8b3258d
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:47:53 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 27d1b1735e73d379f470a7647ca04056a3632a27
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:47:33 +0800
+| 
+|     feat(syscall): add ppoll stub
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 43 +++++++++++++++++++++++++++++++
+|  4 files changed, 46 insertions(+)
+| 
+* commit 3c739332f972f62abe0f386315c4a93f60ea8aa1
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:45:25 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 9633120b5142176ecabb1b5c27e448466c8f7664
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:45:07 +0800
+| 
+|     feat(syscall): add readlinkat stub
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 20 ++++++++++++++++++++
+|  4 files changed, 23 insertions(+), 3 deletions(-)
+| 
+* commit ebdd8a4b752b9893298b9d3d09ce9eae2397ce6a
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:43:39 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 3fc89b84d621c71dd53978abf024d8579ce637ef
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:43:23 +0800
+| 
+|     feat(syscall): add chdir stubs
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 26 ++++++++++++++++++++++++++
+|  4 files changed, 29 insertions(+)
+| 
+* commit 3952fabed328173cb4571d635ada41cf16fbbea9
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:41:51 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 2b87620afb71fbbecba146b91e06f1996c5de635
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:41:34 +0800
+| 
+|     feat(syscall): add statx stub
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 24 ++++++++++++++++++++++++
+|  4 files changed, 27 insertions(+), 3 deletions(-)
+| 
+* commit a65a45bc8277c55c1002bdde7967f626fdb44c12
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:39:48 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 3e884f88bebdbb1fdd34754ae55b9058399d2a4b
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:39:32 +0800
+| 
+|     feat(syscall): add faccessat stub
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 16 ++++++++++++++++
+|  4 files changed, 19 insertions(+), 3 deletions(-)
+| 
+* commit 2fee6386391ebbc65e2269a78dd842dc9d7e0928
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:20:51 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit e17d7751886d1202ed3ca74ed536ee2ca15a2c47
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:20:33 +0800
+| 
+|     feat(syscall): add /dev/zero pseudo fds
+| 
+|  CHANGELOG.md                            |   2 +-
+|  docs/design/05_syscall_abi.md           |   2 +-
+|  docs/process/phase_3_process_syscall.md |   2 +-
+|  modules/axruntime/src/syscall.rs        | 169 ++++++++++++++++++++++++++----
+|  4 files changed, 149 insertions(+), 26 deletions(-)
+| 
+* commit 9d1b1a9bc88fd5080d82acce95c507eaaa7ed10d
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:13:15 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit d2b4bb245f178d2ff1ba5c3eb625aafe51da1dc5
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:13:00 +0800
+| 
+|     fix(syscall): validate getdents64 buffer
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 18 ++++++++++++++++++
+|  3 files changed, 20 insertions(+), 2 deletions(-)
+| 
+* commit 21903c9cbd598e524a4e9faefe0e55dee92bb8e9
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:10:40 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 95158dfeb4f265f4c968152f481dd2735b63bb55
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 12:10:23 +0800
+| 
+|     feat(syscall): add /dev/null stub
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 64 +++++++++++++++++++++++++++----
+|  4 files changed, 60 insertions(+), 10 deletions(-)
+| 
+* commit ca0d243261902028f3a57fb722da62a429706e48
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:53:54 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 51f988b84acc1286cf10706278cf4a6872edb380
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:53:37 +0800
+| 
+|     feat(syscall): accept coarse clocks
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 16 ++++++++++++++--
+|  4 files changed, 17 insertions(+), 5 deletions(-)
+| 
+* commit d37bb870290fe3083cf347ee3dce135378862531
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:51:42 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 8d645f5a4fbfbbca38f902f23396b81da5ba552a
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:51:30 +0800
+| 
+|     feat(syscall): add open stub
+| 
+|  CHANGELOG.md                            | 2 +-
+|  docs/design/05_syscall_abi.md           | 2 +-
+|  docs/process/phase_3_process_syscall.md | 2 +-
+|  modules/axruntime/src/syscall.rs        | 6 ++++++
+|  4 files changed, 9 insertions(+), 3 deletions(-)
+| 
+* commit e7b49594fb79c84660d8ce0ffaf51492ab987385
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:50:11 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 516c83a99b9c57683683cf6e7b0dcc69772606ff
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:49:55 +0800
+| 
+|     feat(syscall): add openat/newfstatat stubs
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 47 +++++++++++++++++++++++++++++++
+|  4 files changed, 50 insertions(+)
+| 
+* commit bd8ecfc8db1b8cffc55c627e803e04a38b7fb617
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:43:29 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit bc32004ba695935977d885f9e9ccdfede5767757
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:43:13 +0800
+| 
+|     feat(syscall): report user rusage time
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 10 ++++++----
+|  3 files changed, 8 insertions(+), 6 deletions(-)
+| 
+* commit e09517c23da5b2e1628fdd82465c233c65c1ad0a
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:40:58 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit 37d496a412f41dd2eeb51362386f7f4058a89bbc
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:40:42 +0800
+| 
+|     fix(syscall): validate getrandom flags
+| 
+|  CHANGELOG.md                            | 2 +-
+|  docs/process/phase_3_process_syscall.md | 2 +-
+|  modules/axruntime/src/syscall.rs        | 7 ++++++-
+|  3 files changed, 8 insertions(+), 3 deletions(-)
+| 
+* commit d1649b11bb4ddb58c084e9861baf746d4514e7a5
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:39:44 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit 739777096475366d89195919b8d8b78acd9a922b
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:39:28 +0800
+| 
+|     fix(syscall): clear affinity mask
+| 
+|  CHANGELOG.md                            | 2 +-
+|  docs/process/phase_3_process_syscall.md | 2 +-
+|  modules/axruntime/src/syscall.rs        | 9 +++++++++
+|  3 files changed, 11 insertions(+), 2 deletions(-)
+| 
+* commit a87630577eff08d950c2b874490dcf1a94985771
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:35:43 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit c3418c7642c40fd308671cd1c65af5f0d11454fc
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:35:27 +0800
+| 
+|     feat(syscall): add getgroups/setgroups stubs
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 38 +++++++++++++++++++++++++++++++
+|  4 files changed, 41 insertions(+)
+| 
+* commit 12af49c97c90adc2e4d5ce69bafd8dfbd7b1d034
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:34:11 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit fb75e52cc255c73f1c3a935ff514033707fb5de6
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:33:57 +0800
+| 
+|     feat(syscall): accept TIOCSCTTY
+| 
+|  CHANGELOG.md                            | 2 +-
+|  docs/design/05_syscall_abi.md           | 2 +-
+|  docs/process/phase_3_process_syscall.md | 2 +-
+|  modules/axruntime/src/syscall.rs        | 2 ++
+|  4 files changed, 5 insertions(+), 3 deletions(-)
+| 
+* commit 1cffc5aabddb2079c19d37ee97bbf85a600f2a91
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:32:56 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 071fb93b6b47e1b6112c72e582c3576ee3453c90
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:32:43 +0800
+| 
+|     feat(syscall): add getresuid/getresgid
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 38 +++++++++++++++++++++++++++++++
+|  4 files changed, 41 insertions(+), 3 deletions(-)
+| 
+* commit ab48821996181f1a2a13c800668dbd5bc882c4ec
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:31:42 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 352946df64cc7789d61ad947fa1d177ec344bc0e
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:31:29 +0800
+| 
+|     feat(syscall): add pgrp ioctls
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 28 ++++++++++++++++++++++++++++
+|  4 files changed, 31 insertions(+), 3 deletions(-)
+| 
+* commit 803c9ddf92f7b7b2b311a2ca8cee08d150e79b08
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:30:05 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit c6043ceab1429432fa84348b8b0dde8fb97e2db2
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:29:51 +0800
+| 
+|     feat(syscall): accept raw and boottime clocks
+| 
+|  CHANGELOG.md                            | 2 +-
+|  docs/design/05_syscall_abi.md           | 2 +-
+|  docs/process/phase_3_process_syscall.md | 2 +-
+|  modules/axruntime/src/syscall.rs        | 6 ++++--
+|  4 files changed, 7 insertions(+), 5 deletions(-)
+| 
+* commit 8f1cd5a279854fcb5d09d9235c120dacc45a97f6
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:28:53 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 1afa6067fed3a6c68975a057f56f9a9cbd4d821e
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:28:41 +0800
+| 
+|     feat(syscall): add getcpu stub
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 16 ++++++++++++++++
+|  4 files changed, 19 insertions(+)
+| 
+* commit 9bec4a48974e23262bcdf22b8f18a6d42471dcc4
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:27:44 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit c40d5c5e1742a4f24fb4388bef988345cb4d59aa
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:27:30 +0800
+| 
+|     feat(syscall): return EAGAIN on empty read
+| 
+|  CHANGELOG.md                            | 2 +-
+|  docs/design/05_syscall_abi.md           | 2 +-
+|  docs/process/phase_3_process_syscall.md | 2 +-
+|  modules/axruntime/src/syscall.rs        | 3 ++-
+|  4 files changed, 5 insertions(+), 4 deletions(-)
+| 
+* commit 4602c6024c47c29a8aa9d53ef568dfb55ddecd36
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:26:03 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 5e108534c6ab99661842bede4f3b8f3106fa8aff
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:25:50 +0800
+| 
+|     feat(syscall): store prctl name
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 27 +++++++++++++++++++--------
+|  4 files changed, 22 insertions(+), 11 deletions(-)
+| 
+* commit 12c92cced6a836e714b95e5847c405730c2a5d35
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:24:24 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 91765d545b4a28969ca35efb629508d110b4afd3
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:24:11 +0800
+| 
+|     feat(syscall): add getsid stub
+| 
+|  CHANGELOG.md                            | 2 +-
+|  docs/design/05_syscall_abi.md           | 2 +-
+|  docs/process/phase_3_process_syscall.md | 2 +-
+|  modules/axruntime/src/syscall.rs        | 6 ++++++
+|  4 files changed, 9 insertions(+), 3 deletions(-)
+| 
+* commit 6ca7a023590bfa629b0b2887f575c0cd32a6e90e
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:23:18 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 0947f3d5002c25f9f979c195798f47a33c4e5cdd
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:23:07 +0800
+| 
+|     feat(syscall): accept TIOCSWINSZ
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 14 ++++++++++++++
+|  4 files changed, 17 insertions(+), 3 deletions(-)
+| 
+* commit 331e38ad3bf6282e520a07ad9d5134a3ba685b9d
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:21:40 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 94393cdc1bf64959de05046fa48c35fcfbb77849
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:21:29 +0800
+| 
+|     fix(syscall): return tid from set_tid_address
+| 
+|  CHANGELOG.md                            | 2 +-
+|  docs/design/05_syscall_abi.md           | 2 +-
+|  docs/process/phase_3_process_syscall.md | 2 +-
+|  modules/axruntime/src/syscall.rs        | 2 +-
+|  4 files changed, 4 insertions(+), 4 deletions(-)
+| 
+* commit a6fcab3f8c823226fa94fe8b8c661500ed09c6ce
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:20:34 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit d7c69a85d36690295303d8d25001ab1e74e2e214
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:20:23 +0800
+| 
+|     feat(syscall): add getpgrp/setpgrp stubs
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 12 ++++++++++++
+|  4 files changed, 15 insertions(+), 3 deletions(-)
+| 
+* commit 1b1352ec2dc5908751a231a8c2266ddb1e1ef691
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:19:30 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit a17b2b38610be3193d029fff504a4c9a13da4419
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:19:18 +0800
+| 
+|     fix(syscall): allow empty iovec
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 10 ++++++++--
+|  3 files changed, 10 insertions(+), 4 deletions(-)
+| 
+* commit 4fcb1126fcd3118961c3a1593ee85f1bc4480218
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:16:07 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 382673d1cb40f861ca5858d848332eb96992068f
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:15:54 +0800
+| 
+|     feat(syscall): report stdio access modes
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 12 +++++++++++-
+|  4 files changed, 14 insertions(+), 4 deletions(-)
+| 
+* commit c96cd84324f4f5f1e87cef79d864216975c95beb
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:15:01 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit 17a88db20a32fb2eff7399f621815ebff31cfda6
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:14:47 +0800
+| 
+|     feat(syscall): align pgid with task id
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 15 +++++++++------
+|  4 files changed, 12 insertions(+), 9 deletions(-)
+| 
+* commit 27e6a57ff2bc04ecb7b06862ab677e776f071416
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:13:42 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit ca2887ef0c5d5833134ab2fbade5cfdb99e8e7ac
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:13:26 +0800
+| 
+|     feat(syscall): prefer scheduler nanosleep
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 12 +++++++++---
+|  4 files changed, 12 insertions(+), 6 deletions(-)
+| 
+* commit 788562d9025a93cbe9ccd9a6ebba6e15c3f31496
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:11:50 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 24 +++++++++++++++++++++++-
+|  1 file changed, 23 insertions(+), 1 deletion(-)
+| 
+* commit c6d5f74b033a1f310dfe7a34c4b9d65255e9ca36
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:11:33 +0800
+| 
+|     feat(syscall): derive pid from task context
+| 
+|  CHANGELOG.md                            | 2 +-
+|  docs/design/05_syscall_abi.md           | 2 +-
+|  docs/process/phase_3_process_syscall.md | 2 +-
+|  modules/axruntime/src/runtime.rs        | 5 +++++
+|  modules/axruntime/src/syscall.rs        | 6 ++++--
+|  5 files changed, 12 insertions(+), 5 deletions(-)
+| 
+* commit 378b85ad8ab38bb14791f506a91bae038a496c88
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:10:24 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 22 +++++++++++++++++++++-
+|  1 file changed, 21 insertions(+), 1 deletion(-)
+| 
+* commit a2722aae2c8978ddbe2ad6a0ccc2b54b2223b7bc
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:10:11 +0800
+| 
+|     fix(syscall): align fstat timestamps
+| 
+|  CHANGELOG.md                            | 1 +
+|  docs/process/phase_3_process_syscall.md | 1 +
+|  modules/axruntime/src/syscall.rs        | 6 +++---
+|  3 files changed, 5 insertions(+), 3 deletions(-)
+| 
+* commit dffb060df33c79efff8bb192c88f5ebec72eca00
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:07:05 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 23 ++++++++++++++++++++++-
+|  1 file changed, 22 insertions(+), 1 deletion(-)
+| 
+* commit fd71427f65cb18884249dea2a383ebb5bf3ea2b0
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:06:53 +0800
+| 
+|     feat(syscall): add lseek stub
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 10 ++++++++++
+|  4 files changed, 13 insertions(+)
+| 
+* commit 7444ef94fc4bb3f8c73bb6f8ba749f5cb3b25d71
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:05:07 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt | 24 +++++++++++++++++++++++-
+|  1 file changed, 23 insertions(+), 1 deletion(-)
+| 
+* commit 9df1a16a73ce91930af0b77b9a2220fc2fa29229
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:04:45 +0800
+| 
+|     feat(syscall): add termios ioctl stubs
+| 
+|  CHANGELOG.md                            |  2 +-
+|  docs/design/05_syscall_abi.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md |  2 +-
+|  modules/axruntime/src/syscall.rs        | 87 +++++++++++++++++++++++++------
+|  4 files changed, 73 insertions(+), 20 deletions(-)
+| 
+* commit ba01ba55bbc934c99fc6c031ebab01ea5c31c4e5
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:01:58 +0800
+| 
+|     chore(process): refresh git history logs
+| 
+|  docs/process/git-log.txt      | 1041 ++++++++++++++++++++++++++++++++++++++-
+|  docs/process/git-shortlog.txt |    1 -
+|  2 files changed, 1040 insertions(+), 2 deletions(-)
+| 
+* commit ce54db6d72499281928e7a620aea389351fb7439
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 11:00:29 +0800
+| 
+|     feat(runtime): gate scheduler demo tasks
+| 
+|  CHANGELOG.md                            |  1 +
+|  Makefile                                |  1 +
+|  docs/design/04_task_process.md          |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/Cargo.toml            |  1 +
+|  modules/axruntime/src/config.rs         |  2 ++
+|  modules/axruntime/src/runtime.rs        | 20 +++++++++++++++-----
+|  scripts/build.sh                        |  4 ++++
+|  8 files changed, 26 insertions(+), 5 deletions(-)
+| 
+* commit e65121010835f23d2f795f30bcd04249fa98ae30
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:57:39 +0800
+| 
+|     fix(time): use timebase monotonic clock
+| 
+|  CHANGELOG.md                            |  6 ++---
+|  docs/design/05_syscall_abi.md           |  6 ++---
+|  docs/process/phase_3_process_syscall.md |  6 ++---
+|  modules/axruntime/src/syscall.rs        | 24 +++++++++---------
+|  modules/axruntime/src/time.rs           | 41 +++++++++++++++++++++++++++++--
+|  5 files changed, 61 insertions(+), 22 deletions(-)
+| 
+* commit e3d32f0e645ae62d047866d41777d58eded96fd5
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:46:53 +0800
+| 
+|     feat(syscall): add pgid stubs
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 18 ++++++++++++++++++
+|  4 files changed, 21 insertions(+)
+| 
+* commit 216e514035399e066f76d186e321b2e101ac173c
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:45:27 +0800
+| 
+|     feat(syscall): add getrusage stub
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 73 +++++++++++++++++++++++++++++++
+|  4 files changed, 76 insertions(+)
+| 
+* commit af4597cb7af07b1d66ad8ddcaa826d163e81a7f3
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:43:29 +0800
+| 
+|     feat(syscall): add sched affinity stubs
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 40 +++++++++++++++++++++++++++++++
+|  4 files changed, 43 insertions(+)
+| 
+* commit 901d96418091ed70b2564f0b6d6db618c4258c41
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:42:07 +0800
+| 
+|     feat(syscall): add prctl stub
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 36 +++++++++++++++++++++++++++++++
+|  4 files changed, 39 insertions(+)
+| 
+* commit ba69b05d97d1f263833ff76a90259459e12a9fe7
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:40:45 +0800
+| 
+|     feat(syscall): add umask stub
+| 
+|  CHANGELOG.md                            | 1 +
+|  docs/design/05_syscall_abi.md           | 1 +
+|  docs/process/phase_3_process_syscall.md | 1 +
+|  modules/axruntime/src/syscall.rs        | 8 ++++++++
+|  4 files changed, 11 insertions(+)
+| 
+* commit 9635104f1d50eb9d64ab02118a1d3fca66aa356a
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:39:35 +0800
+| 
+|     feat(syscall): add clock_getres stubs
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 31 +++++++++++++++++++++++++++++++
+|  4 files changed, 34 insertions(+)
+| 
+* commit 47ab716e49294fcad7fe2d7523bfd21f04859b1b
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:38:17 +0800
+| 
+|     feat(syscall): add fcntl stub
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 19 +++++++++++++++++++
+|  4 files changed, 22 insertions(+)
+| 
+* commit 0d4c7a6d2f89340c596b37b85b26b26f244c0296
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:36:48 +0800
+| 
+|     feat(syscall): add signal stubs
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 69 +++++++++++++++++++++++++++++++
+|  4 files changed, 72 insertions(+)
+| 
+* commit 22e2acacf9420382a3ab5c0731a2a4613793e2e7
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:34:13 +0800
+| 
+|     feat(syscall): add robust list stubs
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 26 ++++++++++++++++++++++++++
+|  4 files changed, 29 insertions(+)
+| 
+* commit 1a1767e6454f3503f782be7b3e1ce4a673df89d5
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:32:34 +0800
+| 
+|     feat(syscall): add dup stubs
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 28 ++++++++++++++++++++++++++++
+|  4 files changed, 31 insertions(+)
+| 
+* commit 2b4b351b494d4a4151b05fda9f20ea47685cc761
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:30:57 +0800
+| 
+|     feat(syscall): add fstat stub
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 70 +++++++++++++++++++++++++++++++
+|  4 files changed, 73 insertions(+)
+| 
+* commit 80979aedb5bb01029b1b1a5f7351a917233395a6
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:26:00 +0800
+| 
+|     feat(syscall): add getrandom stub
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 71 +++++++++++++++++++++++++++++++
+|  4 files changed, 74 insertions(+)
+| 
+* commit 940fb76b7b6c52e40de2b98eae212a4c1263016d
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:24:12 +0800
+| 
+|     feat(syscall): add sysinfo stub
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/03_memory.md                |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/mm.rs             |  4 +++
+|  modules/axruntime/src/syscall.rs        | 53 +++++++++++++++++++++++++++++++
+|  6 files changed, 61 insertions(+)
+| 
+* commit f6f90da97b50f89345773a44347d22a01a2521c8
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:22:28 +0800
+| 
+|     feat(syscall): add nanosleep stub
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 31 +++++++++++++++++++++++++++++++
+|  4 files changed, 34 insertions(+)
+| 
+* commit 4d57dcfacf2a353a83768a61fe248d14754d37cf
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:20:16 +0800
+| 
+|     feat(syscall): add ioctl TIOCGWINSZ
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 37 +++++++++++++++++++++++++++++++
+|  4 files changed, 40 insertions(+)
+| 
+* commit dca7950858bdd3743d7d49326cd4e623a4c20848
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:19:08 +0800
+| 
+|     feat(syscall): add rlimit stubs
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 51 +++++++++++++++++++++++++++++++
+|  4 files changed, 54 insertions(+)
+| 
+* commit e62b1b4848c477a9dd2a19dfb32fe6982978c81c
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:17:40 +0800
+| 
+|     feat(syscall): add close stub
+| 
+|  CHANGELOG.md                            | 1 +
+|  docs/design/05_syscall_abi.md           | 1 +
+|  docs/process/phase_3_process_syscall.md | 1 +
+|  modules/axruntime/src/syscall.rs        | 9 +++++++++
+|  4 files changed, 12 insertions(+)
+| 
+* commit 5aad4c0af00255a54d0dabb86e12a8ac1fd21ba8
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:16:44 +0800
+| 
+|     feat(syscall): add set_tid_address stub
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 17 +++++++++++++++++
+|  4 files changed, 20 insertions(+)
+| 
+* commit ae11cf9a8986ab48b4a782b1bf230c6184de35a8
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:15:37 +0800
+| 
+|     feat(syscall): add getcwd stub
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 22 ++++++++++++++++++++++
+|  4 files changed, 25 insertions(+)
+| 
+* commit d653bb99f1a9fa34818fadd9868d9b9cac4a0286
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:14:36 +0800
+| 
+|     feat(syscall): add clock_gettime64 alias
+| 
+|  CHANGELOG.md                            | 1 +
+|  docs/design/05_syscall_abi.md           | 1 +
+|  docs/process/phase_3_process_syscall.md | 1 +
+|  modules/axruntime/src/syscall.rs        | 2 ++
+|  4 files changed, 5 insertions(+)
+| 
+* commit 704d2ed7126cd8bf28d89d1f498adaf15a1c740f
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:13:30 +0800
+| 
+|     feat(syscall): add exit_group stub
+| 
+|  CHANGELOG.md                            | 1 +
+|  docs/design/05_syscall_abi.md           | 1 +
+|  docs/process/phase_3_process_syscall.md | 1 +
+|  modules/axruntime/src/syscall.rs        | 6 ++++++
+|  4 files changed, 9 insertions(+)
+| 
+* commit 12136e51e54958cd1aa8398f086a4665d3e0b0f8
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:12:37 +0800
+| 
+|     feat(syscall): add yield and tid stubs
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 13 +++++++++++++
+|  4 files changed, 16 insertions(+)
+| 
+* commit e7d2cd618c4e5a56ef946aadee6c076d8c8ba083
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:11:34 +0800
+| 
+|     feat(syscall): add id stubs
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 30 ++++++++++++++++++++++++++++++
+|  4 files changed, 33 insertions(+)
+| 
+* commit 762995f1b9e26dee15b69f567b61a518773c5257
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:10:39 +0800
+| 
+|     feat(syscall): add uname stub
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/syscall.rs        | 46 +++++++++++++++++++++++++++++++
+|  4 files changed, 49 insertions(+)
+| 
+* commit 76efea0b5a21064283918a3269adf1a2f1104783
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:09:05 +0800
+| 
+|     feat(syscall): add readv/writev support
+| 
+|  CHANGELOG.md                            |   1 +
+|  docs/design/05_syscall_abi.md           |   1 +
+|  docs/process/phase_3_process_syscall.md |   1 +
+|  modules/axruntime/src/syscall.rs        | 179 +++++++++++++++++++++++++-----
+|  modules/axruntime/src/user.rs           |  19 +++-
+|  5 files changed, 166 insertions(+), 35 deletions(-)
+| 
+* commit dfe7b55ea8d168eee9826a6e1c11d6543e62bfae
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 10:01:59 +0800
+| 
+|     feat(syscall): add time and pid stubs
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/03_memory.md                |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/mm.rs             | 21 ++++----
+|  modules/axruntime/src/syscall.rs        | 85 ++++++++++++++++++++++++++++++-
+|  6 files changed, 99 insertions(+), 11 deletions(-)
+| 
+* commit 7c0a711531bfd40b0bd28c370ec41823683e81a9
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 09:53:25 +0800
+| 
+|     test(user): exercise cross-page buffer
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/user.rs           | 27 +++++++++++++++++++++++----
+|  3 files changed, 25 insertions(+), 4 deletions(-)
+| 
+* commit 75ac3288b3d7c0bb106f0e336c30bfbc788abe36
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 09:50:03 +0800
+| 
+|     feat(syscall): add minimal console read
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  modules/axruntime/src/sbi.rs            | 10 ++++++++++
+|  modules/axruntime/src/syscall.rs        | 33 ++++++++++++++++++++++++++++++-
+|  5 files changed, 45 insertions(+), 1 deletion(-)
+| 
+* commit b416e240d4578412cef8149cdfef5b6c1aae73ee
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 09:47:51 +0800
+| 
+|     feat(mm): add user pointer helpers
+| 
+|  CHANGELOG.md                            |   1 +
+|  docs/design/03_memory.md                |   2 +
+|  docs/design/05_syscall_abi.md           |   2 +-
+|  docs/process/phase_3_process_syscall.md |   1 +
+|  modules/axruntime/src/mm.rs             | 126 +++++++++++++++++++++++++++++-
+|  modules/axruntime/src/syscall.rs        |  32 ++++----
+|  6 files changed, 144 insertions(+), 20 deletions(-)
+| 
+* commit b4b17ecc43925c4cc8726c4d8bf5da79e1a77454
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 09:43:22 +0800
+| 
+|     feat(test): add user-test toggle for smoke runs
+| 
+|  CHANGELOG.md                            | 1 +
+|  Makefile                                | 2 ++
+|  docs/design/10_testing_benchmark.md     | 1 +
+|  docs/process/phase_3_process_syscall.md | 1 +
+|  modules/axruntime/Cargo.toml            | 3 +++
+|  modules/axruntime/src/config.rs         | 3 ++-
+|  scripts/build.sh                        | 4 ++++
+|  scripts/test_qemu_smoke.sh              | 9 +++++++++
+|  8 files changed, 23 insertions(+), 1 deletion(-)
+| 
+* commit 0a5c7dce5f71e671d6712b113a4f38c7215dd34d
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 09:37:47 +0800
+| 
+|     feat(syscall): add user write path
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/03_memory.md                |  2 +
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  docs/process/weekly_devlog_2025W09.md   |  1 +
+|  modules/axruntime/src/mm.rs             | 95 ++++++++++++++++++++++++++++---
+|  modules/axruntime/src/syscall.rs        | 38 ++++++++++++-
+|  modules/axruntime/src/user.rs           | 42 +++++++++-----
+|  8 files changed, 157 insertions(+), 24 deletions(-)
+| 
+* commit 02e1cea32fb07614e89e96a8351fdefdc92ef17f
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 09:28:40 +0800
+| 
+|     feat(user): add minimal u-mode entry
+| 
+|  CHANGELOG.md                            |  1 +
+|  arch/riscv64/context.S                  |  2 +
+|  arch/riscv64/trap.S                     |  4 ++
+|  docs/design/02_trap_interrupt.md        |  1 +
+|  docs/process/phase_3_process_syscall.md |  2 +
+|  docs/process/weekly_devlog_2025W09.md   |  2 +
+|  modules/axruntime/src/config.rs         |  2 +
+|  modules/axruntime/src/main.rs           | 13 ++++++
+|  modules/axruntime/src/mm.rs             | 77 +++++++++++++++++++++++++++++++
+|  modules/axruntime/src/trap.rs           | 33 ++++++++++++-
+|  modules/axruntime/src/user.rs           | 62 +++++++++++++++++++++++++
+|  11 files changed, 198 insertions(+), 1 deletion(-)
+| 
+* commit 8d4eded735ec6ee27cb508f7b8b59cf5796a55f8
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 09:17:25 +0800
+| 
+|     feat(syscall): add u-mode ecall dispatch
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/02_trap_interrupt.md        |  7 ++--
+|  docs/design/05_syscall_abi.md           |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  docs/process/weekly_devlog_2025W09.md   |  1 +
+|  modules/axruntime/src/main.rs           |  1 +
+|  modules/axruntime/src/syscall.rs        | 62 +++++++++++++++++++++++++++++++
+|  modules/axruntime/src/trap.rs           | 28 ++++++++++++++
+|  8 files changed, 99 insertions(+), 3 deletions(-)
+| 
+* commit c227ff8791cec51a17ed67373e055d42ddee3d18
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 09:10:10 +0800
+| 
+|     docs(process): backfill early devlogs
+| 
+|  docs/process/weekly_devlog_2025W01.md | 8 ++++----
+|  docs/process/weekly_devlog_2025W02.md | 8 ++++----
+|  docs/process/weekly_devlog_2025W03.md | 8 ++++----
+|  docs/process/weekly_devlog_2025W04.md | 8 ++++----
+|  docs/process/weekly_devlog_2025W05.md | 8 ++++----
+|  docs/process/weekly_devlog_2025W06.md | 8 ++++----
+|  docs/process/weekly_devlog_2025W07.md | 8 ++++----
+|  docs/process/weekly_devlog_2025W09.md | 1 +
+|  8 files changed, 29 insertions(+), 28 deletions(-)
+| 
+* commit d48a553968f09b78e21eabbf79f8f504772eabbc
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 09:08:57 +0800
+| 
+|     docs(process): mark fs/net/hardening prep
+| 
+|  docs/process/phase_4_fs.md               | 10 +++++-----
+|  docs/process/phase_5_net.md              | 10 +++++-----
+|  docs/process/phase_6_oscomp_hardening.md | 10 +++++-----
+|  docs/process/weekly_devlog_2025W09.md    |  1 +
+|  4 files changed, 16 insertions(+), 15 deletions(-)
+| 
+* commit 57ac9bc28ee55d37e57ce7c0cb2bd2199de51067
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 09:07:49 +0800
+| 
+|     docs(net): draft network design
+| 
+|  docs/design/07_net.md                 | 32 ++++++++++++++++++++++++++------
+|  docs/process/weekly_devlog_2025W09.md |  1 +
+|  2 files changed, 27 insertions(+), 6 deletions(-)
+| 
+* commit 0e41fb28393c2836d3772748b6a28d963842ca4d
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 09:07:17 +0800
+| 
+|     docs(fs): draft vfs design
+| 
+|  docs/design/06_fs_vfs.md              | 37 +++++++++++++++++++++++++++------
+|  docs/process/weekly_devlog_2025W09.md |  1 +
+|  2 files changed, 32 insertions(+), 6 deletions(-)
+| 
+* commit 4148a8cdda089384bb9aecb2177a2d156b87951b
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 09:06:34 +0800
+| 
+|     docs(innovation): draft innovation plan
+| 
+|  docs/design/09_innovations.md         | 31 +++++++++++++++++++++++++------
+|  docs/process/weekly_devlog_2025W09.md |  1 +
+|  2 files changed, 26 insertions(+), 6 deletions(-)
+| 
+* commit 8fbb49350dc884ac45a72948dcf51a1667b89e04
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 09:05:57 +0800
+| 
+|     docs(driver): draft driver model design
+| 
+|  docs/design/08_driver_model.md        | 39 ++++++++++++++++++++++++++++-----
+|  docs/process/weekly_devlog_2025W09.md |  1 +
+|  2 files changed, 34 insertions(+), 6 deletions(-)
+| 
+* commit 9165fed89713a077502395c2c5157b3e0353032b
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 09:05:04 +0800
+| 
+|     docs(syscall): draft ABI design
+| 
+|  docs/design/05_syscall_abi.md           | 36 +++++++++++++++++++++++++------
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  docs/process/weekly_devlog_2025W09.md   |  1 +
+|  3 files changed, 32 insertions(+), 6 deletions(-)
+| 
+* commit e81d3b8e9d12efdfd72cc5f21ee67024b15ec6bd
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 09:03:24 +0800
+| 
+|     fix(wait): clear sleep queue after wait
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  docs/process/weekly_devlog_2025W09.md   |  1 +
+|  modules/axruntime/src/runtime.rs        |  1 +
+|  modules/axruntime/src/sleep_queue.rs    | 13 +++++++++++++
+|  5 files changed, 17 insertions(+)
+| 
+* commit 9488e04a78f47356cff3411296fa10d1a6f70344
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-29 08:56:09 +0800
+| 
+|     feat(wait): exercise wait queue notify/timeout
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/04_task_process.md          |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  docs/process/weekly_devlog_2025W09.md   |  1 +
+|  modules/axruntime/src/runtime.rs        | 15 ++++++++++-----
+|  5 files changed, 14 insertions(+), 5 deletions(-)
+| 
+* commit 25ce2426e9cb62944edf34ddbd90998794b752c3
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 23:39:30 +0800
+| 
+|     feat(wait): block wait queues with scheduler timeouts
+| 
+|  CHANGELOG.md                            |   5 +-
+|  docs/design/04_task_process.md          |  12 +--
+|  docs/process/phase_3_process_syscall.md |   3 +
+|  docs/process/weekly_devlog_2025W09.md   |  19 ++++
+|  modules/axruntime/src/runtime.rs        | 143 ++++++++++++++++++++++--------
+|  modules/axruntime/src/task.rs           |  83 +++++++++++++++--
+|  modules/axruntime/src/wait.rs           |  48 +---------
+|  modules/axruntime/src/wait_queue.rs     |  61 +++----------
+|  8 files changed, 229 insertions(+), 145 deletions(-)
+| 
+* commit 78b8a0441c124441a4fe3b0ee98caa14fb06034f
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 23:16:43 +0800
+| 
+|     feat(trap): track task trapframes
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/02_trap_interrupt.md        |  1 +
+|  docs/design/04_task_process.md          |  2 +-
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  docs/process/weekly_devlog_2025W08.md   |  1 +
+|  modules/axruntime/src/runtime.rs        | 19 +++++++++++++++++++
+|  modules/axruntime/src/task.rs           | 28 ++++++++++++++++++++++++++++
+|  modules/axruntime/src/trap.rs           |  2 ++
+|  8 files changed, 54 insertions(+), 1 deletion(-)
+| 
+* commit 3fb74e62d7f61b4fdf676f172abef30367b1c38e
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 23:13:45 +0800
+| 
+|     feat(trap): add trapframe guard
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/02_trap_interrupt.md        |  1 +
+|  docs/design/04_task_process.md          |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  docs/process/weekly_devlog_2025W08.md   |  1 +
+|  modules/axruntime/src/runtime.rs        |  4 ++++
+|  modules/axruntime/src/trap.rs           | 33 +++++++++++++++++++++++++++++++
+|  7 files changed, 42 insertions(+)
+| 
+* commit 2a839964d89af50753ec6aecb7b84aa716cfdc1e
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 23:11:44 +0800
+| 
+|     fix(task): align wait queue state
+| 
+|  CHANGELOG.md                             |  1 +
+|  docs/design/04_task_process.md           |  2 +-
+|  docs/process/phase_3_process_syscall.md  |  1 +
+|  docs/process/weekly_devlog_2025W08.md    |  1 +
+|  modules/axruntime/src/runtime.rs         | 52 +++++++++++++++++++++++-------
+|  modules/axruntime/src/sleep_queue.rs     |  2 ++
+|  modules/axruntime/src/task_wait_queue.rs | 12 +++----
+|  7 files changed, 51 insertions(+), 20 deletions(-)
+| 
+* commit 72c7845c740addca9d7e342b1afcd64c23a497fd
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 22:57:02 +0800
+| 
+|     feat(task): add sleep dummy
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/04_task_process.md          |  2 +-
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  docs/process/weekly_devlog_2025W08.md   |  1 +
+|  modules/axruntime/src/runtime.rs        | 24 ++++++++++++++++++++++++
+|  5 files changed, 28 insertions(+), 1 deletion(-)
+| 
+* commit 22266d346ab7d69815344e359ea7103059ef9bcc
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 22:55:19 +0800
+| 
+|     feat(time): add sleep queue
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/04_task_process.md          |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  docs/process/weekly_devlog_2025W08.md   |  1 +
+|  modules/axruntime/src/main.rs           |  1 +
+|  modules/axruntime/src/runtime.rs        | 52 ++++++++++++++++++++++++++
+|  modules/axruntime/src/sleep.rs          |  5 ++-
+|  modules/axruntime/src/sleep_queue.rs    | 61 +++++++++++++++++++++++++++++++
+|  8 files changed, 122 insertions(+), 1 deletion(-)
+| 
+* commit 13f3b62f2e77fc7d1bb7e94298699af39352cb1b
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 22:47:41 +0800
+| 
+|     feat(task): add task wait queue
+| 
+|  CHANGELOG.md                             |  1 +
+|  docs/design/04_task_process.md           | 11 +++++-
+|  docs/process/phase_3_process_syscall.md  |  1 +
+|  docs/process/weekly_devlog_2025W08.md    |  1 +
+|  modules/axruntime/src/main.rs            |  1 +
+|  modules/axruntime/src/runtime.rs         | 56 ++++++++++++++++++++++-----
+|  modules/axruntime/src/task.rs            | 12 ++++++
+|  modules/axruntime/src/task_wait_queue.rs | 62 ++++++++++++++++++++++++++++++
+|  8 files changed, 135 insertions(+), 10 deletions(-)
+| 
+* commit 7fe92d6f171011d8b19e6e6b3bac5892b7755039
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 22:42:02 +0800
+| 
+|     fix(sched): requeue on yield
+| 
+|  CHANGELOG.md                            | 1 +
+|  docs/design/04_task_process.md          | 2 +-
+|  docs/process/phase_3_process_syscall.md | 1 +
+|  docs/process/weekly_devlog_2025W08.md   | 1 +
+|  modules/axruntime/src/runtime.rs        | 9 +++++----
+|  5 files changed, 9 insertions(+), 5 deletions(-)
+| 
+* commit 91fec7c61b9132e9e729e35ea401a52d4c43d07f
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 22:38:22 +0800
+| 
+|     feat(task): add task table
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/04_task_process.md          |  3 +-
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  docs/process/weekly_devlog_2025W08.md   |  1 +
+|  modules/axruntime/src/runtime.rs        | 50 ++++++++++++++++------------
+|  modules/axruntime/src/scheduler.rs      | 18 +++++------
+|  modules/axruntime/src/task.rs           | 54 ++++++++++++++++++++++++++-----
+|  7 files changed, 89 insertions(+), 39 deletions(-)
+| 
+* commit c35ee5bd98b01507dcb4019b43313f9efb4fae66
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 22:32:24 +0800
+| 
+|     feat(stack): add task stack pool
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/04_task_process.md          |  2 +-
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  docs/process/weekly_devlog_2025W08.md   |  1 +
+|  modules/axruntime/src/config.rs         |  1 +
+|  modules/axruntime/src/runtime.rs        |  4 ++--
+|  modules/axruntime/src/scheduler.rs      |  2 +-
+|  modules/axruntime/src/stack.rs          | 29 ++++++++++++++---------------
+|  8 files changed, 22 insertions(+), 19 deletions(-)
+| 
+* commit b915513e348bc252cf65e1fef43241af5c2dff37
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 22:27:58 +0800
+| 
+|     feat(sched): add second dummy task
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/04_task_process.md          |  3 ++-
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  docs/process/weekly_devlog_2025W08.md   |  1 +
+|  modules/axruntime/src/runtime.rs        | 26 +++++++++++++++++++++-----
+|  modules/axruntime/src/scheduler.rs      | 11 ++++++++---
+|  modules/axruntime/src/stack.rs          | 10 ++++++++++
+|  7 files changed, 44 insertions(+), 9 deletions(-)
+| 
+* commit f02af10b75e1143d75835491b97330ea8f092103
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 22:24:18 +0800
+| 
+|     feat(sched): add cooperative yield
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/04_task_process.md          |  1 +
+|  docs/process/phase_3_process_syscall.md |  1 +
+|  docs/process/weekly_devlog_2025W08.md   |  1 +
+|  modules/axruntime/src/runtime.rs        | 45 +++++++++++++++++++++++++------
+|  5 files changed, 41 insertions(+), 8 deletions(-)
+| 
+* commit 084935158672b9eb090dc90be8df0a105cd30a06
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 22:07:45 +0800
+| 
+|     feat(sched): defer resched to idle loop
+| 
+|  CHANGELOG.md                            |  1 +
+|  docs/design/02_trap_interrupt.md        |  2 +-
+|  docs/design/04_task_process.md          |  1 +
+|  docs/process/phase_3_process_syscall.md | 10 ++++++----
+|  docs/process/weekly_devlog_2025W08.md   |  1 +
+|  modules/axruntime/src/cpu.rs            |  6 ------
+|  modules/axruntime/src/main.rs           |  2 +-
+|  modules/axruntime/src/runtime.rs        | 19 ++++++++++++++++---
+|  8 files changed, 27 insertions(+), 15 deletions(-)
+| 
+* commit 06a06a71f28f857aab231dc9018def5b34c422b8
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 21:39:54 +0800
+| 
+|     feat(config): add scheduler defaults
+| 
+|  CHANGELOG.md                          | 1 +
+|  docs/design/04_task_process.md        | 2 +-
+|  docs/process/phase_1_bootstrap.md     | 2 +-
+|  docs/process/weekly_devlog_2025W08.md | 2 +-
+|  modules/axruntime/src/config.rs       | 4 ++++
+|  modules/axruntime/src/main.rs         | 3 ++-
+|  modules/axruntime/src/trap.rs         | 2 +-
+|  7 files changed, 11 insertions(+), 5 deletions(-)
+| 
+* commit 4ecdeeee72dba234957a31f1a33765a17dbd1377
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 21:34:14 +0800
+| 
+|     feat(sched): add configurable tick interval
+| 
+|  CHANGELOG.md                          |  1 +
+|  docs/design/04_task_process.md        |  3 ++-
+|  docs/process/phase_1_bootstrap.md     |  1 +
+|  docs/process/weekly_devlog_2025W08.md |  1 +
+|  modules/axruntime/src/runtime.rs      | 16 +++++++++-------
+|  modules/axruntime/src/trap.rs         |  4 +---
+|  6 files changed, 15 insertions(+), 11 deletions(-)
+| 
+* commit ee724887604041c7cfb99b6f71f2ad4e12a75a50
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 21:31:41 +0800
+| 
+|     feat(sched): add task entry stub
+| 
+|  CHANGELOG.md                          |  1 +
+|  docs/design/04_task_process.md        |  2 ++
+|  docs/process/phase_1_bootstrap.md     |  1 +
+|  docs/process/weekly_devlog_2025W08.md |  1 +
+|  modules/axruntime/src/runtime.rs      | 15 +++++++++++++++
+|  modules/axruntime/src/stack.rs        | 10 ++++++++++
+|  modules/axruntime/src/task.rs         | 12 ++++++++++++
+|  7 files changed, 42 insertions(+)
+| 
+* commit ff69ec12a4678ca5be009821e40ae555c15ef05f
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 21:29:46 +0800
+| 
+|     feat(sched): add kernel stack scaffold
+| 
+|  CHANGELOG.md                          |  1 +
+|  docs/design/04_task_process.md        |  2 ++
+|  docs/process/phase_1_bootstrap.md     |  1 +
+|  docs/process/weekly_devlog_2025W08.md |  1 +
+|  modules/axruntime/src/main.rs         |  1 +
+|  modules/axruntime/src/runtime.rs      |  7 +++++
+|  modules/axruntime/src/stack.rs        | 52 +++++++++++++++++++++++++++++++++
+|  7 files changed, 65 insertions(+)
+| 
+* commit b98a97a73f1ee1c5ecedfeef5eee47a702f1010a
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 21:26:47 +0800
+| 
+|     feat(sched): add context switch stub
+| 
+|  CHANGELOG.md                          |  1 +
+|  arch/riscv64/context.S                | 34 +++++++++++++++++++++++++++
+|  docs/design/04_task_process.md        |  2 ++
+|  docs/process/phase_1_bootstrap.md     |  1 +
+|  docs/process/weekly_devlog_2025W08.md |  1 +
+|  modules/axruntime/src/context.rs      | 41 +++++++++++++++++++++++++++++++++
+|  modules/axruntime/src/main.rs         |  2 ++
+|  modules/axruntime/src/runtime.rs      | 31 +++++++++++++++++++++++--
+|  modules/axruntime/src/scheduler.rs    | 19 +++++++++++++++
+|  modules/axruntime/src/task.rs         |  4 ++++
+|  modules/axruntime/src/time.rs         |  4 ++--
+|  modules/axruntime/src/trap.rs         |  7 ++++--
+|  12 files changed, 141 insertions(+), 6 deletions(-)
+| 
+* commit 2f848b30b6f7b9c3be88fb52ecb8744aaa0dd88c
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 21:22:06 +0800
+| 
+|     feat(sched): add run queue scaffold
+| 
+|  CHANGELOG.md                          |  1 +
+|  docs/design/02_trap_interrupt.md      |  1 +
+|  docs/design/04_task_process.md        | 15 ++++++----
+|  docs/process/phase_1_bootstrap.md     |  1 +
+|  docs/process/weekly_devlog_2025W08.md |  1 +
+|  modules/axruntime/src/main.rs         |  5 ++++
+|  modules/axruntime/src/runtime.rs      | 28 ++++++++++++++++++
+|  modules/axruntime/src/scheduler.rs    | 51 +++++++++++++++++++++++++++++++++
+|  modules/axruntime/src/task.rs         | 28 ++++++++++++++++++
+|  modules/axruntime/src/trap.rs         |  3 +-
+|  10 files changed, 128 insertions(+), 6 deletions(-)
+| 
+* commit c1c1ef2cc3e823b2f86d41f50aceb59a4e366128
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 21:19:39 +0800
+| 
+|     feat(sync): add wait queue helper
+| 
+|  CHANGELOG.md                          |  1 +
+|  docs/design/04_task_process.md        |  5 ++-
+|  docs/process/phase_1_bootstrap.md     |  1 +
+|  docs/process/weekly_devlog_2025W08.md |  1 +
+|  modules/axruntime/src/main.rs         |  1 +
+|  modules/axruntime/src/wait_queue.rs   | 69 +++++++++++++++++++++++++++++++++
+|  6 files changed, 77 insertions(+), 1 deletion(-)
+| 
+* commit 675fff94652b650893dac222cd920d7b1c1d4a66
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 21:17:53 +0800
+| 
+|     feat(sync): add waiter timeout helper
+| 
+|  CHANGELOG.md                          |  1 +
+|  docs/design/04_task_process.md        |  9 +++---
+|  docs/process/phase_1_bootstrap.md     |  1 +
+|  docs/process/weekly_devlog_2025W08.md |  1 +
+|  modules/axruntime/src/main.rs         |  1 +
+|  modules/axruntime/src/wait.rs         | 54 +++++++++++++++++++++++++++++++++
+|  6 files changed, 63 insertions(+), 4 deletions(-)
+| 
+* commit e0c1b0a200e0e93f2e1fbda30d29e50c72df758c
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 21:15:42 +0800
+| 
+|     feat(mm): allocate page tables dynamically
+| 
+|  CHANGELOG.md                          |  1 +
+|  docs/design/03_memory.md              |  2 ++
+|  docs/process/phase_2_mm.md            |  1 +
+|  docs/process/weekly_devlog_2025W08.md |  1 +
+|  modules/axruntime/src/mm.rs           | 54 ++++++++++++++++++++++-----------
+|  5 files changed, 41 insertions(+), 18 deletions(-)
+| 
+* commit 10824fd803a72cd95392f25ba16b18967a49bc58
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 21:10:37 +0800
+| 
+|     feat(mm): init frame allocator
+| 
+|  CHANGELOG.md                          |  1 +
+|  arch/riscv64/linker.ld                |  4 +++
+|  docs/design/03_memory.md              |  3 ++
+|  docs/process/phase_2_mm.md            |  1 +
+|  docs/process/weekly_devlog_2025W08.md |  1 +
+|  modules/axruntime/src/mm.rs           | 58 +++++++++++++++++++++++++++++++--
+|  6 files changed, 65 insertions(+), 3 deletions(-)
+| 
+* commit 73627857fb83467d708864dd4141fbc6a83f3c79
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 21:07:36 +0800
+| 
+|     feat(time): add sleep helper
+| 
+|  CHANGELOG.md                          |  1 +
+|  docs/design/04_task_process.md        | 21 +++++++++++++++------
+|  docs/process/phase_1_bootstrap.md     |  1 +
+|  docs/process/weekly_devlog_2025W08.md |  1 +
+|  modules/axruntime/src/cpu.rs          |  9 +++++++--
+|  modules/axruntime/src/main.rs         |  1 +
+|  modules/axruntime/src/sleep.rs        | 23 +++++++++++++++++++++++
+|  7 files changed, 49 insertions(+), 8 deletions(-)
+| 
+* commit 5a5b03226cf6c1c6bed91eb48826263f5aca4d61
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 21:04:17 +0800
+| 
+|     feat(time): track tick counter
+| 
+|  CHANGELOG.md                          |  1 +
+|  docs/design/02_trap_interrupt.md      |  1 +
+|  docs/process/phase_1_bootstrap.md     |  1 +
+|  docs/process/weekly_devlog_2025W08.md |  1 +
+|  modules/axruntime/src/main.rs         |  3 ++-
+|  modules/axruntime/src/time.rs         | 47 +++++++++++++++++++++++++++++++++
+|  modules/axruntime/src/trap.rs         |  5 ++--
+|  7 files changed, 55 insertions(+), 4 deletions(-)
+| 
+* commit d716317fe7563859d27d211448ddbeabb70bec16
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 21:01:44 +0800
+| 
+|     feat(runtime): enter idle loop after init
+| 
+|  CHANGELOG.md                          | 1 +
+|  docs/design/01_boot.md                | 2 +-
+|  docs/process/phase_1_bootstrap.md     | 1 +
+|  docs/process/weekly_devlog_2025W08.md | 1 +
+|  modules/axruntime/src/cpu.rs          | 8 ++++++++
+|  modules/axruntime/src/main.rs         | 3 ++-
+|  6 files changed, 14 insertions(+), 2 deletions(-)
+| 
+* commit e3b31eb51fdf9614fa75a4eaa7746e49be29aeb0
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 20:57:47 +0800
+| 
+|     feat(timer): enable periodic tick
+| 
+|  CHANGELOG.md                          |  1 +
+|  docs/design/01_boot.md                |  2 +-
+|  docs/design/02_trap_interrupt.md      |  2 ++
+|  docs/process/phase_1_bootstrap.md     |  1 +
+|  docs/process/weekly_devlog_2025W08.md |  1 +
+|  modules/axruntime/src/dtb.rs          |  7 +++++++
+|  modules/axruntime/src/main.rs         | 10 ++++++++++
+|  modules/axruntime/src/trap.rs         | 12 +++++++-----
+|  8 files changed, 30 insertions(+), 6 deletions(-)
+| 
+* commit 178ab9735b7964a69f7e8a62c9ddb0061c36cabb
+| Author: +3队 <t202519359997698@eduxiji.net>
+| Date:   2025-12-28 20:55:37 +0800
+| 
+|     feat(bootstrap): add riscv64 qemu bring-up
+| 
+|  .cargo/config.toml                       |   6 +
+|  CHANGELOG.md                             |   9 +
+|  Cargo.lock                               |   7 +
+|  Cargo.toml                               |  14 ++
+|  LICENSE                                  |  21 ++
+|  Makefile                                 |  46 +++++
+|  README.md                                |  29 +++
+|  THIRD_PARTY_NOTICES.md                   |   3 +
+|  arch/riscv64/entry.S                     |  30 +++
+|  arch/riscv64/linker.ld                   |  35 ++++
+|  arch/riscv64/trap.S                      | 124 ++++++++++++
+|  build_env/README.md                      |  14 ++
+|  build_env/apt-deps.txt                   |   6 +
+|  docs/design/00_overview.md               |  36 ++++
+|  docs/design/01_boot.md                   |  41 ++++
+|  docs/design/02_trap_interrupt.md         |  32 ++++
+|  docs/design/03_memory.md                 |  36 ++++
+|  docs/design/04_task_process.md           |  21 ++
+|  docs/design/05_syscall_abi.md            |  21 ++
+|  docs/design/06_fs_vfs.md                 |  21 ++
+|  docs/design/07_net.md                    |  21 ++
+|  docs/design/08_driver_model.md           |  21 ++
+|  docs/design/09_innovations.md            |  21 ++
+|  docs/design/10_testing_benchmark.md      |  32 ++++
+|  docs/process/git-log.txt                 |   1 +
+|  docs/process/git-shortlog.txt            |   1 +
+|  docs/process/phase_0_kickoff.md          |  23 +++
+|  docs/process/phase_1_bootstrap.md        |  26 +++
+|  docs/process/phase_2_mm.md               |  22 +++
+|  docs/process/phase_3_process_syscall.md  |  16 ++
+|  docs/process/phase_4_fs.md               |  16 ++
+|  docs/process/phase_5_net.md              |  16 ++
+|  docs/process/phase_6_oscomp_hardening.md |  16 ++
+|  docs/process/weekly_devlog_2025W01.md    |  13 ++
+|  docs/process/weekly_devlog_2025W02.md    |  13 ++
+|  docs/process/weekly_devlog_2025W03.md    |  13 ++
+|  docs/process/weekly_devlog_2025W04.md    |  13 ++
+|  docs/process/weekly_devlog_2025W05.md    |  13 ++
+|  docs/process/weekly_devlog_2025W06.md    |  13 ++
+|  docs/process/weekly_devlog_2025W07.md    |  13 ++
+|  docs/process/weekly_devlog_2025W08.md    |  24 +++
+|  modules/axruntime/Cargo.toml             |   6 +
+|  modules/axruntime/src/console.rs         |  36 ++++
+|  modules/axruntime/src/dtb.rs             | 280 +++++++++++++++++++++++++++
+|  modules/axruntime/src/main.rs            |  45 +++++
+|  modules/axruntime/src/mm.rs              | 295 +++++++++++++++++++++++++++++
+|  modules/axruntime/src/sbi.rs             |  74 ++++++++
+|  modules/axruntime/src/trap.rs            | 142 ++++++++++++++
+|  platforms/qemu-riscv64/README.md         |   5 +
+|  rust-toolchain.toml                      |   4 +
+|  scripts/build.sh                         |  46 +++++
+|  scripts/clean.sh                         |   5 +
+|  scripts/clippy.sh                        |  24 +++
+|  scripts/fmt.sh                           |   5 +
+|  scripts/gdb.sh                           |  42 ++++
+|  scripts/run.sh                           |  51 +++++
+|  scripts/test_host.sh                     |  19 ++
+|  scripts/test_oscomp.sh                   |  13 ++
+|  scripts/test_qemu_smoke.sh               |  89 +++++++++
+|  tools/export_git_history.sh              |  12 ++
+|  tools/export_submission.sh               |  54 ++++++
+|  61 files changed, 2146 insertions(+)
+| 
+* commit 57096a1a0bb1e32a3f33cce25b332fd7184ea6db (origin/main, main)
+  Author: +3队 <t202519359997698@eduxiji.net>
+  Date:   2025-12-28 18:42:49 +0800
+  
+      add README
+  
+   README.md | 0
+   1 file changed, 0 insertions(+), 0 deletions(-)

@@ -1,0 +1,157 @@
+# Changelog
+
+## Unreleased
+- Bootstrap RISC-V64 QEMU minimal kernel (entry.S, linker script, SBI console).
+- Wire build/run/gdb/test-qemu-smoke scripts for the initial bring-up.
+- Add MIT license and third-party notices placeholder.
+- Add memory management scaffolding (address types, PTE layout, bump allocator stub).
+- Add DTB parsing to discover memory and UART information at boot.
+- Enable early Sv39 paging with an identity-mapped kernel page table.
+- Enable periodic timer ticks using SBI set_timer and DTB timebase frequency.
+- Enter an idle loop after early initialization to keep the kernel running.
+- Track timer tick count in a dedicated time module.
+- Add a basic sleep_ms helper driven by timer ticks.
+- Initialize a bump frame allocator starting after ekernel within identity map.
+- Allocate early page tables from the frame allocator.
+- Add a scheduler-backed wait timeout helper for blocking waits.
+- Add a WaitQueue helper that blocks tasks and wakes via notify_one/notify_all.
+- Add minimal run queue and scheduler tick hook scaffolding.
+- Add context struct and context_switch assembly stub.
+- Add a kernel stack helper backed by contiguous frames.
+- Add task entry stub and dummy task initialization.
+- Add a configurable tick-based scheduling interval.
+- Add default tick/config constants for scheduler timing.
+- Defer scheduler switches to the idle loop via a resched flag.
+- Add a cooperative yield path for the dummy task.
+- Add round-robin cursor and a second dummy task.
+- Pool early task stacks with a fixed slot limit.
+- Add a task table and store task IDs in the run queue.
+- Fix cooperative yield to requeue the current task.
+- Add a task wait queue with block/wake helpers.
+- Add a sleep queue and scheduler-backed sleep helper.
+- Add a third dummy task to exercise sleep.
+- Gate dummy scheduler tasks and tick logs behind the sched-demo feature.
+- Refine block/wake state transitions for wait queues.
+- Add a trapframe guard for future preemption.
+- Track trapframe pointers in the task table.
+- Track wait completion reasons and validate task state transitions.
+- Exercise wait queues with notify/timeout dummy tasks.
+- Clear stale sleep queue entries after wait completion.
+- Add a minimal syscall dispatcher and U-mode ecall handling.
+- Add a minimal user-mode mapping and sscratch-based trap stack swap.
+- Add minimal user pointer translation and sys_write console output.
+- Add a user-test feature flag and USER_TEST=1 smoke validation for U-mode ecall (poll sleep + writev).
+- Add UserPtr/UserSlice helpers to validate and copy user buffers.
+- Add minimal sys_read for fd=0 using SBI getchar (EAGAIN when no input).
+- Make user-mode smoke buffer cross-page to exercise UserSlice chunking.
+- Add clock_gettime/gettimeofday/getpid time stubs (MONOTONIC/RAW/BOOTTIME/COARSE).
+- Add readv/writev helpers (iovcnt=0 returns 0) and route the user smoke through writev.
+- Add open/openat/mkdirat/unlinkat/newfstatat/getdents64/faccessat/statx/readlinkat stubs returning ENOENT/ENOTDIR with /dev/null and /dev/zero support plus buffer validation.
+- Add mknodat/symlinkat/linkat/renameat/renameat2 stubs with AT_FDCWD-only path validation.
+- Add statfs/fstatfs stubs returning placeholder filesystem stats.
+- Add fchmodat/fchownat/utimensat stubs for root and /dev pseudo paths.
+- Add poll/ppoll stubs that report pipe readiness, block on a single pipe fd, and use a sleep-retry loop for multi-fd waits.
+- Make ppoll sleep-retry fall back to timebase waiting when scheduler sleep is unavailable.
+- Add console input stash and polling readiness for stdin; USER_TEST now covers pipe poll readiness.
+- Enable timer-driven preemption by returning running tasks to the run queue and scheduling from idle.
+- Allow user tasks to be preempted by timer ticks and resume via trapframe-backed paths.
+- Add execve loader for `/init` built-in ELF image with argv/envp stack layout.
+- Release newly created address space on execve failure paths.
+- Add minimal process table and wait4/waitpid support with zombie reaping and WNOHANG.
+- Switch waitpid to looped blocking wait to avoid recursive stack growth.
+- Track user task root/entry/sp/trapframe and add a trapframe resume path for user tasks.
+- Add clone syscall with fork-like semantics backed by CoW page table cloning.
+- Support CLONE_PARENT_SETTID/CLONE_CHILD_SETTID in clone and reject other flags.
+- Add CLONE_CHILD_CLEARTID handling and clear_tid tracking on exit.
+- Add minimal futex wait/wake to support cleartid wakeups.
+- Support futex timeout with ETIMEDOUT and EAGAIN semantics.
+- Reclaim futex address slots when wait queues become empty.
+- Allow FUTEX_WAKE to wake all waiters when count is large.
+- Key private futex waits by address space to avoid cross-process aliasing.
+- Key shared futex waits by physical address to avoid aliasing across address spaces.
+- Fill wait4 rusage with minimal placeholder stats when requested.
+- Add static root and /dev directory entries for getdents64.
+- Add a read-only /init pseudo file for openat/read/fstat support.
+- Route execve through the /init memfile path for ELF loading.
+- Route openat path matching through classify_path for /init and pseudo nodes.
+- Add axvfs no_std VFS trait scaffold for upcoming FS work.
+- Add axfs memfs scaffold and wire getdents64 to memfs directory entries.
+- Route openat/newfstatat path resolution through memfs metadata.
+- Add memfs unit tests for path resolution and metadata.
+- Route faccessat/statx/readlinkat path resolution through memfs.
+- Route statfs path resolution through memfs.
+- Route path-based stub syscalls (mkdirat/unlinkat/linkat/renameat* and chmod/chown/utimensat) through memfs.
+- Route /init reads through memfs read_at with the embedded ELF image.
+- Route fstat metadata for pseudo nodes through memfs.
+- Add memfs parent resolution to validate create/unlink/rename parents.
+- Add memfs read support for /dev/null and /dev/zero.
+- Add fd offset tracking for memfs-backed reads.
+- Add memfs write support for /dev/null and /dev/zero, and route readlinkat through memfs.
+- Add a writable /tmp/log placeholder in memfs for minimal write_at coverage.
+- Add VFS mount table with /, /dev, /proc reserved mounts plus devfs/procfs stubs.
+- Add BlockDevice trait and a pass-through BlockCache scaffold for future FS work.
+- Add a FAT32 BPB parser and root-cluster scaffold for read-path bring-up.
+- Add an ext4 superblock parser and root-inode scaffold for read-path bring-up.
+- Add a VFS read_dir interface and directory entry structure for getdents64.
+- Implement FAT32 directory traversal and cluster-chain reads plus a minimal FAT32 rootfs ramdisk.
+- Add minimal FAT32 write_at support for existing files and cover it in host tests.
+- Implement ext4 group descriptor/inode table parsing with read-only directory lookup and extent depth-0 reads.
+- Switch fd entries to carry VFS handles so open/read/write/stat/getdents64 route through VFS.
+- Load execve images from VFS-backed /init instead of the memfile path.
+- Allow opening /proc as a directory and return minimal entries via getdents64.
+- Extend USER_TEST to cover getdents64 on / and /dev.
+- Extend USER_TEST to write /dev/null via VFS.
+- Extend USER_TEST to cover clone tid writeback validation.
+- Build clone_user_root from kernel mappings to avoid sharing parent page tables.
+- Add PTE_COW and page-fault handling to copy pages on first write.
+- Add frame refcounting and release of user address spaces on waitpid/execve.
+- Extend user-mode smoke to cover clone/wait4 and CoW write path validation.
+- Add virtio-blk MMIO support and prefer external rootfs images over the ramdisk.
+- Use an IRQ-driven wait queue for virtio-blk completion and fall back to polling when needed.
+- Add an ext4-init host-side VFS check for reading `/init` from an ext4 image.
+- Extend ext4-init host test to validate root directory entries, `/etc/issue`, and larger reads.
+- Force QEMU virtio-mmio into modern mode in run/test scripts.
+- Extend ext4 read path to handle extent trees and indirect blocks.
+- Re-enable interrupts in idle so blocking syscalls can sleep and resume.
+- Extend user-mode smoke to cover multi-fd ppoll timeout path.
+- Track O_NONBLOCK via fcntl and honor it for pipe reads/writes.
+- Add uname syscall stub with minimal utsname fields.
+- Add minimal getppid/getuid/geteuid/getgid/getegid/getresuid/getresgid stubs.
+- Add gettid and sched_yield stubs (TaskId+1 when available).
+- Add exit_group stub aligned with exit shutdown.
+- Add clock_gettime64 alias to clock_gettime stub.
+- Add getcwd stub returning root path.
+- Add set_tid_address stub returning TaskId+1.
+- Add chdir/fchdir stubs allowing root only.
+- Add close stub for stdio fds.
+- Add getrlimit/prlimit64 stubs with default limits.
+- Switch test-oscomp to internal self-test cases (ramdisk/ext4) and log to build/selftest.
+- Add ioctl stubs for TIOCGWINSZ/TIOCSWINSZ/TIOCGPGRP/TIOCSPGRP/TIOCSCTTY/TCGETS/TCSETS.
+- Add nanosleep stub using scheduler sleep when available.
+- Add sysinfo stub for uptime and memory size.
+- Add getrandom stub with xorshift output and flag validation.
+- Add fstat stub for stdio character device metadata.
+- Align fstat timestamps with timebase monotonic clock.
+- Add dup/dup3 stubs for stdio redirection.
+- Add pipe2 stub with in-memory pipe buffer, blocking wakeups, and EPIPE/EOF/EAGAIN semantics.
+- Add lseek stub returning ESPIPE for stdio.
+- Add robust list stubs returning empty state.
+- Add rt_sigaction/rt_sigprocmask stubs.
+- Add fcntl stub returning stdio access mode.
+- Add clock_getres stubs using timebase resolution.
+- Add umask stub with stored mask.
+- Add prctl stub that stores process name.
+- Add sched affinity stubs for single CPU (mask cleared before setting CPU0).
+- Add getcpu stub returning CPU=0/NUMA=0.
+- Add getrusage stub returning monotonic user time.
+- Add setpgid/getpgid/getsid/setsid/getpgrp/setpgrp stubs (TaskId+1 when available).
+- Add getgroups/setgroups stubs returning empty groups.
+- Add test runner script for internal self-test cases and log summaries.
+- Add PLIC-backed external IRQ handling and virtio-blk interrupt-driven completion.
+- Add an ext4 rootfs mount log marker and smoke-test check in QEMU runs.
+- Extend /init to read `/etc/issue` and verify it in ext4 QEMU smoke runs.
+- Reduce ext4 read-path stack pressure by reusing a shared scratch buffer.
+- Extend FAT32 write_at to update directory entries and grow cluster chains, plus add a fatlog.txt rootfs fixture and host growth test.
+- Extend USER_TEST to write/read `/fatlog.txt` and add a FAT32 write/read marker check in ramdisk self-tests.
+- Allow the FAT32 ramdisk block device to write back to the in-memory rootfs image for self-tests.
+- Extend FAT32 directory entry updates to find files under subdirectories and add a subdir write/read host test.

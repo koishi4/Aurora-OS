@@ -1,0 +1,12 @@
+[package]
+name = "axruntime"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+user-test = []
+sched-demo = []
+ext4-write-test = []
+
+[dependencies]
+axfs = { path = "../axfs" }
