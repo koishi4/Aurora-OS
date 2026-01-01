@@ -53,6 +53,8 @@
 - execve 记录初始 heap_top 并增加 brk：按页映射堆区并清零，满足 Rust 运行时初始化路径。
 - TaskWaitQueue 操作加入关中断保护，避免中断重入破坏等待队列状态。
 - trap 入口区分内核/用户态来源，内核态嵌套中断不再错误切换到用户栈，减少 RunQueue 被栈破坏风险。
+- execve/clone 通过 trapframe.user_sp 传递用户栈，内核态不再写 sscratch。
+- trap 入口记录 user_sp 时改用 trapframe 字段，避免依赖 sscratch。
 - 增加最小进程表（state/ppid/exit_code），以 TaskId+1 作为早期 PID 占位。
 - 增加 wait4/waitpid：父进程阻塞等待队列、WNOHANG 支持、Zombie 回收与 exit_code 回写。
 - waitpid 等待改为循环阻塞重试，避免递归栈增长。

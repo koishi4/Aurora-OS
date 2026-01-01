@@ -105,8 +105,9 @@ pub fn on_trap_entry(tf: &mut crate::trap::TrapFrame) {
     unsafe {
         if let Some(task_id) = CURRENT_TASK {
             let _ = task::set_trap_frame(task_id, tf as *mut _ as usize);
-            let user_sp = crate::trap::read_user_stack();
-            let _ = task::set_user_sp(task_id, user_sp);
+            if tf.user_sp != 0 {
+                let _ = task::set_user_sp(task_id, tf.user_sp);
+            }
         }
     }
 }
@@ -209,6 +210,7 @@ pub fn spawn_forked_user(
         ptr::copy_nonoverlapping(parent_tf as *const _, child_tf as *mut _, 1);
         child_tf.a0 = 0;
         child_tf.sepc = parent_tf.sepc.wrapping_add(4);
+        child_tf.user_sp = user_sp;
     }
     // Ensure the first resume uses the saved trap frame without clobbering it.
     let _ = task::set_context(task_id, resume_user_from_trap as usize, trap_frame_ptr);
@@ -243,7 +245,6 @@ fn user_task_entry() -> ! {
         crate::sbi::shutdown();
     }
     mm::switch_root(root_pa);
-    crate::trap::set_kernel_stack(kernel_sp);
     unsafe {
         crate::trap::enter_user(entry, user_sp, mm::satp_for_root(root_pa));
     }
@@ -262,7 +263,6 @@ fn resume_user_from_trap() -> ! {
         crate::sbi::shutdown();
     }
     mm::switch_root(root_pa);
-    crate::trap::set_user_stack(user_sp);
     crate::trap::return_to_user(trap_frame);
 }
 
@@ -336,14 +336,6 @@ pub fn preempt_current() {
         if root_pa != 0 && trap_frame != 0 {
             // 用户任务在 trap 中被抢占：恢复后从保存的 trapframe 返回用户态。
             let _ = task::set_context(task_id, resume_user_from_trap as usize, trap_frame);
-            if let Some(user_sp) = task::user_sp(task_id) {
-                if user_sp != 0 {
-                    crate::trap::set_user_stack(user_sp);
-                }
-            }
-        } else {
-            // 内核任务仅需保持当前内核栈指针供下次 trap 使用。
-            crate::trap::set_kernel_stack(crate::trap::current_sp());
         }
     }
 }
@@ -381,13 +373,6 @@ pub fn yield_now() {
         if root_pa != 0 && trap_frame != 0 {
             // 用户任务主动让出 CPU 时，确保后续能从 trapframe 返回用户态。
             let _ = task::set_context(task_id, resume_user_from_trap as usize, trap_frame);
-            if let Some(user_sp) = task::user_sp(task_id) {
-                if user_sp != 0 {
-                    crate::trap::set_user_stack(user_sp);
-                }
-            }
-        } else {
-            crate::trap::set_kernel_stack(crate::trap::current_sp());
         }
     }
 }

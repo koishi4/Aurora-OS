@@ -121,6 +121,7 @@
 - Add per-process brk tracking and sys_brk to grow user heaps for Rust runtime initialization.
 - Guard wait queue mutations with IRQ masking to avoid reentrant corruption.
 - Make trap entry handle kernel-mode interrupts without swapping to user stack.
+- Keep sscratch zero in kernel mode and use trapframe.user_sp for user returns.
 - Add gettid and sched_yield stubs (TaskId+1 when available).
 - Add exit_group stub aligned with exit shutdown.
 - Add clock_gettime64 alias to clock_gettime stub.

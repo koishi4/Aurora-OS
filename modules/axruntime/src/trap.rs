@@ -106,7 +106,7 @@ pub fn current_trap_frame() -> Option<&'static mut TrapFrame> {
 pub fn init() {
     unsafe {
         write_stvec(__trap_vector as usize);
-        write_sscratch(read_sp());
+        write_sscratch(0);
     }
 }
 
@@ -157,20 +157,6 @@ pub unsafe fn enter_user(entry: usize, user_sp: usize, satp: usize) -> ! {
             clobber_abi("C"),
             options(noreturn)
         );
-    }
-}
-
-pub fn set_kernel_stack(sp: usize) {
-    // SAFETY: caller provides a valid kernel stack pointer.
-    unsafe {
-        write_sscratch(sp);
-    }
-}
-
-pub fn set_user_stack(sp: usize) {
-    // SAFETY: caller provides a valid user stack pointer.
-    unsafe {
-        write_sscratch(sp);
     }
 }
 
