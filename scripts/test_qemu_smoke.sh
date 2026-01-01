@@ -14,6 +14,7 @@ EXT4_WRITE_TEST=${EXT4_WRITE_TEST:-0}
 EXPECT_EXT4_WRITE=${EXPECT_EXT4_WRITE:-0}
 NET=${NET:-0}
 EXPECT_NET=${EXPECT_NET:-0}
+NET_HOSTFWD=${NET_HOSTFWD:-}
 NET_LOOPBACK_TEST=${NET_LOOPBACK_TEST:-0}
 EXPECT_NET_LOOPBACK=${EXPECT_NET_LOOPBACK:-0}
 TCP_ECHO_TEST=${TCP_ECHO_TEST:-0}
@@ -121,8 +122,12 @@ fi
 
 NET_ARGS=()
 if [[ "${NET}" == "1" ]]; then
+  NETDEV="user,id=net0"
+  if [[ -n "${NET_HOSTFWD}" ]]; then
+    NETDEV="${NETDEV},hostfwd=${NET_HOSTFWD}"
+  fi
   NET_ARGS=(
-    -netdev user,id=net0
+    -netdev "${NETDEV}"
     -device virtio-net-device,netdev=net0
   )
 fi

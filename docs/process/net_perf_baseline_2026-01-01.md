@@ -24,10 +24,11 @@ make test-net-perf ARCH=riscv64 PLATFORM=qemu
 ```
 
 ## 结果
-- net_bench 字节统计：未进行吞吐注入，仅确认 ready banner。
+- net_bench 字节统计：rx_bytes 未输出（记录为 missing，后续排查 hostfwd 入站路径）。
+- host 发送统计：sent_bytes=1048576，duration_ms=59。
 - 日志路径：
   - perf.log：build/net-perf/perf.log
   - qemu-smoke.log：build/net-perf/qemu-smoke.log
 
 ## 备注
-- 当前基线验证覆盖脚本闭环与 /init 替换路径，后续接入 iperf3/redis 后再补充真实吞吐数据。
+- 当前基线验证覆盖脚本闭环、hostfwd 注入与 /init 替换路径；rx_bytes 未输出，需要后续确认 hostfwd 入站数据与 TCP 接收路径。

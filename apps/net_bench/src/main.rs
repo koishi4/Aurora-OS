@@ -108,6 +108,28 @@ fn write_u64(mut val: u64) {
     write_stdout(&buf[idx..]);
 }
 
+fn recv_exact(fd: usize, buf: &mut [u8]) -> bool {
+    let mut offset = 0usize;
+    while offset < buf.len() {
+        let n = unsafe {
+            syscall6(
+                SYS_RECVFROM,
+                fd,
+                buf[offset..].as_mut_ptr() as usize,
+                buf.len() - offset,
+                0,
+                0,
+                0,
+            )
+        };
+        if n <= 0 {
+            return false;
+        }
+        offset += n as usize;
+    }
+    true
+}
+
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     let server = check(unsafe { syscall6(SYS_SOCKET, AF_INET as usize, SOCK_STREAM, 0, 0, 0, 0) });
@@ -129,10 +151,14 @@ pub extern "C" fn _start() -> ! {
 
     loop {
         let client = check(unsafe { syscall6(SYS_ACCEPT, server, 0, 0, 0, 0, 0) });
+        let mut header = [0u8; 8];
+        if !recv_exact(client, &mut header) {
+            fail();
+        }
+        let target = u64::from_be_bytes(header);
         let mut buf = [0u8; 4096];
         let mut total: u64 = 0;
-
-        loop {
+        while total < target {
             let n = unsafe {
                 syscall6(
                     SYS_RECVFROM,
@@ -144,11 +170,8 @@ pub extern "C" fn _start() -> ! {
                     0,
                 )
             };
-            if n < 0 {
+            if n <= 0 {
                 fail();
-            }
-            if n == 0 {
-                break;
             }
             total += n as u64;
         }

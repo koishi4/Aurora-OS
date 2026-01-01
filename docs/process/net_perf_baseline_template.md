@@ -30,12 +30,19 @@ make test-net-perf ARCH=riscv64 PLATFORM=qemu
 PERF_INIT_ELF=build/net_bench.elf \
 PERF_ROOTFS_DIR=apps/net_bench/rootfs \
 PERF_EXPECT="net-bench: ready" \
+PERF_SEND_BYTES=$((4*1024*1024)) \
+PERF_HOST_PORT=auto \
+PERF_READY_TIMEOUT=5 \
 make test-net-perf ARCH=riscv64 PLATFORM=qemu
 ```
 
 备注：
 - `scripts/net_perf_baseline.sh` 会自动设置 `USER_TEST=1`、`EXPECT_EXT4=1`、`EXPECT_EXT4_ISSUE=0` 以确保 `/init` 运行且不强制 `/etc/issue` 输出。
 - `scripts/net_perf_baseline.sh` 会传递 `INIT_ELF_SKIP_BUILD=1`，避免 `mkfs_ext4.sh` 覆盖自定义 `/init`。
+- `scripts/net_perf_send.py` 会通过 hostfwd 连接 `PERF_HOST_PORT` 并发送 `PERF_SEND_BYTES`。
+- `PERF_HOST_PORT=auto` 会自动选择一个可用端口，避免 hostfwd 端口冲突。
+- `PERF_READY_TIMEOUT` 控制等待 `net-bench: ready` 的上限（秒）。
+- `net_bench` 期望收到 8 字节大端长度头（由 `net_perf_send.py` 自动发送）。
 
 ## 结果
 - iperf3 吞吐：
@@ -44,6 +51,7 @@ make test-net-perf ARCH=riscv64 PLATFORM=qemu
 - 日志路径：
   - perf.log：
   - qemu-smoke.log：
+  - sender.log：
 
 ## 备注
 - 记录失败原因与复现步骤。

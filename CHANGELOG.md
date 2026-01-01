@@ -83,6 +83,7 @@
 - Add INIT_ELF_SKIP_BUILD to mkfs_ext4 so custom `/init` binaries are not overwritten.
 - Teach net perf baseline to archive the QEMU log and validate PERF_EXPECT markers against it.
 - Record net-perf baseline run with net_bench in docs/process/net_perf_baseline_2026-01-01.md.
+- Add net-perf sender helper, hostfwd wiring, auto host port selection, ready-wait handling, and a length-prefixed net_bench stream; record missing rx bytes explicitly.
 - Route faccessat/statx/readlinkat path resolution through memfs.
 - Route statfs path resolution through memfs.
 - Route path-based stub syscalls (mkdirat/unlinkat/linkat/renameat* and chmod/chown/utimensat) through memfs.
