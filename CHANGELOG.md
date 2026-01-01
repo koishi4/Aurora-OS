@@ -188,6 +188,7 @@
 - Add getsockname/getpeername support for socket address queries.
 - Add SO_RCVTIMEO/SO_SNDTIMEO handling with timeout-aware socket waits.
 - Add sendmsg/recvmsg with basic iovec support for sockets.
+- Add sendmmsg/recvmmsg batching for UDP sockets.
 - Fix sockaddr_in IP parsing to honor network byte order for local TCP connects.
 - Keep net polling active while TCP handshake is pending to avoid stalled connects.
 - Grow RISC-V boot stack to 64KB to avoid deep syscall stack overflows.

@@ -194,6 +194,8 @@ fn dispatch(tf: &mut TrapFrame, ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_RECVFROM => sys_recvfrom(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4], ctx.args[5]),
         SYS_SENDMSG => sys_sendmsg(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_RECVMSG => sys_recvmsg(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_SENDMMSG => sys_sendmmsg(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_RECVMMSG => sys_recvmmsg(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
         _ => Err(Errno::NoSys),
     }
 }
@@ -263,6 +265,8 @@ const SYS_SENDTO: usize = 206;
 const SYS_RECVFROM: usize = 207;
 const SYS_SENDMSG: usize = 211;
 const SYS_RECVMSG: usize = 212;
+const SYS_SENDMMSG: usize = 269;
+const SYS_RECVMMSG: usize = 243;
 const SYS_LSEEK: usize = 62;
 const SYS_SCHED_SETAFFINITY: usize = 122;
 const SYS_SCHED_GETAFFINITY: usize = 123;
@@ -411,6 +415,14 @@ struct MsgHdr {
     msg_controllen: usize,
     msg_flags: i32,
     msg_flags_pad: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct MMsgHdr {
+    msg_hdr: MsgHdr,
+    msg_len: u32,
+    msg_len_pad: u32,
 }
 
 #[repr(C)]
@@ -1448,7 +1460,7 @@ fn sys_recvfrom(
     Ok(total)
 }
 
-fn sys_sendmsg(fd: usize, msg: usize, _flags: usize) -> Result<usize, Errno> {
+fn sendmsg_inner(fd: usize, msg: usize, _flags: usize) -> Result<usize, Errno> {
     if msg == 0 {
         return Err(Errno::Fault);
     }
@@ -1519,7 +1531,7 @@ fn sys_sendmsg(fd: usize, msg: usize, _flags: usize) -> Result<usize, Errno> {
     Ok(total)
 }
 
-fn sys_recvmsg(fd: usize, msg: usize, _flags: usize) -> Result<usize, Errno> {
+fn recvmsg_inner(fd: usize, msg: usize, _flags: usize) -> Result<usize, Errno> {
     if msg == 0 {
         return Err(Errno::Fault);
     }
@@ -1612,6 +1624,87 @@ fn sys_recvmsg(fd: usize, msg: usize, _flags: usize) -> Result<usize, Errno> {
         UserPtr::new(msg).write(root_pa, hdr).ok_or(Errno::Fault)?;
     }
     Ok(total)
+}
+
+fn sys_sendmsg(fd: usize, msg: usize, flags: usize) -> Result<usize, Errno> {
+    sendmsg_inner(fd, msg, flags)
+}
+
+fn sys_recvmsg(fd: usize, msg: usize, flags: usize) -> Result<usize, Errno> {
+    recvmsg_inner(fd, msg, flags)
+}
+
+fn sys_sendmmsg(fd: usize, msgvec: usize, vlen: usize, flags: usize) -> Result<usize, Errno> {
+    if msgvec == 0 {
+        return Err(Errno::Fault);
+    }
+    if vlen == 0 {
+        return Ok(0);
+    }
+    let root_pa = mm::current_root_pa();
+    let count = core::cmp::min(vlen, IOV_MAX);
+    let mut sent = 0usize;
+    for idx in 0..count {
+        let offset = idx
+            .checked_mul(size_of::<MMsgHdr>())
+            .ok_or(Errno::Fault)?;
+        let addr = msgvec.checked_add(offset).ok_or(Errno::Fault)?;
+        let mut mmsg = UserPtr::<MMsgHdr>::new(addr)
+            .read(root_pa)
+            .ok_or(Errno::Fault)?;
+        let hdr_addr = addr;
+        let n = match sendmsg_inner(fd, hdr_addr, flags) {
+            Ok(n) => n,
+            Err(Errno::Again) if sent > 0 => break,
+            Err(err) => return Err(err),
+        };
+        mmsg.msg_len = n as u32;
+        UserPtr::new(addr).write(root_pa, mmsg).ok_or(Errno::Fault)?;
+        sent += 1;
+    }
+    Ok(sent)
+}
+
+fn sys_recvmmsg(
+    fd: usize,
+    msgvec: usize,
+    vlen: usize,
+    flags: usize,
+    timeout: usize,
+) -> Result<usize, Errno> {
+    if msgvec == 0 {
+        return Err(Errno::Fault);
+    }
+    if vlen == 0 {
+        return Ok(0);
+    }
+    if timeout != 0 {
+        let root_pa = mm::current_root_pa();
+        UserPtr::<Timespec>::new(timeout)
+            .read(root_pa)
+            .ok_or(Errno::Fault)?;
+    }
+    let root_pa = mm::current_root_pa();
+    let count = core::cmp::min(vlen, IOV_MAX);
+    let mut recvd = 0usize;
+    for idx in 0..count {
+        let offset = idx
+            .checked_mul(size_of::<MMsgHdr>())
+            .ok_or(Errno::Fault)?;
+        let addr = msgvec.checked_add(offset).ok_or(Errno::Fault)?;
+        let mut mmsg = UserPtr::<MMsgHdr>::new(addr)
+            .read(root_pa)
+            .ok_or(Errno::Fault)?;
+        let n = match recvmsg_inner(fd, addr, flags) {
+            Ok(n) => n,
+            Err(Errno::Again) if recvd > 0 => break,
+            Err(err) => return Err(err),
+        };
+        mmsg.msg_len = n as u32;
+        UserPtr::new(addr).write(root_pa, mmsg).ok_or(Errno::Fault)?;
+        recvd += 1;
+    }
+    Ok(recvd)
 }
 
 fn sys_openat(_dirfd: usize, pathname: usize, flags: usize, _mode: usize) -> Result<usize, Errno> {

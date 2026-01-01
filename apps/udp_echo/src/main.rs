@@ -11,6 +11,8 @@ const SYS_SENDTO: usize = 206;
 const SYS_RECVFROM: usize = 207;
 const SYS_SENDMSG: usize = 211;
 const SYS_RECVMSG: usize = 212;
+const SYS_SENDMMSG: usize = 269;
+const SYS_RECVMMSG: usize = 243;
 const SYS_CLOSE: usize = 57;
 
 const AF_INET: u16 = 2;
@@ -24,6 +26,8 @@ const OK_MSG: &[u8] = b"udp-echo: ok\n";
 const FAIL_MSG: &[u8] = b"udp-echo: fail\n";
 const SEND_MSG: &[u8] = b"ping";
 const REPLY_MSG: &[u8] = b"pong";
+const MMSG_A: &[u8] = b"aa";
+const MMSG_B: &[u8] = b"bb";
 
 #[repr(C)]
 struct SockAddrIn {
@@ -50,6 +54,13 @@ struct MsgHdr {
     msg_controllen: usize,
     msg_flags: i32,
     msg_flags_pad: u32,
+}
+
+#[repr(C)]
+struct MMsgHdr {
+    msg_hdr: MsgHdr,
+    msg_len: u32,
+    msg_len_pad: u32,
 }
 
 #[inline(always)]
@@ -159,6 +170,34 @@ fn syscall_recvmsg(fd: usize, msg: &mut MsgHdr) -> usize {
     check(unsafe { syscall6(SYS_RECVMSG, fd, msg as *mut MsgHdr as usize, 0, 0, 0, 0) })
 }
 
+fn syscall_sendmmsg(fd: usize, msgvec: &mut [MMsgHdr]) -> usize {
+    check(unsafe {
+        syscall6(
+            SYS_SENDMMSG,
+            fd,
+            msgvec.as_mut_ptr() as usize,
+            msgvec.len(),
+            0,
+            0,
+            0,
+        )
+    })
+}
+
+fn syscall_recvmmsg(fd: usize, msgvec: &mut [MMsgHdr]) -> usize {
+    check(unsafe {
+        syscall6(
+            SYS_RECVMMSG,
+            fd,
+            msgvec.as_mut_ptr() as usize,
+            msgvec.len(),
+            0,
+            0,
+            0,
+        )
+    })
+}
+
 fn syscall_close(fd: usize) {
     let _ = unsafe { syscall6(SYS_CLOSE, fd, 0, 0, 0, 0, 0) };
 }
@@ -182,6 +221,15 @@ fn slices_equal(a: &[u8], b: &[u8]) -> bool {
         }
     }
     true
+}
+
+fn check_addr(addr: &SockAddrIn, port: u16) {
+    if addr.sin_family != AF_INET
+        || addr.sin_port != port.to_be()
+        || addr.sin_addr != u32::from_be_bytes(LOCAL_IP)
+    {
+        fail();
+    }
 }
 
 #[no_mangle]
@@ -222,14 +270,13 @@ pub extern "C" fn _start() -> ! {
         sin_addr: 0,
         sin_zero: [0; 8],
     };
-    let mut from_len = core::mem::size_of::<SockAddrIn>() as u32;
     let mut recv_iov = [Iovec {
         iov_base: buf.as_mut_ptr() as usize,
         iov_len: buf.len(),
     }];
     let mut recv_msg = MsgHdr {
         msg_name: &mut from_addr as *mut SockAddrIn as usize,
-        msg_namelen: from_len,
+        msg_namelen: core::mem::size_of::<SockAddrIn>() as u32,
         msg_namelen_pad: 0,
         msg_iov: recv_iov.as_mut_ptr() as usize,
         msg_iovlen: recv_iov.len(),
@@ -239,19 +286,13 @@ pub extern "C" fn _start() -> ! {
         msg_flags_pad: 0,
     };
     let received = syscall_recvmsg(server, &mut recv_msg);
-    from_len = recv_msg.msg_namelen;
     if !slices_equal(&buf[..received], SEND_MSG) {
         fail();
     }
-    if from_len as usize != core::mem::size_of::<SockAddrIn>() {
+    if recv_msg.msg_namelen as usize != core::mem::size_of::<SockAddrIn>() {
         fail();
     }
-    if from_addr.sin_family != AF_INET
-        || from_addr.sin_port != CLIENT_PORT.to_be()
-        || from_addr.sin_addr != u32::from_be_bytes(LOCAL_IP)
-    {
-        fail();
-    }
+    check_addr(&from_addr, CLIENT_PORT);
 
     send_iov[0] = Iovec {
         iov_base: REPLY_MSG.as_ptr() as usize,
@@ -279,14 +320,13 @@ pub extern "C" fn _start() -> ! {
         sin_addr: 0,
         sin_zero: [0; 8],
     };
-    let mut reply_len = core::mem::size_of::<SockAddrIn>() as u32;
     recv_iov[0] = Iovec {
         iov_base: buf.as_mut_ptr() as usize,
         iov_len: buf.len(),
     };
     let mut recv_reply = MsgHdr {
         msg_name: &mut reply_addr as *mut SockAddrIn as usize,
-        msg_namelen: reply_len,
+        msg_namelen: core::mem::size_of::<SockAddrIn>() as u32,
         msg_namelen_pad: 0,
         msg_iov: recv_iov.as_mut_ptr() as usize,
         msg_iovlen: recv_iov.len(),
@@ -296,19 +336,126 @@ pub extern "C" fn _start() -> ! {
         msg_flags_pad: 0,
     };
     let received = syscall_recvmsg(client, &mut recv_reply);
-    reply_len = recv_reply.msg_namelen;
     if !slices_equal(&buf[..received], REPLY_MSG) {
         fail();
     }
-    if reply_len as usize != core::mem::size_of::<SockAddrIn>() {
+    if recv_reply.msg_namelen as usize != core::mem::size_of::<SockAddrIn>() {
         fail();
     }
-    if reply_addr.sin_family != AF_INET
-        || reply_addr.sin_port != SERVER_PORT.to_be()
-        || reply_addr.sin_addr != u32::from_be_bytes(LOCAL_IP)
-    {
+    check_addr(&reply_addr, SERVER_PORT);
+
+    let mut recv_a = [0u8; 8];
+    let mut recv_b = [0u8; 8];
+    let mut from_a = SockAddrIn {
+        sin_family: 0,
+        sin_port: 0,
+        sin_addr: 0,
+        sin_zero: [0; 8],
+    };
+    let mut from_b = SockAddrIn {
+        sin_family: 0,
+        sin_port: 0,
+        sin_addr: 0,
+        sin_zero: [0; 8],
+    };
+
+    let send_a_iov = [Iovec {
+        iov_base: MMSG_A.as_ptr() as usize,
+        iov_len: MMSG_A.len(),
+    }];
+    let send_b_iov = [Iovec {
+        iov_base: MMSG_B.as_ptr() as usize,
+        iov_len: MMSG_B.len(),
+    }];
+    let mut send_vec = [
+        MMsgHdr {
+            msg_hdr: MsgHdr {
+                msg_name: &server_addr as *const SockAddrIn as usize,
+                msg_namelen: core::mem::size_of::<SockAddrIn>() as u32,
+                msg_namelen_pad: 0,
+                msg_iov: send_a_iov.as_ptr() as usize,
+                msg_iovlen: send_a_iov.len(),
+                msg_control: 0,
+                msg_controllen: 0,
+                msg_flags: 0,
+                msg_flags_pad: 0,
+            },
+            msg_len: 0,
+            msg_len_pad: 0,
+        },
+        MMsgHdr {
+            msg_hdr: MsgHdr {
+                msg_name: &server_addr as *const SockAddrIn as usize,
+                msg_namelen: core::mem::size_of::<SockAddrIn>() as u32,
+                msg_namelen_pad: 0,
+                msg_iov: send_b_iov.as_ptr() as usize,
+                msg_iovlen: send_b_iov.len(),
+                msg_control: 0,
+                msg_controllen: 0,
+                msg_flags: 0,
+                msg_flags_pad: 0,
+            },
+            msg_len: 0,
+            msg_len_pad: 0,
+        },
+    ];
+    let sent = syscall_sendmmsg(client, &mut send_vec);
+    if sent != 2 || send_vec[0].msg_len != MMSG_A.len() as u32 || send_vec[1].msg_len != MMSG_B.len() as u32 {
         fail();
     }
+
+    let mut recv_a_iov = [Iovec {
+        iov_base: recv_a.as_mut_ptr() as usize,
+        iov_len: recv_a.len(),
+    }];
+    let mut recv_b_iov = [Iovec {
+        iov_base: recv_b.as_mut_ptr() as usize,
+        iov_len: recv_b.len(),
+    }];
+    let mut recv_vec = [
+        MMsgHdr {
+            msg_hdr: MsgHdr {
+                msg_name: &mut from_a as *mut SockAddrIn as usize,
+                msg_namelen: core::mem::size_of::<SockAddrIn>() as u32,
+                msg_namelen_pad: 0,
+                msg_iov: recv_a_iov.as_mut_ptr() as usize,
+                msg_iovlen: recv_a_iov.len(),
+                msg_control: 0,
+                msg_controllen: 0,
+                msg_flags: 0,
+                msg_flags_pad: 0,
+            },
+            msg_len: 0,
+            msg_len_pad: 0,
+        },
+        MMsgHdr {
+            msg_hdr: MsgHdr {
+                msg_name: &mut from_b as *mut SockAddrIn as usize,
+                msg_namelen: core::mem::size_of::<SockAddrIn>() as u32,
+                msg_namelen_pad: 0,
+                msg_iov: recv_b_iov.as_mut_ptr() as usize,
+                msg_iovlen: recv_b_iov.len(),
+                msg_control: 0,
+                msg_controllen: 0,
+                msg_flags: 0,
+                msg_flags_pad: 0,
+            },
+            msg_len: 0,
+            msg_len_pad: 0,
+        },
+    ];
+    let recvd = syscall_recvmmsg(server, &mut recv_vec);
+    if recvd != 2 {
+        fail();
+    }
+    if recv_vec[0].msg_len != MMSG_A.len() as u32 || recv_vec[1].msg_len != MMSG_B.len() as u32 {
+        fail();
+    }
+    if !slices_equal(&recv_a[..MMSG_A.len()], MMSG_A) || !slices_equal(&recv_b[..MMSG_B.len()], MMSG_B) {
+        fail();
+    }
+    check_addr(&from_a, CLIENT_PORT);
+    check_addr(&from_b, CLIENT_PORT);
 
     syscall_close(client);
     syscall_close(server);
