@@ -118,6 +118,7 @@
 - Track O_NONBLOCK via fcntl and honor it for pipe reads/writes.
 - Add uname syscall stub with minimal utsname fields.
 - Add minimal getppid/getuid/geteuid/getgid/getegid/getresuid/getresgid stubs.
+- Add per-process brk tracking and sys_brk to grow user heaps for Rust runtime initialization.
 - Add gettid and sched_yield stubs (TaskId+1 when available).
 - Add exit_group stub aligned with exit shutdown.
 - Add clock_gettime64 alias to clock_gettime stub.

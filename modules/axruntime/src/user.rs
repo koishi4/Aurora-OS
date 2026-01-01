@@ -268,14 +268,17 @@ pub fn load_exec_elf(
     image: &[u8],
     argv: usize,
     envp: usize,
-) -> Result<UserContext, Errno> {
+) -> Result<(UserContext, usize), Errno> {
     let header = ElfHeader::parse(image)?;
     let root_pa = mm::alloc_user_root().ok_or(Errno::NoMem)?;
-    if let Err(err) = load_elf_segments(root_pa, image, &header) {
-        // execve 失败时释放新地址空间，避免泄漏页表页与用户页。
-        mm::release_user_root(root_pa);
-        return Err(err);
-    }
+    let max_vaddr = match load_elf_segments(root_pa, image, &header) {
+        Ok(max_vaddr) => max_vaddr,
+        Err(err) => {
+            // execve 失败时释放新地址空间，避免泄漏页表页与用户页。
+            mm::release_user_root(root_pa);
+            return Err(err);
+        }
+    };
 
     for idx in 0..USER_STACK_PAGES {
         let va = USER_STACK_VA + idx * PAGE_SIZE;
@@ -303,15 +306,18 @@ pub fn load_exec_elf(
     mm::flush_icache();
     mm::flush_tlb();
 
-    Ok(UserContext {
-        entry: header.entry as usize,
-        user_sp,
-        root_pa,
-        satp: mm::satp_for_root(root_pa),
-        argc,
-        argv: argv_ptr,
-        envp: envp_ptr,
-    })
+    Ok((
+        UserContext {
+            entry: header.entry as usize,
+            user_sp,
+            root_pa,
+            satp: mm::satp_for_root(root_pa),
+            argc,
+            argv: argv_ptr,
+            envp: envp_ptr,
+        },
+        max_vaddr,
+    ))
 }
 
 fn build_user_stack(
@@ -434,7 +440,8 @@ fn read_user_byte(root_pa: usize, addr: usize) -> Result<u8, Errno> {
     Ok(unsafe { *(pa as *const u8) })
 }
 
-fn load_elf_segments(root_pa: usize, image: &[u8], header: &ElfHeader) -> Result<(), Errno> {
+fn load_elf_segments(root_pa: usize, image: &[u8], header: &ElfHeader) -> Result<usize, Errno> {
+    let mut max_end = 0usize;
     for idx in 0..header.phnum {
         let ph = header.program_header(image, idx)?;
         if ph.p_type != 1 {
@@ -445,6 +452,9 @@ fn load_elf_segments(root_pa: usize, image: &[u8], header: &ElfHeader) -> Result
         }
         let seg_start = align_down(ph.p_vaddr as usize, mm::PAGE_SIZE);
         let seg_end = align_up((ph.p_vaddr + ph.p_memsz) as usize, mm::PAGE_SIZE);
+        if seg_end > max_end {
+            max_end = seg_end;
+        }
         let flags = mm::UserMapFlags {
             read: (ph.p_flags & 0x4) != 0,
             write: (ph.p_flags & 0x2) != 0,
@@ -470,7 +480,7 @@ fn load_elf_segments(root_pa: usize, image: &[u8], header: &ElfHeader) -> Result
         let file_slice = &image[ph.p_offset as usize..file_end];
         write_user_bytes(root_pa, ph.p_vaddr as usize, file_slice)?;
     }
-    Ok(())
+    Ok(max_end)
 }
 
 #[derive(Clone, Copy)]

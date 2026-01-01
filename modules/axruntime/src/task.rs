@@ -34,6 +34,7 @@ pub struct TaskControlBlock {
     pub user_root_pa: usize,
     pub user_entry: usize,
     pub user_sp: usize,
+    pub heap_top: usize,
     pub is_user: bool,
     // Pointer to the active trap frame on this task's kernel stack.
     // Valid only during trap handling; cleared on trap exit.
@@ -57,6 +58,7 @@ impl TaskControlBlock {
             user_root_pa: 0,
             user_entry: 0,
             user_sp: 0,
+            heap_top: 0,
             is_user: false,
             trap_frame: None,
             wait_reason: AtomicU8::new(WaitReason::None as u8),
@@ -84,6 +86,7 @@ pub const fn idle_task() -> TaskControlBlock {
         user_root_pa: 0,
         user_entry: 0,
         user_sp: 0,
+        heap_top: 0,
         is_user: false,
         trap_frame: None,
         wait_reason: AtomicU8::new(WaitReason::None as u8),
@@ -174,6 +177,29 @@ pub fn set_user_sp(id: TaskId, user_sp: usize) -> bool {
         let task = &mut *TASK_TABLE[id].as_mut_ptr();
         task.user_sp = user_sp;
         true
+    }
+}
+
+pub fn set_heap_top(id: TaskId, heap_top: usize) -> bool {
+    // SAFETY: single-hart early boot; task slots are stable.
+    unsafe {
+        if id >= MAX_TASKS || !TASK_USED[id] {
+            return false;
+        }
+        let task = &mut *TASK_TABLE[id].as_mut_ptr();
+        task.heap_top = heap_top;
+        true
+    }
+}
+
+pub fn heap_top(id: TaskId) -> Option<usize> {
+    // SAFETY: read-only access to task slots during early boot.
+    unsafe {
+        if id >= MAX_TASKS || !TASK_USED[id] {
+            return None;
+        }
+        let task = &*TASK_TABLE[id].as_ptr();
+        Some(task.heap_top)
     }
 }
 

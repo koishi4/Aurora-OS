@@ -95,6 +95,7 @@ fn dispatch(tf: &mut TrapFrame, ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_EXIT => sys_exit(ctx.args[0]),
         SYS_EXECVE => sys_execve(tf, ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_CLONE => sys_clone(tf, ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
+        SYS_BRK => sys_brk(ctx.args[0]),
         SYS_READ => sys_read(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_WRITE => sys_write(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_READV => sys_readv(ctx.args[0], ctx.args[1], ctx.args[2]),
@@ -190,6 +191,7 @@ const SYS_EXIT: usize = 93;
 const SYS_EXIT_GROUP: usize = 94;
 const SYS_CLONE: usize = 220;
 const SYS_EXECVE: usize = 221;
+const SYS_BRK: usize = 214;
 const SYS_READ: usize = 63;
 const SYS_WRITE: usize = 64;
 const SYS_READV: usize = 65;
@@ -667,8 +669,8 @@ fn sys_execve(tf: &mut TrapFrame, pathname: usize, argv: usize, envp: usize) -> 
             return Err(err);
         }
     };
-    let ctx = match crate::user::load_exec_elf(root_pa, image, argv, envp) {
-        Ok(ctx) => ctx,
+    let (ctx, heap_top) = match crate::user::load_exec_elf(root_pa, image, argv, envp) {
+        Ok(result) => result,
         Err(err) => {
             if cfg!(feature = "user-tcp-echo") {
                 crate::println!("sys_execve: load elf failed ({:?})", err);
@@ -688,12 +690,50 @@ fn sys_execve(tf: &mut TrapFrame, pathname: usize, argv: usize, envp: usize) -> 
     crate::trap::set_user_stack(ctx.user_sp);
     if let Some(task_id) = crate::runtime::current_task_id() {
         let _ = crate::task::set_user_context(task_id, ctx.root_pa, ctx.entry, ctx.user_sp);
+        let _ = crate::task::set_heap_top(task_id, heap_top);
     }
     let _ = crate::process::update_current_root(ctx.root_pa);
     if ctx.root_pa != root_pa {
         crate::mm::release_user_root(root_pa);
     }
-    Ok(0)
+    Ok(ctx.argc)
+}
+
+fn sys_brk(addr: usize) -> Result<usize, Errno> {
+    let task_id = crate::runtime::current_task_id().ok_or(Errno::Fault)?;
+    let old_brk = crate::task::heap_top(task_id).ok_or(Errno::Fault)?;
+    if addr == 0 {
+        return Ok(old_brk);
+    }
+    if addr <= old_brk {
+        return Ok(old_brk);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let new_brk = align_up(addr, mm::PAGE_SIZE);
+    let start = align_up(old_brk, mm::PAGE_SIZE);
+    if start < new_brk {
+        let flags = mm::UserMapFlags {
+            read: true,
+            write: true,
+            exec: false,
+        };
+        for va in (start..new_brk).step_by(mm::PAGE_SIZE) {
+            let frame = mm::alloc_frame().ok_or(Errno::NoMem)?;
+            let pa = frame.addr().as_usize();
+            // SAFETY: fresh frame; zero before mapping into user space.
+            unsafe {
+                core::ptr::write_bytes(pa as *mut u8, 0, mm::PAGE_SIZE);
+            }
+            if !mm::map_user_page(root_pa, va, pa, flags) {
+                return Err(Errno::NoMem);
+            }
+        }
+    }
+    crate::task::set_heap_top(task_id, new_brk);
+    Ok(new_brk)
 }
 
 const EXECVE_IMAGE_MAX: usize = 0x100000;
