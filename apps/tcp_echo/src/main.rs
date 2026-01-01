@@ -12,10 +12,20 @@ const SYS_ACCEPT: usize = 202;
 const SYS_CONNECT: usize = 203;
 const SYS_SENDTO: usize = 206;
 const SYS_RECVFROM: usize = 207;
+const SYS_PPOLL: usize = 73;
+const SYS_GETSOCKOPT: usize = 209;
+const SYS_FCNTL: usize = 25;
 const SYS_CLOSE: usize = 57;
 
 const AF_INET: u16 = 2;
 const SOCK_STREAM: usize = 1;
+
+const F_SETFL: usize = 4;
+const O_NONBLOCK: usize = 0x800;
+const SOL_SOCKET: usize = 1;
+const SO_ERROR: usize = 4;
+
+const EINPROGRESS: isize = -115;
 
 const LOCAL_IP: [u8; 4] = [10, 0, 2, 15];
 const SERVER_PORT: u16 = 22345;
@@ -26,12 +36,27 @@ const FAIL_MSG: &[u8] = b"tcp-echo: fail\n";
 const SEND_MSG: &[u8] = b"ping";
 const REPLY_MSG: &[u8] = b"pong";
 
+const POLLOUT: i16 = 0x004;
+
 #[repr(C)]
 struct SockAddrIn {
     sin_family: u16,
     sin_port: u16,
     sin_addr: u32,
     sin_zero: [u8; 8],
+}
+
+#[repr(C)]
+struct PollFd {
+    fd: i32,
+    events: i16,
+    revents: i16,
+}
+
+#[repr(C)]
+struct Timespec {
+    tv_sec: i64,
+    tv_nsec: i64,
 }
 
 #[inline(always)]
@@ -111,8 +136,8 @@ fn syscall_accept(fd: usize) -> usize {
     check(unsafe { syscall6(SYS_ACCEPT, fd, 0, 0, 0, 0, 0) })
 }
 
-fn syscall_connect(fd: usize, addr: &SockAddrIn) {
-    check(unsafe {
+fn syscall_connect_nonblock(fd: usize, addr: &SockAddrIn) {
+    let ret = unsafe {
         syscall6(
             SYS_CONNECT,
             fd,
@@ -122,7 +147,13 @@ fn syscall_connect(fd: usize, addr: &SockAddrIn) {
             0,
             0,
         )
-    });
+    };
+    if ret == EINPROGRESS {
+        return;
+    }
+    if ret < 0 {
+        fail();
+    }
 }
 
 fn syscall_send(fd: usize, buf: &[u8]) -> usize {
@@ -131,6 +162,41 @@ fn syscall_send(fd: usize, buf: &[u8]) -> usize {
 
 fn syscall_recv(fd: usize, buf: &mut [u8]) -> usize {
     check(unsafe { syscall6(SYS_RECVFROM, fd, buf.as_mut_ptr() as usize, buf.len(), 0, 0, 0) })
+}
+
+fn syscall_ppoll(fds: &mut [PollFd], timeout: &Timespec) -> isize {
+    unsafe {
+        syscall6(
+            SYS_PPOLL,
+            fds.as_mut_ptr() as usize,
+            fds.len(),
+            timeout as *const Timespec as usize,
+            0,
+            0,
+            0,
+        )
+    }
+}
+
+fn syscall_getsockopt(fd: usize, level: usize, opt: usize, val: &mut i32, len: &mut usize) {
+    let ret = unsafe {
+        syscall6(
+            SYS_GETSOCKOPT,
+            fd,
+            level,
+            opt,
+            val as *mut i32 as usize,
+            len as *mut usize as usize,
+            0,
+        )
+    };
+    if ret < 0 {
+        fail();
+    }
+}
+
+fn syscall_fcntl(fd: usize, cmd: usize, arg: usize) {
+    check(unsafe { syscall6(SYS_FCNTL, fd, cmd, arg, 0, 0, 0) });
 }
 
 fn syscall_close(fd: usize) {
@@ -169,7 +235,33 @@ pub extern "C" fn _start() -> ! {
     syscall_bind(server, &server_addr);
     syscall_listen(server, 1);
     syscall_bind(client, &client_addr);
-    syscall_connect(client, &server_addr);
+    syscall_fcntl(client, F_SETFL, O_NONBLOCK);
+    syscall_connect_nonblock(client, &server_addr);
+
+    let mut pollfd = [PollFd {
+        fd: client as i32,
+        events: POLLOUT,
+        revents: 0,
+    }];
+    let timeout = Timespec {
+        tv_sec: 2,
+        tv_nsec: 0,
+    };
+    let polled = syscall_ppoll(&mut pollfd, &timeout);
+    if polled <= 0 {
+        fail();
+    }
+    if (pollfd[0].revents & POLLOUT) == 0 {
+        fail();
+    }
+
+    let mut so_error: i32 = -1;
+    let mut so_len = core::mem::size_of::<i32>();
+    syscall_getsockopt(client, SOL_SOCKET, SO_ERROR, &mut so_error, &mut so_len);
+    if so_error != 0 {
+        fail();
+    }
+    syscall_fcntl(client, F_SETFL, 0);
 
     let accepted = syscall_accept(server);
 
