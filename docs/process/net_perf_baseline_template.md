@@ -2,6 +2,7 @@
 
 ## 目标
 - 记录 iperf3/redis 基线吞吐与资源占用。
+- 若暂未移植 iperf3/redis，则使用 `net_bench` 作为临时吞吐接收端验证脚本闭环。
 - 为后续优化提供可对比的时间序列数据。
 
 ## 环境
@@ -24,9 +25,18 @@ PERF_EXPECT="iperf3: ok,redis: ok" \
 make test-net-perf ARCH=riscv64 PLATFORM=qemu
 ```
 
+示例（net_bench）：
+```bash
+PERF_INIT_ELF=apps/net_bench/target/riscv64gc-unknown-none-elf/release/net_bench \
+PERF_ROOTFS_DIR=apps/net_bench/rootfs \
+PERF_EXPECT="net-bench: ready" \
+make test-net-perf ARCH=riscv64 PLATFORM=qemu
+```
+
 ## 结果
 - iperf3 吞吐：
 - redis 基线：
+- net_bench 字节统计（若使用）：
 - 日志路径：
 
 ## 备注

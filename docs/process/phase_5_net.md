@@ -32,6 +32,7 @@
 - UDP 自测覆盖 SO_SNDTIMEO get/set 校验，验证超时选项的回读一致性。
 - 增加 `scripts/net_baseline.sh`，串行执行 net/net-loopback/tcp-echo/udp-echo 并归档日志。
 - 增加 `scripts/net_perf_baseline.sh` 与 `docs/process/net_perf_baseline_template.md`，用于记录 iperf3/redis 基线。
+- 增加用户态 `apps/net_bench` 作为性能基线临时 /init，支持 TCP 吞吐接收与字节统计输出。
 
 ## 问题与定位
 - QEMU user-net 下 ARP probe 已发送但 RX 帧未进入，定位为 virtio 现代特性头部长度不匹配导致帧损坏。
@@ -43,6 +44,7 @@
 - 日志包含 `tcp-echo: ok`，用户态 TCP echo 覆盖 connect/accept/send/recv 路径。
 - 调试过程与根因分析记录：`docs/process/debug_report_virtio_net_arp.md`，`docs/process/debug_report_tcp_echo.md`。
 - 待协议栈接入后补充 ping/iperf/redis 基准验证。
+- net-perf 基线临时以 `net_bench` 验证脚本闭环，后续替换为 iperf3/redis。
 
 ## 下一步
 - 接入轻量协议栈（ARP/IP/UDP/TCP）与 socket 语义。

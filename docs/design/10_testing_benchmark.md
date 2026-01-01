@@ -39,10 +39,12 @@ make test-* -> scripts/test_*.sh
 - make test-oscomp（运行 tests/self 用例：ramdisk + ext4 + ext4-init + net + net-loopback + tcp-echo + udp-echo）
 - make test-net-baseline（顺序执行 net/net-loopback/tcp-echo/udp-echo 并记录日志）
 - make test-net-perf（需要自定义 /init 与用户态二进制，记录性能基线日志）
+- PERF_INIT_ELF=apps/net_bench/target/.../net_bench PERF_ROOTFS_DIR=apps/net_bench/rootfs make test-net-perf（net_bench 作为临时吞吐接收端）
 
 ## 网络基准计划
 - 连通性基线：ARP reply 与 UDP echo 持续通过，作为 RX/IRQ 健康指标。
 - TCP 基线：tcp_echo 覆盖非阻塞 connect + ppoll + SO_ERROR + sendmsg/recvmsg iovec。
 - 性能基线：预留 iperf3 端到端吞吐测试（后续加入脚本与记录模板）。
+- 性能基线（临时）：使用 `apps/net_bench` 作为 `/init`，接收 TCP 流量并输出累计字节数，验证 net-perf 脚本闭环。
 - 基准脚本：`scripts/net_baseline.sh` 生成 `build/net-baseline/*.log`。
 - 性能脚本：`scripts/net_perf_baseline.sh` 生成 `build/net-perf/perf.log`。
