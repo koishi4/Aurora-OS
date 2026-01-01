@@ -192,6 +192,8 @@ fn dispatch(tf: &mut TrapFrame, ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_ACCEPT => sys_accept(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_SENDTO => sys_sendto(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4], ctx.args[5]),
         SYS_RECVFROM => sys_recvfrom(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4], ctx.args[5]),
+        SYS_SENDMSG => sys_sendmsg(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_RECVMSG => sys_recvmsg(ctx.args[0], ctx.args[1], ctx.args[2]),
         _ => Err(Errno::NoSys),
     }
 }
@@ -259,6 +261,8 @@ const SYS_GETSOCKOPT: usize = 209;
 const SYS_SHUTDOWN: usize = 210;
 const SYS_SENDTO: usize = 206;
 const SYS_RECVFROM: usize = 207;
+const SYS_SENDMSG: usize = 211;
+const SYS_RECVMSG: usize = 212;
 const SYS_LSEEK: usize = 62;
 const SYS_SCHED_SETAFFINITY: usize = 122;
 const SYS_SCHED_GETAFFINITY: usize = 123;
@@ -393,6 +397,20 @@ struct TimeZone {
 struct Iovec {
     iov_base: usize,
     iov_len: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct MsgHdr {
+    msg_name: usize,
+    msg_namelen: u32,
+    msg_namelen_pad: u32,
+    msg_iov: usize,
+    msg_iovlen: usize,
+    msg_control: usize,
+    msg_controllen: usize,
+    msg_flags: i32,
+    msg_flags_pad: u32,
 }
 
 #[repr(C)]
@@ -1427,6 +1445,172 @@ fn sys_recvfrom(
         remaining = remaining.saturating_sub(read);
     }
     write_sockaddr_in(root_pa, addr, addrlen, last_endpoint)?;
+    Ok(total)
+}
+
+fn sys_sendmsg(fd: usize, msg: usize, _flags: usize) -> Result<usize, Errno> {
+    if msg == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    let (socket_id, entry) = resolve_socket_entry(fd)?;
+    let nonblock = (entry.flags & O_NONBLOCK) != 0;
+    let timeout_ms = entry.send_timeout_ms;
+    let hdr = UserPtr::<MsgHdr>::new(msg)
+        .read(root_pa)
+        .ok_or(Errno::Fault)?;
+    if hdr.msg_iovlen > IOV_MAX {
+        return Err(Errno::Inval);
+    }
+    if hdr.msg_control != 0 || hdr.msg_controllen != 0 {
+        return Err(Errno::Inval);
+    }
+    if hdr.msg_iovlen == 0 {
+        return Ok(0);
+    }
+    let endpoint = if hdr.msg_name != 0 {
+        let namelen = hdr.msg_namelen as usize;
+        let (ip, port) = parse_sockaddr_in(root_pa, hdr.msg_name, namelen)?;
+        Some((ip, port))
+    } else {
+        None
+    };
+    let mut total = 0usize;
+    let mut scratch = [0u8; 512];
+    for idx in 0..hdr.msg_iovlen {
+        let iov = load_iovec(root_pa, hdr.msg_iov, idx)?;
+        if iov.iov_len == 0 {
+            continue;
+        }
+        let mut remaining = iov.iov_len;
+        while remaining > 0 {
+            let chunk = core::cmp::min(remaining, scratch.len());
+            let src = iov.iov_base.checked_add(iov.iov_len - remaining).ok_or(Errno::Fault)?;
+            UserSlice::new(src, chunk)
+                .copy_to_slice(root_pa, &mut scratch[..chunk])
+                .ok_or(Errno::Fault)?;
+            let sent = match axnet::socket_send(socket_id, &scratch[..chunk], endpoint) {
+                Ok(sent) => sent,
+                Err(axnet::NetError::WouldBlock) => {
+                    if total > 0 {
+                        return Ok(total);
+                    }
+                    if nonblock || !can_block_current() {
+                        return Err(Errno::Again);
+                    }
+                    if timeout_ms == 0 {
+                        crate::runtime::block_current(crate::runtime::net_wait_queue());
+                    } else if crate::runtime::wait_timeout_ms(crate::runtime::net_wait_queue(), timeout_ms)
+                        == crate::wait::WaitResult::Timeout
+                    {
+                        return Err(Errno::TimedOut);
+                    }
+                    continue;
+                }
+                Err(err) => return Err(map_net_err(err)),
+            };
+            total += sent;
+            if sent < chunk {
+                return Ok(total);
+            }
+            remaining = remaining.saturating_sub(sent);
+        }
+    }
+    Ok(total)
+}
+
+fn sys_recvmsg(fd: usize, msg: usize, _flags: usize) -> Result<usize, Errno> {
+    if msg == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    let (socket_id, entry) = resolve_socket_entry(fd)?;
+    let nonblock = (entry.flags & O_NONBLOCK) != 0;
+    let timeout_ms = entry.recv_timeout_ms;
+    let mut hdr = UserPtr::<MsgHdr>::new(msg)
+        .read(root_pa)
+        .ok_or(Errno::Fault)?;
+    if hdr.msg_iovlen > IOV_MAX {
+        return Err(Errno::Inval);
+    }
+    if hdr.msg_control != 0 || hdr.msg_controllen != 0 {
+        return Err(Errno::Inval);
+    }
+    if hdr.msg_iovlen == 0 {
+        return Ok(0);
+    }
+    let mut total = 0usize;
+    let mut scratch = [0u8; 512];
+    let mut last_endpoint = None;
+    for idx in 0..hdr.msg_iovlen {
+        let iov = load_iovec(root_pa, hdr.msg_iov, idx)?;
+        if iov.iov_len == 0 {
+            continue;
+        }
+        let mut remaining = iov.iov_len;
+        while remaining > 0 {
+            let chunk = core::cmp::min(remaining, scratch.len());
+            let (read, endpoint) = match axnet::socket_recv(socket_id, &mut scratch[..chunk]) {
+                Ok(result) => result,
+                Err(axnet::NetError::WouldBlock) => {
+                    if total > 0 {
+                        return Ok(total);
+                    }
+                    if nonblock || !can_block_current() {
+                        return Err(Errno::Again);
+                    }
+                    if timeout_ms == 0 {
+                        crate::runtime::block_current(crate::runtime::net_wait_queue());
+                    } else if crate::runtime::wait_timeout_ms(crate::runtime::net_wait_queue(), timeout_ms)
+                        == crate::wait::WaitResult::Timeout
+                    {
+                        return Err(Errno::TimedOut);
+                    }
+                    continue;
+                }
+                Err(err) => return Err(map_net_err(err)),
+            };
+            let dst = iov
+                .iov_base
+                .checked_add(iov.iov_len - remaining)
+                .ok_or(Errno::Fault)?;
+            UserSlice::new(dst, read)
+                .copy_from_slice(root_pa, &scratch[..read])
+                .ok_or(Errno::Fault)?;
+            total += read;
+            last_endpoint = endpoint;
+            if read < chunk {
+                break;
+            }
+            remaining = remaining.saturating_sub(read);
+        }
+    }
+    if hdr.msg_name != 0 {
+        let Some((ip, port)) = last_endpoint else {
+            return Ok(total);
+        };
+        let namelen = hdr.msg_namelen as usize;
+        if namelen < size_of::<SockAddrIn>() {
+            return Err(Errno::Inval);
+        }
+        let sock = SockAddrIn {
+            sin_family: AF_INET,
+            sin_port: port.to_be(),
+            sin_addr: match ip {
+                axnet::IpAddress::Ipv4(addr) => {
+                    let bytes = addr.as_bytes();
+                    u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+                }
+            },
+            sin_zero: [0; 8],
+        };
+        UserPtr::new(hdr.msg_name)
+            .write(root_pa, sock)
+            .ok_or(Errno::Fault)?;
+        hdr.msg_namelen = size_of::<SockAddrIn>() as u32;
+        hdr.msg_flags = 0;
+        UserPtr::new(msg).write(root_pa, hdr).ok_or(Errno::Fault)?;
+    }
     Ok(total)
 }
 

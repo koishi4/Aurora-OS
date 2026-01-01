@@ -9,6 +9,8 @@ const SYS_SOCKET: usize = 198;
 const SYS_BIND: usize = 200;
 const SYS_SENDTO: usize = 206;
 const SYS_RECVFROM: usize = 207;
+const SYS_SENDMSG: usize = 211;
+const SYS_RECVMSG: usize = 212;
 const SYS_CLOSE: usize = 57;
 
 const AF_INET: u16 = 2;
@@ -29,6 +31,25 @@ struct SockAddrIn {
     sin_port: u16,
     sin_addr: u32,
     sin_zero: [u8; 8],
+}
+
+#[repr(C)]
+struct Iovec {
+    iov_base: usize,
+    iov_len: usize,
+}
+
+#[repr(C)]
+struct MsgHdr {
+    msg_name: usize,
+    msg_namelen: u32,
+    msg_namelen_pad: u32,
+    msg_iov: usize,
+    msg_iovlen: usize,
+    msg_control: usize,
+    msg_controllen: usize,
+    msg_flags: i32,
+    msg_flags_pad: u32,
 }
 
 #[inline(always)]
@@ -100,6 +121,7 @@ fn syscall_bind(fd: usize, addr: &SockAddrIn) {
     });
 }
 
+#[allow(dead_code)]
 fn syscall_sendto(fd: usize, buf: &[u8], addr: &SockAddrIn) -> usize {
     check(unsafe {
         syscall6(
@@ -114,6 +136,7 @@ fn syscall_sendto(fd: usize, buf: &[u8], addr: &SockAddrIn) -> usize {
     })
 }
 
+#[allow(dead_code)]
 fn syscall_recvfrom(fd: usize, buf: &mut [u8], addr: &mut SockAddrIn, addrlen: &mut u32) -> usize {
     check(unsafe {
         syscall6(
@@ -126,6 +149,14 @@ fn syscall_recvfrom(fd: usize, buf: &mut [u8], addr: &mut SockAddrIn, addrlen: &
             addrlen as *mut u32 as usize,
         )
     })
+}
+
+fn syscall_sendmsg(fd: usize, msg: &MsgHdr) -> usize {
+    check(unsafe { syscall6(SYS_SENDMSG, fd, msg as *const MsgHdr as usize, 0, 0, 0, 0) })
+}
+
+fn syscall_recvmsg(fd: usize, msg: &mut MsgHdr) -> usize {
+    check(unsafe { syscall6(SYS_RECVMSG, fd, msg as *mut MsgHdr as usize, 0, 0, 0, 0) })
 }
 
 fn syscall_close(fd: usize) {
@@ -164,7 +195,22 @@ pub extern "C" fn _start() -> ! {
     syscall_bind(server, &server_addr);
     syscall_bind(client, &client_addr);
 
-    let sent = syscall_sendto(client, SEND_MSG, &server_addr);
+    let mut send_iov = [Iovec {
+        iov_base: SEND_MSG.as_ptr() as usize,
+        iov_len: SEND_MSG.len(),
+    }];
+    let send_msg = MsgHdr {
+        msg_name: &server_addr as *const SockAddrIn as usize,
+        msg_namelen: core::mem::size_of::<SockAddrIn>() as u32,
+        msg_namelen_pad: 0,
+        msg_iov: send_iov.as_ptr() as usize,
+        msg_iovlen: send_iov.len(),
+        msg_control: 0,
+        msg_controllen: 0,
+        msg_flags: 0,
+        msg_flags_pad: 0,
+    };
+    let sent = syscall_sendmsg(client, &send_msg);
     if sent != SEND_MSG.len() {
         fail();
     }
@@ -177,7 +223,23 @@ pub extern "C" fn _start() -> ! {
         sin_zero: [0; 8],
     };
     let mut from_len = core::mem::size_of::<SockAddrIn>() as u32;
-    let received = syscall_recvfrom(server, &mut buf, &mut from_addr, &mut from_len);
+    let mut recv_iov = [Iovec {
+        iov_base: buf.as_mut_ptr() as usize,
+        iov_len: buf.len(),
+    }];
+    let mut recv_msg = MsgHdr {
+        msg_name: &mut from_addr as *mut SockAddrIn as usize,
+        msg_namelen: from_len,
+        msg_namelen_pad: 0,
+        msg_iov: recv_iov.as_mut_ptr() as usize,
+        msg_iovlen: recv_iov.len(),
+        msg_control: 0,
+        msg_controllen: 0,
+        msg_flags: 0,
+        msg_flags_pad: 0,
+    };
+    let received = syscall_recvmsg(server, &mut recv_msg);
+    from_len = recv_msg.msg_namelen;
     if !slices_equal(&buf[..received], SEND_MSG) {
         fail();
     }
@@ -191,7 +253,22 @@ pub extern "C" fn _start() -> ! {
         fail();
     }
 
-    let sent = syscall_sendto(server, REPLY_MSG, &client_addr);
+    send_iov[0] = Iovec {
+        iov_base: REPLY_MSG.as_ptr() as usize,
+        iov_len: REPLY_MSG.len(),
+    };
+    let send_reply = MsgHdr {
+        msg_name: &client_addr as *const SockAddrIn as usize,
+        msg_namelen: core::mem::size_of::<SockAddrIn>() as u32,
+        msg_namelen_pad: 0,
+        msg_iov: send_iov.as_ptr() as usize,
+        msg_iovlen: send_iov.len(),
+        msg_control: 0,
+        msg_controllen: 0,
+        msg_flags: 0,
+        msg_flags_pad: 0,
+    };
+    let sent = syscall_sendmsg(server, &send_reply);
     if sent != REPLY_MSG.len() {
         fail();
     }
@@ -203,7 +280,23 @@ pub extern "C" fn _start() -> ! {
         sin_zero: [0; 8],
     };
     let mut reply_len = core::mem::size_of::<SockAddrIn>() as u32;
-    let received = syscall_recvfrom(client, &mut buf, &mut reply_addr, &mut reply_len);
+    recv_iov[0] = Iovec {
+        iov_base: buf.as_mut_ptr() as usize,
+        iov_len: buf.len(),
+    };
+    let mut recv_reply = MsgHdr {
+        msg_name: &mut reply_addr as *mut SockAddrIn as usize,
+        msg_namelen: reply_len,
+        msg_namelen_pad: 0,
+        msg_iov: recv_iov.as_mut_ptr() as usize,
+        msg_iovlen: recv_iov.len(),
+        msg_control: 0,
+        msg_controllen: 0,
+        msg_flags: 0,
+        msg_flags_pad: 0,
+    };
+    let received = syscall_recvmsg(client, &mut recv_reply);
+    reply_len = recv_reply.msg_namelen;
     if !slices_equal(&buf[..received], REPLY_MSG) {
         fail();
     }
