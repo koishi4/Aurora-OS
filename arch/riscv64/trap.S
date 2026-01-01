@@ -37,7 +37,9 @@ __trap_vector:
     .set TF_SEPC,   31*8
     .set TF_SCAUSE, 32*8
     .set TF_STVAL,  33*8
-    .set TF_SIZE,   34*8
+    .set TF_USER_SP,34*8
+    .set TF_PAD,    35*8
+    .set TF_SIZE,   36*8
 
     # Swap to kernel stack stored in sscratch; keep user sp in sscratch.
     csrrw sp, sscratch, sp
@@ -82,10 +84,14 @@ __trap_vector:
     sd t0, TF_SCAUSE(sp)
     csrr t0, stval
     sd t0, TF_STVAL(sp)
+    csrr t0, sscratch
+    sd t0, TF_USER_SP(sp)
 
     mv a0, sp
     call trap_handler
 
+    ld t0, TF_USER_SP(sp)
+    csrw sscratch, t0
     ld t0, TF_SEPC(sp)
     csrw sepc, t0
     ld t0, TF_SSTATUS(sp)
@@ -130,6 +136,8 @@ __trap_vector:
 .globl __trap_return
 __trap_return:
     # sp points to the saved trap frame.
+    ld t0, TF_USER_SP(sp)
+    csrw sscratch, t0
     ld t0, TF_SEPC(sp)
     csrw sepc, t0
     ld t0, TF_SSTATUS(sp)

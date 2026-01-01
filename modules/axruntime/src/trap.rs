@@ -44,6 +44,8 @@ pub struct TrapFrame {
     pub sepc: usize,
     pub scause: usize,
     pub stval: usize,
+    pub user_sp: usize,
+    pub pad: usize,
 }
 
 extern "C" {
@@ -142,6 +144,7 @@ pub unsafe fn enter_user(entry: usize, user_sp: usize, satp: usize) -> ! {
             "csrw satp, {satp}",
             "sfence.vma",
             "csrw sepc, {entry}",
+            "csrw sscratch, sp",
             "mv sp, {sp}",
             "csrc sstatus, {spp_mask}",
             "csrs sstatus, {spie_mask}",
