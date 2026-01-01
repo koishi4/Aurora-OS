@@ -10,10 +10,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "axnet"
+version = "0.1.0"
+
+[[package]]
 name = "axruntime"
 version = "0.1.0"
 dependencies = [
  "axfs",
+ "axnet",
 ]
 
 [[package]]

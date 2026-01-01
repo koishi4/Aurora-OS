@@ -318,6 +318,7 @@ pub fn init(virtio_mmio: &[VirtioMmioDevice]) {
     }
 }
 
+#[allow(dead_code)]
 pub fn device() -> Option<&'static VirtioNetDevice> {
     if VIRTIO_NET_READY.load(Ordering::Acquire) {
         Some(&VIRTIO_NET_DEVICE)
@@ -465,7 +466,7 @@ fn recycle_rx_desc(queue: &mut VirtioNetQueue, queue_size: usize, desc_id: usize
 }
 
 fn wait_for_tx_completion(queue: &VirtioNetQueue) {
-    let mut last_used = VIRTIO_NET_TX_USED.load(Ordering::Acquire) as u16;
+    let last_used = VIRTIO_NET_TX_USED.load(Ordering::Acquire) as u16;
     loop {
         let used_idx = unsafe { ptr::read_volatile(&queue.used.idx) };
         if used_idx != last_used {
