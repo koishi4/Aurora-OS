@@ -1422,6 +1422,7 @@ fn sys_recvfrom(
     let mut last_endpoint = None;
     while remaining > 0 {
         let chunk = core::cmp::min(remaining, scratch.len());
+        log_tcp_window_event(socket_id, "pre");
         let (read, endpoint) = match axnet::socket_recv(socket_id, &mut scratch[..chunk]) {
             Ok(result) => result,
             Err(axnet::NetError::WouldBlock) => {
@@ -1445,6 +1446,7 @@ fn sys_recvfrom(
             }
             Err(err) => return Err(map_net_err(err)),
         };
+        log_tcp_window_event(socket_id, "post");
         let dst = buf.checked_add(total).ok_or(Errno::Fault)?;
         UserSlice::new(dst, read)
             .copy_from_slice(root_pa, &scratch[..read])
@@ -1461,6 +1463,24 @@ fn sys_recvfrom(
     }
     write_sockaddr_in(root_pa, addr, addrlen, last_endpoint)?;
     Ok(total)
+}
+
+fn log_tcp_window_event(socket_id: axnet::SocketId, tag: &str) {
+    let Ok(Some(event)) = axnet::socket_recv_window_event(socket_id) else {
+        return;
+    };
+    let port = axnet::socket_local_endpoint(socket_id)
+        .map(|(_, port)| port)
+        .unwrap_or(0);
+    crate::println!(
+        "tcp: recv_win {} id={} port={} win={} cap={} queued={}",
+        tag,
+        socket_id,
+        port,
+        event.window,
+        event.capacity,
+        event.queued
+    );
 }
 
 fn sendmsg_inner(fd: usize, msg: usize, _flags: usize) -> Result<usize, Errno> {

@@ -26,7 +26,7 @@ const MAX_SOCKETS: usize = 8;
 const SOCKET_STORAGE_LEN: usize = MAX_SOCKETS + 1;
 const ICMP_META_LEN: usize = 4;
 const ICMP_BUF_LEN: usize = 256;
-const TCP_BUF_LEN: usize = 2048;
+const TCP_BUF_LEN: usize = 8192;
 const UDP_BUF_LEN: usize = 2048;
 const UDP_META_LEN: usize = 4;
 const ARP_POLL_RETRY: u16 = 8;
@@ -216,6 +216,10 @@ pub fn init(dev: &'static dyn NetDevice) -> Result<(), NetError> {
 }
 
 pub fn notify_irq() {
+    NET_NEED_POLL.store(true, Ordering::Release);
+}
+
+pub fn request_poll() {
     NET_NEED_POLL.store(true, Ordering::Release);
 }
 
@@ -592,6 +596,7 @@ struct SocketSlot {
     listening: bool,
     connecting: bool,
     last_error: Option<NetError>,
+    last_rx_window: u32,
     handle: MaybeUninit<SocketHandle>,
 }
 
@@ -602,6 +607,7 @@ const EMPTY_SOCKET_SLOT: SocketSlot = SocketSlot {
     listening: false,
     connecting: false,
     last_error: None,
+    last_rx_window: 0,
     handle: MaybeUninit::uninit(),
 };
 
@@ -839,6 +845,46 @@ pub fn socket_recv(
     }
 }
 
+pub struct TcpRecvWindow {
+    pub window: usize,
+    pub capacity: usize,
+    pub queued: usize,
+}
+
+pub fn socket_recv_window_event(id: SocketId) -> Result<Option<TcpRecvWindow>, NetError> {
+    let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
+    let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
+    if kind != AxSocketKind::Tcp {
+        return Err(NetError::Invalid);
+    }
+    let socket = state.sockets.get_mut::<TcpSocket>(handle);
+    let capacity = socket.recv_capacity();
+    let queued = socket.recv_queue();
+    let window = capacity.saturating_sub(queued);
+    // SAFETY: socket table access is serialized by the single-hart runtime.
+    unsafe {
+        let Some(slot) = SOCKET_TABLE.get_mut(id) else {
+            return Err(NetError::Invalid);
+        };
+        if !slot.used || slot.kind != AxSocketKind::Tcp {
+            return Err(NetError::Invalid);
+        }
+        let last = slot.last_rx_window as usize;
+        slot.last_rx_window = window as u32;
+        if window == last {
+            return Ok(None);
+        }
+        if window == 0 || last == 0 {
+            return Ok(Some(TcpRecvWindow {
+                window,
+                capacity,
+                queued,
+            }));
+        }
+    }
+    Ok(None)
+}
+
 pub fn socket_poll(id: SocketId, events: u16) -> Result<u16, NetError> {
     let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
     let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
@@ -996,6 +1042,7 @@ fn reserve_socket_slot(kind: AxSocketKind) -> Option<SocketId> {
                 slot.listening = false;
                 slot.connecting = false;
                 slot.last_error = None;
+                slot.last_rx_window = 0;
                 return Some(idx);
             }
         }

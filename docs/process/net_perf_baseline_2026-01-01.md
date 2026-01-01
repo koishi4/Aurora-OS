@@ -24,11 +24,11 @@ make test-net-perf ARCH=riscv64 PLATFORM=qemu
 ```
 
 ## 结果
-- net_bench 字节统计：rx_bytes=2048。
-- host 发送统计：sent_bytes=2048，duration_ms=1。
+- net_bench 字节统计：rx_bytes=65536。
+- host 发送统计：sent_bytes=65536，duration_ms=2。
 - 日志路径：
   - perf.log：build/net-perf/perf.log
   - qemu-smoke.log：build/net-perf/qemu-smoke.log
 
 ## 备注
-- 当前基线验证覆盖脚本闭环、hostfwd 注入与 /init 替换路径；长流量窗口更新仍需进一步排查。
+- 当前基线验证覆盖脚本闭环、hostfwd 注入与 /init 替换路径；64K 负载可稳定完成。

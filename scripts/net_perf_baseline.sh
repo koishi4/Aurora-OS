@@ -11,7 +11,7 @@ PERF_EXPECT=${PERF_EXPECT:-}
 PERF_HOST=${PERF_HOST:-127.0.0.1}
 PERF_HOST_PORT=${PERF_HOST_PORT:-auto}
 PERF_GUEST_PORT=${PERF_GUEST_PORT:-5201}
-PERF_SEND_BYTES=${PERF_SEND_BYTES:-2048}
+PERF_SEND_BYTES=${PERF_SEND_BYTES:-65536}
 PERF_SEND_CHUNK=${PERF_SEND_CHUNK:-65536}
 PERF_CONNECT_TIMEOUT=${PERF_CONNECT_TIMEOUT:-5}
 PERF_SEND_DELAY=${PERF_SEND_DELAY:-0.5}
@@ -66,7 +66,7 @@ SENDER_STATUS=0
 READY_DEADLINE=$((PERF_READY_TIMEOUT * 10))
 ready_ok=0
 for _ in $(seq 1 "${READY_DEADLINE}"); do
-  if [[ -f "${QEMU_LOG}" ]] && rg -F "net-bench: ready" "${QEMU_LOG}" >/dev/null 2>&1; then
+  if [[ -f "${QEMU_LOG}" ]] && rg --text -F "net-bench: ready" "${QEMU_LOG}" >/dev/null 2>&1; then
     ready_ok=1
     break
   fi
@@ -91,7 +91,7 @@ wait "${SMOKE_PID}"
 if [[ -n "${PERF_EXPECT}" ]]; then
   IFS=',' read -r -a markers <<< "${PERF_EXPECT}"
   for marker in "${markers[@]}"; do
-    if ! rg -F "${marker}" "${QEMU_LOG}" >/dev/null; then
+    if ! rg --text -F "${marker}" "${QEMU_LOG}" >/dev/null; then
       echo "missing marker: ${marker}" >&2
       exit 1
     fi
@@ -102,7 +102,7 @@ if [[ -s "${SENDER_LOG}" ]]; then
   cat "${SENDER_LOG}" >> "${LOG}"
 fi
 
-rx_line=$(rg -F "net-bench: rx_bytes=" "${QEMU_LOG}" | tail -n 1 || true)
+rx_line=$(rg --text -F "net-bench: rx_bytes=" "${QEMU_LOG}" | tail -n 1 || true)
 if [[ -n "${rx_line}" ]]; then
   echo "${rx_line}" >> "${LOG}"
 else

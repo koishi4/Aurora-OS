@@ -72,6 +72,7 @@ fn dummy_task_c() -> ! {
 
 pub fn on_tick(ticks: u64) {
     TICK_COUNT.store(ticks, Ordering::Relaxed);
+    axnet::request_poll();
     if config::ENABLE_SCHED_DEMO && ticks % 100 == 0 {
         crate::println!("scheduler: tick={}", ticks);
     }
@@ -562,8 +563,15 @@ pub fn wake_all(queue: &TaskWaitQueue) -> usize {
 }
 
 pub fn idle_loop() -> ! {
+    const NET_POLL_INTERVAL_MS: u64 = 50;
+    let mut last_net_poll_ms = 0u64;
     loop {
-        if let Some(event) = axnet::poll(crate::time::uptime_ms()) {
+        let now_ms = crate::time::uptime_ms();
+        if now_ms.wrapping_sub(last_net_poll_ms) >= NET_POLL_INTERVAL_MS {
+            axnet::request_poll();
+            last_net_poll_ms = now_ms;
+        }
+        if let Some(event) = axnet::poll(now_ms) {
             match event {
                 axnet::NetEvent::IcmpEchoReply { seq, from } => {
                     crate::println!("net: icmp echo reply seq={} from={}", seq, from);
