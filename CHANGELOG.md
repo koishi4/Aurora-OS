@@ -160,3 +160,6 @@
 - Add axnet NetDevice/NetError interfaces as the network driver boundary.
 - Add minimal virtio-net MMIO driver with RX/TX queues and IRQ ack handling.
 - Add NET=1 QEMU toggle and optional virtio-net smoke log check.
+- Add smoltcp-backed axnet interface with static IPv4 config and idle-loop polling.
+- Add ICMP echo request path on boot (reply depends on QEMU user-net).
+- Add socket syscall skeletons and socket fd handling for TCP/UDP paths.

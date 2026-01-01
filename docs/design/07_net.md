@@ -12,6 +12,7 @@
 - 优先减少拷贝：驱动 DMA 缓冲与协议栈 PacketBuffer 复用。
 - 网络定时器与重传计时统一依赖 `time` 模块。
 - 先落地最小 `axnet` 抽象与 virtio-net RAW 帧读写，协议栈后续接入。
+- smoltcp 接入使用静态地址配置（QEMU user-net: 10.0.2.15/24, gw 10.0.2.2），轮询在空闲上下文触发。
 
 ## 关键数据结构
 - `NetDevice`：网卡设备抽象（send/recv/irq）。
@@ -41,3 +42,4 @@ socket_read(fd)
 - 基础连通性：ping/UDP echo。
 - TCP 建连与收发：iperf 基准。
 - 应用层：git clone/push、redis 基本命令回归。
+- QEMU: `NET=1 EXPECT_NET=1 make test-qemu-smoke` 检查 virtio-net ready。
