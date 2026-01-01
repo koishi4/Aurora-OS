@@ -62,8 +62,6 @@ static VIRTIO_NET_TX_QUEUE_SIZE: AtomicUsize = AtomicUsize::new(0);
 static VIRTIO_NET_RX_USED: AtomicUsize = AtomicUsize::new(0);
 static VIRTIO_NET_TX_USED: AtomicUsize = AtomicUsize::new(0);
 static VIRTIO_NET_IRQ_LOGGED: AtomicBool = AtomicBool::new(false);
-static VIRTIO_NET_RX_USED_LOGGED: AtomicBool = AtomicBool::new(false);
-static LOG_ONCE: AtomicBool = AtomicBool::new(false);
 
 static VIRTIO_NET_DEVICE: VirtioNetDevice = VirtioNetDevice;
 
@@ -224,14 +222,6 @@ impl NetDevice for VirtioNetDevice {
         let used_idx = unsafe { ptr::read_volatile(&queue.used.idx) };
         let last_used = VIRTIO_NET_RX_USED.load(Ordering::Acquire) as u16;
         if used_idx == last_used {
-            if !LOG_ONCE.load(Ordering::Relaxed) {
-                crate::println!(
-                    "virtio-net: poll stalled? used_idx={} last_used={}",
-                    used_idx,
-                    last_used
-                );
-                LOG_ONCE.store(true, Ordering::Relaxed);
-            }
             return Err(NetError::WouldBlock);
         }
 
@@ -308,9 +298,6 @@ impl NetDevice for VirtioNetDevice {
         let queue = VIRTIO_NET_RX_QUEUE.get();
         let used_idx = unsafe { ptr::read_volatile(&queue.used.idx) };
         let last_used = VIRTIO_NET_RX_USED.load(Ordering::Acquire) as u16;
-        if used_idx != last_used && !VIRTIO_NET_RX_USED_LOGGED.swap(true, Ordering::AcqRel) {
-            crate::println!("virtio-net: rx used idx={} last={}", used_idx, last_used);
-        }
         used_idx != last_used
     }
 }
@@ -359,9 +346,7 @@ pub fn handle_irq(irq: u32) -> bool {
         return false;
     }
     let status = mmio_read32(base, MMIO_INTERRUPT_STATUS);
-    if !VIRTIO_NET_IRQ_LOGGED.swap(true, Ordering::AcqRel) {
-        crate::println!("virtio-net: irq status={:#x}", status);
-    }
+    let _ = VIRTIO_NET_IRQ_LOGGED.swap(true, Ordering::AcqRel);
     if status != 0 {
         mmio_write32(base, MMIO_INTERRUPT_ACK, status);
         fence(Ordering::SeqCst);
@@ -487,9 +472,6 @@ fn fill_rx_queue(queue_size: usize) {
         queue.desc[idx].flags = DESC_F_WRITE;
         queue.desc[idx].next = 0;
         queue.avail.ring[idx] = idx as u16;
-        if idx == 0 {
-            crate::println!("virtio-net: rx desc[0] pa={:#x}", pa);
-        }
     }
     queue.avail.idx = queue_size as u16;
     fence(Ordering::SeqCst);
