@@ -1,18 +1,18 @@
-```text
-\x1b[36m                  .::::::.\x1b[0m
-\x1b[36m               .::::::::::::.\x1b[0m
-\x1b[34m             .::::::----::::::.\x1b[0m
-\x1b[34m           .::::::--------::::::.\x1b[0m
-\x1b[35m         .::::::----====----::::::.\x1b[0m
-\x1b[35m       .::::::----========----::::::.\x1b[0m
-\x1b[35m     .::::::----==========----::::::.\x1b[0m
-\x1b[35m    ::::::----====++++====----::::::\x1b[0m
-\x1b[34m     '::::----====++++====----::::'\x1b[0m
-\x1b[34m       '::----====++++====----::'\x1b[0m
-\x1b[36m         '--====++++++++====--'\x1b[0m
-\x1b[36m             '==++++++++=='\x1b[0m
-\x1b[36m                 '===='\x1b[0m
-```
+<pre style="line-height: 1.05; font-weight: 600;">
+<span style="color:#2cc9c9;">                  .::::::.</span>
+<span style="color:#34d3d3;">               .::::::::::::.</span>
+<span style="color:#4a91ff;">             .::::::----::::::.</span>
+<span style="color:#6b7bff;">           .::::::--------::::::.</span>
+<span style="color:#8a69ff;">         .::::::----====----::::::.</span>
+<span style="color:#a55bff;">       .::::::----========----::::::.</span>
+<span style="color:#b14cff;">     .::::::----==========----::::::.</span>
+<span style="color:#b14cff;">    ::::::----====++++====----::::::</span>
+<span style="color:#a55bff;">     '::::----====++++====----::::'</span>
+<span style="color:#8a69ff;">       '::----====++++====----::'</span>
+<span style="color:#4a91ff;">         '--====++++++++====--'</span>
+<span style="color:#34d3d3;">             '==++++++++=='</span>
+<span style="color:#2cc9c9;">                 '===='</span>
+</pre>
 
 # Project Aurora (极光内核)
 
