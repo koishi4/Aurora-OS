@@ -115,16 +115,19 @@ unsafe fn syscall6(
 }
 
 fn write_stdout(msg: &[u8]) {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     unsafe {
         let _ = syscall6(SYS_WRITE, 1, msg.as_ptr() as usize, msg.len(), 0, 0, 0);
     }
 }
 
 fn exit(code: i32) -> ! {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     unsafe {
         let _ = syscall6(SYS_EXIT, code as usize, 0, 0, 0, 0, 0);
     }
     loop {
+// SAFETY: wfi only halts until the next interrupt.
         unsafe { asm!("wfi") };
     }
 }
@@ -142,10 +145,12 @@ fn check(ret: isize) -> usize {
 }
 
 fn syscall_socket(domain: u16, sock_type: usize, protocol: usize) -> usize {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe { syscall6(SYS_SOCKET, domain as usize, sock_type, protocol, 0, 0, 0) })
 }
 
 fn syscall_bind(fd: usize, addr: &SockAddrIn) {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe {
         syscall6(
             SYS_BIND,
@@ -160,14 +165,17 @@ fn syscall_bind(fd: usize, addr: &SockAddrIn) {
 }
 
 fn syscall_listen(fd: usize, backlog: usize) {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe { syscall6(SYS_LISTEN, fd, backlog, 0, 0, 0, 0) });
 }
 
 fn syscall_accept(fd: usize) -> usize {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe { syscall6(SYS_ACCEPT, fd, 0, 0, 0, 0, 0) })
 }
 
 fn syscall_connect_nonblock(fd: usize, addr: &SockAddrIn) {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     let ret = unsafe {
         syscall6(
             SYS_CONNECT,
@@ -188,6 +196,7 @@ fn syscall_connect_nonblock(fd: usize, addr: &SockAddrIn) {
 }
 
 fn syscall_connect(fd: usize, addr: &SockAddrIn) -> isize {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     unsafe {
         syscall6(
             SYS_CONNECT,
@@ -213,6 +222,7 @@ fn syscall_sendmsg(fd: usize, iovs: &mut [Iovec]) -> usize {
         msg_flags: 0,
         msg_flags_pad: 0,
     };
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe { syscall6(SYS_SENDMSG, fd, &msg as *const MsgHdr as usize, 0, 0, 0, 0) })
 }
 
@@ -228,10 +238,12 @@ fn syscall_recvmsg(fd: usize, iovs: &mut [Iovec]) -> usize {
         msg_flags: 0,
         msg_flags_pad: 0,
     };
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe { syscall6(SYS_RECVMSG, fd, &mut msg as *mut MsgHdr as usize, 0, 0, 0, 0) })
 }
 
 fn syscall_ppoll(fds: &mut [PollFd], timeout: &Timespec) -> isize {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     unsafe {
         syscall6(
             SYS_PPOLL,
@@ -247,6 +259,7 @@ fn syscall_ppoll(fds: &mut [PollFd], timeout: &Timespec) -> isize {
 
 fn syscall_getsockname(fd: usize, addr: &mut SockAddrIn) {
     let mut len = core::mem::size_of::<SockAddrIn>();
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     let ret = unsafe {
         syscall6(
             SYS_GETSOCKNAME,
@@ -265,6 +278,7 @@ fn syscall_getsockname(fd: usize, addr: &mut SockAddrIn) {
 
 fn syscall_getpeername(fd: usize, addr: &mut SockAddrIn) {
     let mut len = core::mem::size_of::<SockAddrIn>();
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     let ret = unsafe {
         syscall6(
             SYS_GETPEERNAME,
@@ -282,6 +296,7 @@ fn syscall_getpeername(fd: usize, addr: &mut SockAddrIn) {
 }
 
 fn syscall_getsockopt(fd: usize, level: usize, opt: usize, val: &mut i32, len: &mut usize) {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     let ret = unsafe {
         syscall6(
             SYS_GETSOCKOPT,
@@ -299,14 +314,17 @@ fn syscall_getsockopt(fd: usize, level: usize, opt: usize, val: &mut i32, len: &
 }
 
 fn syscall_fcntl(fd: usize, cmd: usize, arg: usize) {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe { syscall6(SYS_FCNTL, fd, cmd, arg, 0, 0, 0) });
 }
 
 fn syscall_fcntl_getfd(fd: usize) -> isize {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     unsafe { syscall6(SYS_FCNTL, fd, F_GETFD, 0, 0, 0, 0) }
 }
 
 fn syscall_close(fd: usize) {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     let _ = unsafe { syscall6(SYS_CLOSE, fd, 0, 0, 0, 0, 0) };
 }
 

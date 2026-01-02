@@ -81,7 +81,7 @@ fn ticks_to_ns() -> u64 {
 #[inline]
 fn read_timebase() -> u64 {
     let value: u64;
-    // Safety: rdtime reads the monotonically increasing time CSR.
+    // SAFETY: rdtime reads the monotonically increasing time CSR.
     unsafe { asm!("rdtime {0}", out(reg) value) };
     value
 }

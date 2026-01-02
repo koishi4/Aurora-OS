@@ -24,8 +24,8 @@ impl TaskWaitQueue {
     /// Enqueue a task ID.
     pub fn push(&self, task_id: TaskId) -> bool {
         // Caller must handle state transitions (e.g. Ready -> Blocked) separately.
-        // Safety: single-hart early use; no concurrent access yet.
         let _guard = KernelGuard::new();
+        // SAFETY: guard disables interrupts, so the queue is not concurrently mutated.
         let slots = unsafe { &mut *self.slots.get() };
         for slot in slots.iter_mut() {
             if slot.is_none() {
@@ -39,8 +39,8 @@ impl TaskWaitQueue {
     /// Remove a specific task ID from the queue.
     pub fn pop(&self, task_id: TaskId) -> bool {
         // Removes a specific waiter without touching task state.
-        // Safety: single-hart early use; no concurrent access yet.
         let _guard = KernelGuard::new();
+        // SAFETY: guard disables interrupts, so the queue is not concurrently mutated.
         let slots = unsafe { &mut *self.slots.get() };
         for slot in slots.iter_mut() {
             if slot.map_or(false, |id| id == task_id) {
@@ -54,8 +54,8 @@ impl TaskWaitQueue {
     /// Dequeue and return a waiting task ID.
     pub fn notify_one(&self) -> Option<TaskId> {
         // Returns a waiter task id; caller is responsible for waking/enqueueing.
-        // Safety: single-hart early use; no concurrent access yet.
         let _guard = KernelGuard::new();
+        // SAFETY: guard disables interrupts, so the queue is not concurrently mutated.
         let slots = unsafe { &mut *self.slots.get() };
         for slot in slots.iter_mut() {
             if let Some(task_id) = slot.take() {
@@ -67,7 +67,7 @@ impl TaskWaitQueue {
 
     /// Return true if the queue holds no waiters.
     pub fn is_empty(&self) -> bool {
-        // Safety: single-hart early use; no concurrent access yet.
+        // SAFETY: guard is not needed for immutable access; queue is single-hart.
         let slots = unsafe { &*self.slots.get() };
         slots.iter().all(|slot| slot.is_none())
     }

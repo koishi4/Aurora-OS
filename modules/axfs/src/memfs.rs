@@ -86,6 +86,7 @@ impl<'a> MemLogGuard<'a> {
         let count = end - offset;
         // SAFETY: guard ensures exclusive access to the log buffer and length.
         let data = unsafe { &mut *self.lock.buf.get() };
+        // SAFETY: guard ensures exclusive access to the length field.
         let len = unsafe { &mut *self.lock.len.get() };
         if offset > *len {
             data[*len..offset].fill(0);

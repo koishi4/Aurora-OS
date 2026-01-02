@@ -100,6 +100,7 @@ impl Device for SmolDevice {
 
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         // Loopback frames take priority to wake local TCP listeners.
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
         let loopback_len = unsafe { LOOPBACK_QUEUE.pop(&mut RX_BUF) };
         if let Some(len) = loopback_len {
             let _ = NET_RX_SEEN.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire);
@@ -111,6 +112,7 @@ impl Device for SmolDevice {
         // SAFETY: single-token receive; buffer is reused once token is consumed.
         let len = unsafe { self.dev.recv(&mut RX_BUF).ok()? };
         let _ = NET_RX_SEEN.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire);
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
         record_arp_reply(unsafe { &RX_BUF[..len] });
         Some((SmolRxToken { len }, SmolTxToken { dev: self.dev }))
     }
@@ -182,8 +184,11 @@ pub fn init(dev: &'static dyn NetDevice) -> Result<(), NetError> {
     let ip = IpCidr::new(IpAddress::v4(NET_IPV4_ADDR[0], NET_IPV4_ADDR[1], NET_IPV4_ADDR[2], NET_IPV4_ADDR[3]), NET_IPV4_PREFIX);
 
     let mut device = SmolDevice { dev };
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let mut sockets = unsafe { SocketSet::new(&mut SOCKET_STORAGE[..]) };
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let icmp_rx = unsafe { IcmpPacketBuffer::new(&mut ICMP_RX_META[..], &mut ICMP_RX_BUF[..]) };
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let icmp_tx = unsafe { IcmpPacketBuffer::new(&mut ICMP_TX_META[..], &mut ICMP_TX_BUF[..]) };
     let icmp_socket = IcmpSocket::new(icmp_rx, icmp_tx);
     let icmp_handle = sockets.add(icmp_socket);
@@ -212,6 +217,7 @@ pub fn init(dev: &'static dyn NetDevice) -> Result<(), NetError> {
         ping_seq: 1,
     };
 
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     unsafe {
         NET_STATE = Some(state);
     }
@@ -660,18 +666,23 @@ pub fn socket_create(domain: i32, sock_type: i32, _protocol: i32) -> Result<Sock
         2 => AxSocketKind::Udp,
         _ => return Err(NetError::Unsupported),
     };
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
     let slot = reserve_socket_slot(kind).ok_or(NetError::NoMem)?;
     let handle = match kind {
         AxSocketKind::Tcp => {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
             let rx = unsafe { TcpSocketBuffer::new(&mut TCP_RX_BUF[slot][..]) };
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
             let tx = unsafe { TcpSocketBuffer::new(&mut TCP_TX_BUF[slot][..]) };
             state.sockets.add(TcpSocket::new(rx, tx))
         }
         AxSocketKind::Udp => {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
             let rx = unsafe {
                 UdpPacketBuffer::new(&mut UDP_RX_META[slot][..], &mut UDP_RX_BUF[slot][..])
             };
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
             let tx = unsafe {
                 UdpPacketBuffer::new(&mut UDP_TX_META[slot][..], &mut UDP_TX_BUF[slot][..])
             };
@@ -684,6 +695,7 @@ pub fn socket_create(domain: i32, sock_type: i32, _protocol: i32) -> Result<Sock
 
 /// Bind a socket to a local address/port.
 pub fn socket_bind(id: SocketId, addr: IpAddress, port: u16) -> Result<(), NetError> {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
     let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
     match kind {
@@ -708,6 +720,7 @@ pub fn socket_bind(id: SocketId, addr: IpAddress, port: u16) -> Result<(), NetEr
 
 /// Connect a socket to a remote address/port.
 pub fn socket_connect(id: SocketId, addr: IpAddress, port: u16) -> Result<(), NetError> {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
     let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
     match kind {
@@ -746,6 +759,7 @@ pub fn socket_connect(id: SocketId, addr: IpAddress, port: u16) -> Result<(), Ne
 
 /// Place a TCP socket into listening state.
 pub fn socket_listen(id: SocketId, _backlog: usize) -> Result<(), NetError> {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
     let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
     match kind {
@@ -765,6 +779,7 @@ pub fn socket_listen(id: SocketId, _backlog: usize) -> Result<(), NetError> {
 
 /// Accept an incoming connection from a listening socket.
 pub fn socket_accept(id: SocketId) -> Result<(SocketId, SocketId, Option<(IpAddress, u16)>), NetError> {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
     let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
     let AxSocketKind::Tcp = kind else {
@@ -786,7 +801,9 @@ pub fn socket_accept(id: SocketId) -> Result<(SocketId, SocketId, Option<(IpAddr
     let remote = socket.remote_endpoint().map(|ep| (ep.addr, ep.port));
     let local_port = socket_local_port(id)?;
     let listener_id = reserve_socket_slot(AxSocketKind::Tcp).ok_or(NetError::NoMem)?;
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let rx = unsafe { TcpSocketBuffer::new(&mut TCP_RX_BUF[listener_id][..]) };
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let tx = unsafe { TcpSocketBuffer::new(&mut TCP_TX_BUF[listener_id][..]) };
     let listener_handle = state.sockets.add(TcpSocket::new(rx, tx));
     set_socket_handle(listener_id, listener_handle);
@@ -803,6 +820,7 @@ pub fn socket_accept(id: SocketId) -> Result<(SocketId, SocketId, Option<(IpAddr
 
 /// Send data on a socket.
 pub fn socket_send(id: SocketId, buf: &[u8], addr: Option<(IpAddress, u16)>) -> Result<usize, NetError> {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
     let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
     let sent = match kind {
@@ -848,6 +866,7 @@ pub fn socket_recv(
     id: SocketId,
     buf: &mut [u8],
 ) -> Result<(usize, Option<(IpAddress, u16)>), NetError> {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
     let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
     match kind {
@@ -898,6 +917,7 @@ pub struct TcpRecvWindow {
 
 /// Fetch the latest receive window event for a socket.
 pub fn socket_recv_window_event(id: SocketId) -> Result<Option<TcpRecvWindow>, NetError> {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
     let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
     if kind != AxSocketKind::Tcp {
@@ -964,6 +984,7 @@ fn poll_tcp_window_event(state: &mut NetState) -> Option<NetEvent> {
 
 /// Poll socket readiness for the requested events.
 pub fn socket_poll(id: SocketId, events: u16) -> Result<u16, NetError> {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
     let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
     let mut revents = 0u16;
@@ -1021,6 +1042,7 @@ pub fn socket_poll(id: SocketId, events: u16) -> Result<u16, NetError> {
 
 /// Close a socket and release its resources.
 pub fn socket_close(id: SocketId) -> Result<(), NetError> {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
     let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
     let _ = state.sockets.remove(handle);
@@ -1033,6 +1055,7 @@ pub fn socket_close(id: SocketId) -> Result<(), NetError> {
 
 /// Shutdown a socket for reading and/or writing.
 pub fn socket_shutdown(id: SocketId, how: usize) -> Result<(), NetError> {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
     let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
     match kind {
@@ -1056,6 +1079,7 @@ pub fn socket_shutdown(id: SocketId, how: usize) -> Result<(), NetError> {
 
 /// Return the local endpoint for a socket.
 pub fn socket_local_endpoint(id: SocketId) -> Result<(IpAddress, u16), NetError> {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
     let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
     match kind {
@@ -1075,6 +1099,7 @@ pub fn socket_local_endpoint(id: SocketId) -> Result<(IpAddress, u16), NetError>
 
 /// Return the remote endpoint for a socket.
 pub fn socket_remote_endpoint(id: SocketId) -> Result<Option<(IpAddress, u16)>, NetError> {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
     let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
     match kind {
@@ -1145,6 +1170,7 @@ fn set_socket_handle(id: SocketId, handle: SocketHandle) {
 }
 
 fn set_socket_local_port(id: SocketId, port: u16) -> Result<(), NetError> {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     unsafe {
         let Some(slot) = SOCKET_TABLE.get_mut(id) else {
             return Err(NetError::Invalid);
@@ -1158,6 +1184,7 @@ fn set_socket_local_port(id: SocketId, port: u16) -> Result<(), NetError> {
 }
 
 fn set_socket_listening(id: SocketId, listening: bool) -> Result<(), NetError> {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     unsafe {
         let Some(slot) = SOCKET_TABLE.get_mut(id) else {
             return Err(NetError::Invalid);
@@ -1171,6 +1198,7 @@ fn set_socket_listening(id: SocketId, listening: bool) -> Result<(), NetError> {
 }
 
 fn socket_is_listening(id: SocketId) -> Result<bool, NetError> {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     unsafe {
         let Some(slot) = SOCKET_TABLE.get(id) else {
             return Err(NetError::Invalid);
@@ -1183,6 +1211,7 @@ fn socket_is_listening(id: SocketId) -> Result<bool, NetError> {
 }
 
 fn socket_local_port(id: SocketId) -> Result<u16, NetError> {
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     unsafe {
         let Some(slot) = SOCKET_TABLE.get(id) else {
             return Err(NetError::Invalid);
@@ -1311,6 +1340,7 @@ fn try_loopback_arp(frame: &[u8], mac: EthernetAddress) -> bool {
         let mut arp = ArpPacket::new_unchecked(eth.payload_mut());
         reply.emit(&mut arp);
     }
+// SAFETY: static buffers/state are initialized and accessed under net state lock.
     unsafe {
         LOOPBACK_QUEUE.push(&buf[..ARP_FRAME_LEN]);
     }

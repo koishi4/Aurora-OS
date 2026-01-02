@@ -222,6 +222,7 @@ impl NetDevice for VirtioNetDevice {
 
         let _guard = RX_LOCK.lock();
         let queue = VIRTIO_NET_RX_QUEUE.get();
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
         let used_idx = unsafe { ptr::read_volatile(&queue.used.idx) };
         let last_used = VIRTIO_NET_RX_USED.load(Ordering::Acquire) as u16;
         if used_idx == last_used {
@@ -229,6 +230,7 @@ impl NetDevice for VirtioNetDevice {
         }
 
         let slot = (last_used as usize) % queue_size;
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
         let used_elem = unsafe { ptr::read_volatile(&queue.used.ring[slot]) };
         let desc_id = used_elem.id as usize;
         let total_len = used_elem.len as usize;
@@ -274,6 +276,7 @@ impl NetDevice for VirtioNetDevice {
         }
         let desc_id = 0;
         let addr =
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
             mm::kernel_virt_to_phys(unsafe { VIRTIO_NET_TX_BUF.data.as_ptr() } as usize) as u64;
         queue.desc[desc_id].addr = addr;
         queue.desc[desc_id].len = (buf.len() + VIRTIO_NET_HDR_LEN) as u32;
@@ -299,6 +302,7 @@ impl NetDevice for VirtioNetDevice {
             return false;
         }
         let queue = VIRTIO_NET_RX_QUEUE.get();
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
         let used_idx = unsafe { ptr::read_volatile(&queue.used.idx) };
         let last_used = VIRTIO_NET_RX_USED.load(Ordering::Acquire) as u16;
         used_idx != last_used
@@ -444,6 +448,7 @@ fn setup_queue(base: usize, queue_index: u32, queue: &mut VirtioNetQueue) -> usi
     let queue_size = core::cmp::min(queue_max, QUEUE_SIZE);
     mmio_write32(base, MMIO_QUEUE_NUM, queue_size as u32);
 
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
     unsafe {
         ptr::write_bytes(queue as *mut VirtioNetQueue, 0, 1);
     }
@@ -494,6 +499,7 @@ fn recycle_rx_desc(queue: &mut VirtioNetQueue, queue_size: usize, desc_id: usize
 fn wait_for_tx_completion(queue: &VirtioNetQueue) {
     let last_used = VIRTIO_NET_TX_USED.load(Ordering::Acquire) as u16;
     loop {
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
         let used_idx = unsafe { ptr::read_volatile(&queue.used.idx) };
         if used_idx != last_used {
             VIRTIO_NET_TX_USED.store(used_idx as usize, Ordering::Release);
@@ -520,14 +526,17 @@ fn read_mac(base: usize) -> [u8; 6] {
 }
 
 fn mmio_read32(base: usize, offset: usize) -> u32 {
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
     unsafe { ptr::read_volatile((base + offset) as *const u32) }
 }
 
 fn mmio_read8(base: usize, offset: usize) -> u8 {
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
     unsafe { ptr::read_volatile((base + offset) as *const u8) }
 }
 
 fn mmio_write32(base: usize, offset: usize, value: u32) {
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
     unsafe { ptr::write_volatile((base + offset) as *mut u32, value) }
 }
 

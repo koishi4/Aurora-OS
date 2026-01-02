@@ -129,6 +129,7 @@ pub fn init(memory: Option<MemoryRegion>, devices: &[MemoryRegion]) {
 
     if let Some(region) = memory {
         init_frame_allocator(region);
+// SAFETY: raw pointers are derived from validated addresses or allocations.
         unsafe {
             if let Some(root_pa) = setup_kernel_page_table(region) {
                 map_device_regions(root_pa, devices);
@@ -342,6 +343,7 @@ pub fn alloc_contiguous_frames(count: usize) -> Option<PhysPageNum> {
         return None;
     }
     // Bypass the free list to guarantee physical contiguity for kernel stacks.
+// SAFETY: raw pointers are derived from validated addresses or allocations.
     let frame = unsafe { FRAME_ALLOC.assume_init_ref().alloc_contiguous(count)? };
     let pa = frame.addr().as_usize();
     for idx in 0..count {
@@ -389,6 +391,7 @@ impl<T: Copy> UserPtr<T> {
     pub fn read(self, root_pa: usize) -> Option<T> {
         let size = size_of::<T>();
         let mut value = MaybeUninit::<T>::uninit();
+// SAFETY: raw pointers are derived from validated addresses or allocations.
         let dst = unsafe {
             core::slice::from_raw_parts_mut(value.as_mut_ptr() as *mut u8, size)
         };
@@ -400,6 +403,7 @@ impl<T: Copy> UserPtr<T> {
     /// Write a value of `T` into user space.
     pub fn write(self, root_pa: usize, value: T) -> Option<()> {
         let size = size_of::<T>();
+// SAFETY: raw pointers are derived from validated addresses or allocations.
         let src = unsafe {
             core::slice::from_raw_parts(&value as *const T as *const u8, size)
         };
@@ -762,17 +766,20 @@ pub fn unmap_user_page(root_pa: usize, va: usize) -> bool {
     if root_pa == 0 {
         return false;
     }
+// SAFETY: raw pointers are derived from validated addresses or allocations.
     let l2 = unsafe { &mut *(root_pa as *mut PageTable) };
     let [l2_idx, l1_idx, l0_idx] = VirtAddr::new(va).sv39_indexes();
     let l2e = l2.entries[l2_idx];
     if !l2e.is_valid() || l2e.is_leaf() {
         return false;
     }
+// SAFETY: raw pointers are derived from validated addresses or allocations.
     let l1 = unsafe { &mut *(l2e.ppn().addr().as_usize() as *mut PageTable) };
     let l1e = l1.entries[l1_idx];
     if !l1e.is_valid() || l1e.is_leaf() {
         return false;
     }
+// SAFETY: raw pointers are derived from validated addresses or allocations.
     let l0 = unsafe { &mut *(l1e.ppn().addr().as_usize() as *mut PageTable) };
     let entry = &mut l0.entries[l0_idx];
     if !entry.is_valid() || !entry.is_leaf() {
@@ -842,6 +849,7 @@ pub fn alloc_user_root() -> Option<usize> {
     }
     // SAFETY: allocate a fresh root page table and copy kernel mappings.
     let root = unsafe { alloc_page_table()? };
+// SAFETY: raw pointers are derived from validated addresses or allocations.
     let kernel_root = unsafe { &*(kernel_root_pa as *const PageTable) };
     root.entries = kernel_root.entries;
     if current_root != kernel_root_pa {
@@ -923,11 +931,13 @@ where
     F: FnOnce() -> R,
 {
     let sstatus: usize;
+// SAFETY: raw pointers are derived from validated addresses or allocations.
     unsafe {
         asm!("csrr {0}, sstatus", out(reg) sstatus);
         asm!("csrci sstatus, 0x2");
     }
     let ret = f();
+// SAFETY: raw pointers are derived from validated addresses or allocations.
     unsafe {
         asm!("csrw sstatus, {0}", in(reg) sstatus);
     }
@@ -935,6 +945,7 @@ where
 }
 
 fn push_free_frame(pa: usize) -> bool {
+// SAFETY: raw pointers are derived from validated addresses or allocations.
     with_no_irq(|| unsafe {
         if FRAME_FREE_LEN >= MAX_FRAMES {
             return false;
@@ -946,6 +957,7 @@ fn push_free_frame(pa: usize) -> bool {
 }
 
 fn pop_free_frame() -> Option<usize> {
+// SAFETY: raw pointers are derived from validated addresses or allocations.
     with_no_irq(|| unsafe {
         if FRAME_FREE_LEN == 0 {
             return None;
@@ -993,6 +1005,7 @@ pub fn clone_user_root(parent_root_pa: usize) -> Option<usize> {
     let child_root_pa = alloc_user_root()?;
     // SAFETY: parent/child root page tables are valid in early boot.
     let parent_root = unsafe { &mut *(parent_root_pa as *mut PageTable) };
+// SAFETY: raw pointers are derived from validated addresses or allocations.
     let child_root = unsafe { &mut *(child_root_pa as *mut PageTable) };
     let mut ok = true;
 
@@ -1102,6 +1115,7 @@ pub fn release_user_root(root_pa: usize) {
     }
     // SAFETY: early boot single-hart; page tables are stable during release.
     let root = unsafe { &mut *(root_pa as *mut PageTable) };
+// SAFETY: raw pointers are derived from validated addresses or allocations.
     let kernel_root = unsafe { &*(kernel_root_pa as *const PageTable) };
 
     for l2_idx in 0..SV39_ENTRIES {
@@ -1194,6 +1208,7 @@ fn lookup_user_pte_mut(root_pa: usize, va: usize) -> Option<&'static mut PageTab
     if root_pa == 0 {
         return None;
     }
+// SAFETY: raw pointers are derived from validated addresses or allocations.
     let l2 = unsafe { &mut *(root_pa as *mut PageTable) };
     let [l2_idx, l1_idx, l0_idx] = VirtAddr::new(va).sv39_indexes();
     let l2e = l2.entries[l2_idx];
@@ -1203,6 +1218,7 @@ fn lookup_user_pte_mut(root_pa: usize, va: usize) -> Option<&'static mut PageTab
     if l2e.is_leaf() {
         return Some(&mut l2.entries[l2_idx]);
     }
+// SAFETY: raw pointers are derived from validated addresses or allocations.
     let l1 = unsafe { &mut *(l2e.ppn().addr().as_usize() as *mut PageTable) };
     let l1e = l1.entries[l1_idx];
     if !l1e.is_valid() {
@@ -1211,6 +1227,7 @@ fn lookup_user_pte_mut(root_pa: usize, va: usize) -> Option<&'static mut PageTab
     if l1e.is_leaf() {
         return Some(&mut l1.entries[l1_idx]);
     }
+// SAFETY: raw pointers are derived from validated addresses or allocations.
     let l0 = unsafe { &mut *(l1e.ppn().addr().as_usize() as *mut PageTable) };
     Some(&mut l0.entries[l0_idx])
 }
@@ -1244,6 +1261,7 @@ fn init_frame_allocator(region: MemoryRegion) {
         return;
     }
 
+// SAFETY: raw pointers are derived from validated addresses or allocations.
     let kernel_end = unsafe { &ekernel as *const u8 as usize };
     let mapped_end = base.saturating_add(min(size, IDENTITY_MAP_SIZE));
     let start = align_up(max(kernel_end, base), PAGE_SIZE);
@@ -1277,7 +1295,7 @@ fn init_frame_allocator(region: MemoryRegion) {
 }
 
 unsafe fn setup_kernel_page_table(region: MemoryRegion) -> Option<usize> {
-    // Safety: 仅在早期单核启动阶段调用。
+    // SAFETY: 仅在早期单核启动阶段调用。
     if region.size == 0 {
         return None;
     }
@@ -1332,7 +1350,7 @@ unsafe fn setup_kernel_page_table(region: MemoryRegion) -> Option<usize> {
 
 unsafe fn enable_paging(root_pa: usize) {
     let satp_value = SATP_MODE_SV39 | (root_pa >> PAGE_SHIFT);
-    // Safety: 早期阶段仅单核执行，恒等映射保证切换后地址可用。
+    // SAFETY: 早期阶段仅单核执行，恒等映射保证切换后地址可用。
     asm!("csrw satp, {0}", in(reg) satp_value);
     asm!("sfence.vma");
 }

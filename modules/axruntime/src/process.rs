@@ -74,6 +74,7 @@ pub fn exit_current(code: i32) -> bool {
     let idx = task_id;
     // SAFETY: early boot single-hart; process table reads are serialized.
     let parent = unsafe { PROC_PPID.get(idx).copied().unwrap_or(0) };
+    // SAFETY: early boot single-hart; process table reads are serialized.
     let (root_pa, clear_tid) = unsafe {
         (
             PROC_ROOT.get(idx).copied().unwrap_or(0),

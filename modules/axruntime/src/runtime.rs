@@ -297,6 +297,7 @@ fn user_task_entry() -> ! {
         crate::sbi::shutdown();
     }
     mm::switch_root(root_pa);
+    // SAFETY: entry/user_sp/root_pa are validated above and the task owns them.
     unsafe {
         crate::trap::enter_user(entry, user_sp, mm::satp_for_root(root_pa));
     }
@@ -652,6 +653,7 @@ pub fn enter_idle_loop() -> ! {
     if top == 0 {
         idle_loop();
     }
+    // SAFETY: switching to the dedicated idle stack before jumping to idle_loop.
     unsafe {
         asm!(
             "mv sp, {0}",

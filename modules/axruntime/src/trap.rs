@@ -116,7 +116,7 @@ pub struct TrapFrameGuard;
 
 /// Register a trap frame as the current active frame.
 pub fn enter_trap(tf: &mut TrapFrame) -> TrapFrameGuard {
-    // Safety: single-hart early boot; the trap frame lives on the current stack.
+    // SAFETY: single-hart early boot; the trap frame lives on the current stack.
     unsafe {
         CURRENT_TRAP_FRAME = tf as *mut TrapFrame;
     }
@@ -126,8 +126,8 @@ pub fn enter_trap(tf: &mut TrapFrame) -> TrapFrameGuard {
 
 impl Drop for TrapFrameGuard {
     fn drop(&mut self) {
-        // Safety: trap handler exits with interrupts disabled; clear the pointer.
         runtime::on_trap_exit();
+        // SAFETY: trap handler exits with interrupts disabled; clear the pointer.
         unsafe {
             CURRENT_TRAP_FRAME = ptr::null_mut();
         }
@@ -136,7 +136,7 @@ impl Drop for TrapFrameGuard {
 
 /// Return the current trap frame, if any.
 pub fn current_trap_frame() -> Option<&'static mut TrapFrame> {
-    // Safety: only valid while handling a trap on the current hart.
+    // SAFETY: only valid while handling a trap on the current hart.
     unsafe {
         if CURRENT_TRAP_FRAME.is_null() {
             None
@@ -148,6 +148,7 @@ pub fn current_trap_frame() -> Option<&'static mut TrapFrame> {
 
 /// Initialize trap vector and reset sscratch.
 pub fn init() {
+    // SAFETY: early boot sets the trap vector and clears sscratch.
     unsafe {
         write_stvec(__trap_vector as usize);
         write_sscratch(0);
@@ -159,6 +160,7 @@ pub fn enable_timer_interrupt(interval_ticks: u64) {
     TIMER_INTERVAL.store(interval_ticks, Ordering::Relaxed);
     let now = read_time();
     sbi::set_timer(now + interval_ticks);
+    // SAFETY: CSR writes only toggle S-mode timer interrupts.
     unsafe {
         write_sie(read_sie() | SIE_STIE);
         write_sstatus(read_sstatus() | SSTATUS_SIE);
@@ -249,6 +251,7 @@ extern "C" fn trap_handler(tf: &mut TrapFrame) {
                 sepc,
                 stval,
                 read_sp(),
+                // SAFETY: reading sscratch for diagnostics does not mutate state.
                 unsafe { read_sscratch() },
                 tf.sstatus,
                 tf.ra,
@@ -263,6 +266,7 @@ extern "C" fn trap_handler(tf: &mut TrapFrame) {
                 sepc,
                 stval,
                 read_sp(),
+                // SAFETY: reading sscratch for diagnostics does not mutate state.
                 unsafe { read_sscratch() },
                 tf.sstatus,
                 mm::current_root_pa()
@@ -328,7 +332,7 @@ extern "C" fn trap_handler(tf: &mut TrapFrame) {
 #[inline]
 fn read_time() -> u64 {
     let value: u64;
-    // Safety: rdtime reads the monotonic time CSR.
+    // SAFETY: rdtime reads the monotonic time CSR.
     unsafe { asm!("rdtime {0}", out(reg) value) };
     value
 }
@@ -377,7 +381,7 @@ unsafe fn read_sie() -> usize {
 #[inline]
 fn read_sp() -> usize {
     let value: usize;
-    // Safety: reading sp does not modify machine state.
+    // SAFETY: reading sp does not modify machine state.
     unsafe {
         asm!("mv {0}, sp", out(reg) value);
     }

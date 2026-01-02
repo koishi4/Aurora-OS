@@ -59,16 +59,19 @@ unsafe fn syscall6(
 }
 
 fn write_stdout(msg: &[u8]) {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     unsafe {
         let _ = syscall6(SYS_WRITE, 1, msg.as_ptr() as usize, msg.len(), 0, 0, 0);
     }
 }
 
 fn exit(code: i32) -> ! {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     unsafe {
         let _ = syscall6(SYS_EXIT, code as usize, 0, 0, 0, 0, 0);
     }
     loop {
+// SAFETY: wfi only halts until the next interrupt.
         unsafe { asm!("wfi") };
     }
 }
@@ -114,6 +117,7 @@ fn write_u64(mut val: u64) {
 fn recv_exact(fd: usize, buf: &mut [u8]) -> bool {
     let mut offset = 0usize;
     while offset < buf.len() {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
         let n = unsafe {
             syscall6(
                 SYS_RECVFROM,
@@ -136,8 +140,10 @@ fn recv_exact(fd: usize, buf: &mut [u8]) -> bool {
 #[no_mangle]
 /// Program entry point invoked by the kernel loader.
 pub extern "C" fn _start() -> ! {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     let server = check(unsafe { syscall6(SYS_SOCKET, AF_INET as usize, SOCK_STREAM, 0, 0, 0, 0) });
     let addr = sockaddr(LOCAL_IP, PORT);
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe {
         syscall6(
             SYS_BIND,
@@ -149,11 +155,13 @@ pub extern "C" fn _start() -> ! {
             0,
         )
     });
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe { syscall6(SYS_LISTEN, server, 16, 0, 0, 0, 0) });
 
     write_stdout(READY_MSG);
 
     loop {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
         let client = check(unsafe { syscall6(SYS_ACCEPT, server, 0, 0, 0, 0, 0) });
         write_stdout(ACCEPT_MSG);
         let mut header = [0u8; 8];
@@ -167,6 +175,7 @@ pub extern "C" fn _start() -> ! {
         let mut buf = [0u8; 4096];
         let mut total: u64 = 0;
         while total < target {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
             let n = unsafe {
                 syscall6(
                     SYS_RECVFROM,
@@ -184,6 +193,7 @@ pub extern "C" fn _start() -> ! {
             total += n as u64;
         }
 
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
         let _ = unsafe { syscall6(SYS_CLOSE, client, 0, 0, 0, 0, 0) };
         write_stdout(RX_PREFIX);
         write_u64(total);

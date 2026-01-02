@@ -26,7 +26,7 @@ impl RunQueue {
 
     /// Push a task onto the run queue.
     pub fn push(&self, task: TaskId) -> bool {
-        // Safety: single-hart early use; no concurrent access yet.
+        // SAFETY: single-hart early use; no concurrent access yet.
         let slots = unsafe { &mut *self.slots.get() };
         for slot in slots.iter_mut() {
             if slot.is_none() {
@@ -39,8 +39,9 @@ impl RunQueue {
 
     /// Pop the next ready task in round-robin order.
     pub fn pop_ready(&self) -> Option<TaskId> {
-        // Safety: single-hart early use; no concurrent access yet.
+        // SAFETY: single-hart early use; no concurrent access yet.
         let slots = unsafe { &mut *self.slots.get() };
+        // SAFETY: run queue head is only mutated under the same single-hart guard.
         let head = unsafe { &mut *self.head.get() };
         for _ in 0..Self::MAX_TASKS {
             let idx = *head;
@@ -76,7 +77,7 @@ pub fn switch(prev: &mut TaskControlBlock, next: &TaskControlBlock) {
         // 尚未设置上下文时不切换。
         return;
     }
-    // Safety: context_switch preserves all callee-saved registers.
+    // SAFETY: context_switch preserves all callee-saved registers.
     unsafe {
         context_switch(&mut prev.context as *mut Context, &next.context as *const Context);
     }

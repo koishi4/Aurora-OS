@@ -30,7 +30,7 @@ impl SleepQueue {
     /// Insert or update a sleeping task with its wake tick.
     pub fn push(&self, task_id: TaskId, wake_tick: u64) -> bool {
         // Wake ticks are absolute tick counters (not durations).
-        // Safety: single-hart early use; no concurrent access yet.
+        // SAFETY: single-hart early use; no concurrent access yet.
         let slots = unsafe { &mut *self.slots.get() };
         for slot in slots.iter_mut() {
             if let Some(entry) = slot {
@@ -52,7 +52,7 @@ impl SleepQueue {
     /// Pop the next task whose wake tick has passed.
     pub fn pop_ready(&self, now: u64) -> Option<TaskId> {
         // Linear scan is fine for early bring-up; no ordering guarantees.
-        // Safety: single-hart early use; no concurrent access yet.
+        // SAFETY: single-hart early use; no concurrent access yet.
         let slots = unsafe { &mut *self.slots.get() };
         for slot in slots.iter_mut() {
             if let Some(entry) = *slot {
@@ -68,7 +68,7 @@ impl SleepQueue {
     /// Remove a specific task from the sleep queue.
     pub fn remove(&self, task_id: TaskId) -> bool {
         // Remove a specific sleeper to avoid stale wakeups.
-        // Safety: single-hart early use; no concurrent access yet.
+        // SAFETY: single-hart early use; no concurrent access yet.
         let slots = unsafe { &mut *self.slots.get() };
         for slot in slots.iter_mut() {
             if slot.map_or(false, |entry| entry.task_id == task_id) {

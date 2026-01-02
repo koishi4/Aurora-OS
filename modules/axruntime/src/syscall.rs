@@ -1089,6 +1089,7 @@ fn sys_mmap(
         }
         let frame = mm::alloc_frame().ok_or(Errno::NoMem)?;
         let pa = frame.addr().as_usize();
+        // SAFETY: freshly allocated frame is exclusively owned by this mapping.
         unsafe {
             core::ptr::write_bytes(pa as *mut u8, 0, mm::PAGE_SIZE);
         }
@@ -4191,9 +4192,18 @@ fn rootfs_kind() -> u8 {
 
 fn rootfs_ref(kind: u8) -> &'static dyn VfsOps {
     match kind {
-        ROOTFS_KIND_EXT4 => unsafe { &*ROOTFS_EXT4.as_ptr() },
-        ROOTFS_KIND_FAT32 => unsafe { &*ROOTFS_FAT32.as_ptr() },
-        _ => unsafe { &*ROOTFS_MEMFS.as_ptr() },
+        ROOTFS_KIND_EXT4 => {
+            // SAFETY: instance is initialized before ROOTFS_KIND is published.
+            unsafe { &*ROOTFS_EXT4.as_ptr() }
+        }
+        ROOTFS_KIND_FAT32 => {
+            // SAFETY: instance is initialized before ROOTFS_KIND is published.
+            unsafe { &*ROOTFS_FAT32.as_ptr() }
+        }
+        _ => {
+            // SAFETY: instance is initialized before ROOTFS_KIND is published.
+            unsafe { &*ROOTFS_MEMFS.as_ptr() }
+        }
     }
 }
 
@@ -4381,6 +4391,7 @@ fn set_current_umask(mask: u16) -> Result<u16, Errno> {
     };
     // SAFETY: 单核阶段顺序访问 umask。
     let old = unsafe { PROC_UMASK[idx] };
+    // SAFETY: 单核阶段顺序访问 umask。
     unsafe {
         PROC_UMASK[idx] = mask;
     }
@@ -4429,6 +4440,7 @@ fn current_cwd_str() -> &'static str {
     if len == 0 || len > MAX_PATH_LEN {
         return "/";
     }
+    // SAFETY: cwd length is validated and bounded by MAX_PATH_LEN.
     let bytes = unsafe { &PROC_CWD[idx][..len] };
     core::str::from_utf8(bytes).unwrap_or("/")
 }
@@ -4999,6 +5011,7 @@ fn pipe_acquire(object: FdObject) {
         FdObject::PipeWrite(id) => (id, false),
         FdObject::Eventfd(id) => {
             if id < EVENTFD_SLOTS {
+                // SAFETY: eventfd table is updated sequentially at early boot.
                 unsafe {
                     if EVENTFDS[id].used {
                         EVENTFDS[id].refs += 1;
@@ -5009,6 +5022,7 @@ fn pipe_acquire(object: FdObject) {
         }
         FdObject::Timerfd(id) => {
             if id < TIMERFD_SLOTS {
+                // SAFETY: timerfd table is updated sequentially at early boot.
                 unsafe {
                     if TIMERFDS[id].used {
                         TIMERFDS[id].refs += 1;
@@ -5019,6 +5033,7 @@ fn pipe_acquire(object: FdObject) {
         }
         FdObject::Epoll(id) => {
             if id < EPOLL_SLOTS {
+                // SAFETY: epoll table is updated sequentially at early boot.
                 unsafe {
                     if EPOLLS[id].used {
                         EPOLLS[id].refs += 1;
@@ -5051,6 +5066,7 @@ fn pipe_release(object: FdObject) {
         FdObject::PipeWrite(id) => (id, false),
         FdObject::Eventfd(id) => {
             if id < EVENTFD_SLOTS {
+                // SAFETY: eventfd table is updated sequentially at early boot.
                 unsafe {
                     if EVENTFDS[id].used && EVENTFDS[id].refs > 0 {
                         EVENTFDS[id].refs -= 1;
@@ -5064,6 +5080,7 @@ fn pipe_release(object: FdObject) {
         }
         FdObject::Timerfd(id) => {
             if id < TIMERFD_SLOTS {
+                // SAFETY: timerfd table is updated sequentially at early boot.
                 unsafe {
                     if TIMERFDS[id].used && TIMERFDS[id].refs > 0 {
                         TIMERFDS[id].refs -= 1;
@@ -5077,6 +5094,7 @@ fn pipe_release(object: FdObject) {
         }
         FdObject::Epoll(id) => {
             if id < EPOLL_SLOTS {
+                // SAFETY: epoll table is updated sequentially at early boot.
                 unsafe {
                     if EPOLLS[id].used && EPOLLS[id].refs > 0 {
                         EPOLLS[id].refs -= 1;
@@ -5106,15 +5124,19 @@ fn pipe_release(object: FdObject) {
             PIPES[pipe_id].writers -= 1;
         }
     }
+// SAFETY: unsafe access is guarded by checks above.
     if unsafe { PIPES[pipe_id].writers == 0 } {
         let _ = crate::runtime::wake_all(pipe_read_queue(pipe_id));
     }
+    // SAFETY: pipe_id bounds checked and pipe table is serialized.
     if unsafe { PIPES[pipe_id].readers == 0 } {
         let _ = crate::runtime::wake_all(pipe_write_queue(pipe_id));
     }
     // fd 关闭可能触发 HUP/ERR，唤醒 poll/ppoll 等待者。
     let _ = crate::runtime::wake_all(ppoll_wait_queue());
+    // SAFETY: pipe_id bounds checked and pipe table is serialized.
     if unsafe { PIPES[pipe_id].readers == 0 && PIPES[pipe_id].writers == 0 } {
+        // SAFETY: pipe_id bounds checked and pipe table is serialized.
         unsafe {
             PIPES[pipe_id] = EMPTY_PIPE;
         }
@@ -5129,6 +5151,7 @@ fn pipe_read(pipe_id: usize, root_pa: usize, buf: usize, len: usize, nonblock: b
         return Ok(0);
     }
     loop {
+        // SAFETY: pipe_id bounds checked; pipe table is read under serialized access.
         let (used, available, writers) = unsafe {
             let pipe = &PIPES[pipe_id];
             (pipe.used, pipe.len, pipe.writers)
@@ -5178,6 +5201,7 @@ fn pipe_write(pipe_id: usize, root_pa: usize, buf: usize, len: usize, nonblock: 
         return Ok(0);
     }
     loop {
+        // SAFETY: pipe_id bounds checked; pipe table is read under serialized access.
         let (used, readers, used_len) = unsafe {
             let pipe = &PIPES[pipe_id];
             (pipe.used, pipe.readers, pipe.len)
@@ -5288,6 +5312,7 @@ fn poll_revents_for_fd(fd: i32, events: u16) -> u16 {
                 return POLLNVAL;
             }
             let mut revents = 0u16;
+            // SAFETY: event_id bounds checked and table is serialized.
             let event = unsafe { &EVENTFDS[event_id] };
             if !event.used {
                 return POLLNVAL;
@@ -5306,6 +5331,7 @@ fn poll_revents_for_fd(fd: i32, events: u16) -> u16 {
                 return POLLNVAL;
             }
             let mut revents = 0u16;
+            // SAFETY: timer_id bounds checked and table is serialized.
             let timer = unsafe { &TIMERFDS[timer_id] };
             if !timer.used {
                 return POLLNVAL;
@@ -5785,6 +5811,7 @@ fn eventfd_read(event_id: usize, root_pa: usize, buf: usize, len: usize, nonbloc
         return Err(Errno::Inval);
     }
     loop {
+        // SAFETY: event_id bounds checked and table is serialized.
         let (used, counter, flags) = unsafe {
             let event = &EVENTFDS[event_id];
             (event.used, event.counter, event.flags)
@@ -5830,6 +5857,7 @@ fn eventfd_write(event_id: usize, root_pa: usize, buf: usize, len: usize, nonblo
         return Err(Errno::Inval);
     }
     loop {
+        // SAFETY: event_id bounds checked and table is serialized.
         let (used, counter) = unsafe {
             let event = &EVENTFDS[event_id];
             (event.used, event.counter)
@@ -5844,6 +5872,7 @@ fn eventfd_write(event_id: usize, root_pa: usize, buf: usize, len: usize, nonblo
             crate::runtime::block_current(eventfd_queue(event_id));
             continue;
         }
+        // SAFETY: event_id bounds checked and table is serialized.
         unsafe {
             let event = &mut EVENTFDS[event_id];
             event.counter = event.counter.saturating_add(value);
@@ -5884,6 +5913,7 @@ fn timerfd_read(timer_id: usize, root_pa: usize, buf: usize, len: usize, nonbloc
         return Err(Errno::Inval);
     }
     loop {
+        // SAFETY: timer_id bounds checked and table is serialized.
         let (used, next_ns, interval_ns) = unsafe {
             let timer = &TIMERFDS[timer_id];
             (timer.used, timer.next_ns, timer.interval_ns)

@@ -16,7 +16,7 @@ const SBI_EXT_TIME: usize = 0x54494D45;
 #[inline(always)]
 fn sbi_call_legacy(which: usize, arg0: usize, arg1: usize, arg2: usize) -> usize {
     let ret: usize;
-    // Safety: ecall follows the SBI legacy calling convention on RISC-V.
+    // SAFETY: ecall follows the SBI legacy calling convention on RISC-V.
     unsafe {
         asm!(
             "ecall",
@@ -33,7 +33,7 @@ fn sbi_call_legacy(which: usize, arg0: usize, arg1: usize, arg2: usize) -> usize
 fn sbi_call(eid: usize, fid: usize, arg0: usize, arg1: usize, arg2: usize) -> (usize, usize) {
     let error: usize;
     let value: usize;
-    // Safety: ecall follows the SBI v0.2+ calling convention on RISC-V.
+    // SAFETY: ecall follows the SBI v0.2+ calling convention on RISC-V.
     unsafe {
         asm!(
             "ecall",
@@ -84,7 +84,7 @@ pub fn shutdown() -> ! {
     }
     loop {
         // If shutdown is not supported, halt the CPU.
-        // Safety: wfi only halts the current hart until the next interrupt.
+        // SAFETY: wfi only halts the current hart until the next interrupt.
         unsafe { asm!("wfi"); }
     }
 }

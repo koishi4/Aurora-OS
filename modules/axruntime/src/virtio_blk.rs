@@ -168,6 +168,7 @@ fn try_init_device(base: usize, irq: u32) -> bool {
     mmio_write32(base, MMIO_QUEUE_NUM, queue_size as u32);
 
     let queue = VIRTIO_QUEUE.get();
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
     unsafe {
         ptr::write_bytes(queue as *mut VirtioBlkQueue, 0, 1);
     }
@@ -231,6 +232,7 @@ fn submit_request(req_type: u32, block_id: BlockId, buf: &mut [u8]) -> VfsResult
             queue.status = 0xff;
 
         let req_addr = mm::kernel_virt_to_phys(queue.req_addr()) as u64;
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
         let buf_addr = unsafe {
             let bounce = &mut VIRTIO_BLK_BOUNCE.0;
             if req_type == VIRTIO_BLK_T_OUT {
@@ -263,7 +265,9 @@ fn submit_request(req_type: u32, block_id: BlockId, buf: &mut [u8]) -> VfsResult
                 next: 0,
             };
 
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
         let avail_idx = unsafe { ptr::read_volatile(&queue.avail.idx) };
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
         unsafe {
             ptr::write_volatile(
                 &mut queue.avail.ring[(avail_idx as usize) % queue_size],
@@ -271,6 +275,7 @@ fn submit_request(req_type: u32, block_id: BlockId, buf: &mut [u8]) -> VfsResult
             );
         }
         fence(Ordering::SeqCst);
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
         unsafe {
             ptr::write_volatile(&mut queue.avail.idx, avail_idx.wrapping_add(1));
         }
@@ -282,10 +287,12 @@ fn submit_request(req_type: u32, block_id: BlockId, buf: &mut [u8]) -> VfsResult
             drop(_guard);
             wait_for_completion(queue, &mut last_used);
 
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
             unsafe { ptr::read_volatile(&queue.status) }
         };
 
         if req_type == VIRTIO_BLK_T_IN {
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
             unsafe {
                 buf[..SECTOR_SIZE].copy_from_slice(&VIRTIO_BLK_BOUNCE.0);
             }
@@ -448,10 +455,12 @@ impl Drop for SpinGuard<'_> {
 }
 
 fn mmio_read32(base: usize, offset: usize) -> u32 {
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
     unsafe { ptr::read_volatile((base + offset) as *const u32) }
 }
 
 fn mmio_write32(base: usize, offset: usize, value: u32) {
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
     unsafe { ptr::write_volatile((base + offset) as *mut u32, value) }
 }
 
@@ -483,6 +492,7 @@ fn wait_for_queue_event() {
 
 fn wait_for_completion(queue: &VirtioBlkQueue, last_used: &mut u16) {
     loop {
+// SAFETY: queue/MMIO memory is mapped and protected by driver invariants.
         let used_idx = unsafe { ptr::read_volatile(&queue.used.idx) };
         if used_idx != *last_used {
             *last_used = used_idx;

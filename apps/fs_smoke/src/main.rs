@@ -66,16 +66,19 @@ unsafe fn syscall6(
 }
 
 fn write_stdout(msg: &[u8]) {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     unsafe {
         let _ = syscall6(SYS_WRITE, 1, msg.as_ptr() as usize, msg.len(), 0, 0, 0);
     }
 }
 
 fn exit(code: i32) -> ! {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     unsafe {
         let _ = syscall6(SYS_EXIT, code as usize, 0, 0, 0, 0, 0);
     }
     loop {
+// SAFETY: wfi only halts until the next interrupt.
         unsafe { asm!("wfi") };
     }
 }
@@ -99,6 +102,7 @@ fn check_eq(got: usize, expected: usize) {
 }
 
 fn syscall_openat(path: &[u8], flags: usize, mode: usize) -> usize {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe {
         syscall6(
             SYS_OPENAT,
@@ -113,38 +117,47 @@ fn syscall_openat(path: &[u8], flags: usize, mode: usize) -> usize {
 }
 
 fn syscall_close(fd: usize) {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe { syscall6(SYS_CLOSE, fd, 0, 0, 0, 0, 0) });
 }
 
 fn syscall_write(fd: usize, buf: &[u8]) -> usize {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe { syscall6(SYS_WRITE, fd, buf.as_ptr() as usize, buf.len(), 0, 0, 0) })
 }
 
 fn syscall_read(fd: usize, buf: &mut [u8]) -> usize {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe { syscall6(SYS_READ, fd, buf.as_mut_ptr() as usize, buf.len(), 0, 0, 0) })
 }
 
 fn syscall_lseek(fd: usize, offset: usize, whence: usize) -> usize {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe { syscall6(SYS_LSEEK, fd, offset, whence, 0, 0, 0) })
 }
 
 fn syscall_pread64(fd: usize, buf: &mut [u8], offset: usize) -> usize {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe { syscall6(SYS_PREAD64, fd, buf.as_mut_ptr() as usize, buf.len(), offset, 0, 0) })
 }
 
 fn syscall_pwrite64(fd: usize, buf: &[u8], offset: usize) -> usize {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe { syscall6(SYS_PWRITE64, fd, buf.as_ptr() as usize, buf.len(), offset, 0, 0) })
 }
 
 fn syscall_preadv(fd: usize, iov: &mut [Iovec], offset: usize) -> usize {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe { syscall6(SYS_PREADV, fd, iov.as_mut_ptr() as usize, iov.len(), offset, 0, 0) })
 }
 
 fn syscall_pwritev(fd: usize, iov: &[Iovec], offset: usize) -> usize {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe { syscall6(SYS_PWRITEV, fd, iov.as_ptr() as usize, iov.len(), offset, 0, 0) })
 }
 
 fn syscall_ftruncate(fd: usize, len: usize) {
+// SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     check(unsafe { syscall6(SYS_FTRUNCATE, fd, len, 0, 0, 0, 0) });
 }
 

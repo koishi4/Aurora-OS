@@ -64,6 +64,7 @@ pub fn spawn<F>(future: &'static mut F) -> Result<usize, SpawnError>
 where
     F: Future<Output = ()> + 'static,
 {
+// SAFETY: async task slots are accessed under the executor lock.
     with_no_irq(|| unsafe {
         // SAFETY: interrupts are disabled; TASKS/READY_QUEUE are only mutated here.
         for (idx, slot) in TASKS.iter_mut().enumerate() {
@@ -89,6 +90,7 @@ pub fn poll() -> bool {
     let mut did_work = false;
     while let Some(task_id) = queue_pop() {
         did_work = true;
+// SAFETY: async task slots are accessed under the executor lock.
         let (poll_fn, data) = unsafe {
             // SAFETY: task_id came from READY_QUEUE and TASKS is static.
             let slot = &mut TASKS[task_id];
@@ -97,9 +99,11 @@ pub fn poll() -> bool {
         let Some(poll_fn) = poll_fn else {
             continue;
         };
+// SAFETY: async task slots are accessed under the executor lock.
         let waker = unsafe { Waker::from_raw(raw_waker(task_id)) };
         let mut cx = Context::from_waker(&waker);
         if poll_fn(data, &mut cx).is_ready() {
+// SAFETY: async task slots are accessed under the executor lock.
             unsafe {
                 let slot = &mut TASKS[task_id];
                 slot.poll_fn = None;
@@ -147,6 +151,7 @@ where
 }
 
 fn queue_push(task_id: usize) {
+// SAFETY: async task slots are accessed under the executor lock.
     unsafe {
         let queue = &mut READY_QUEUE;
         if queue.len == MAX_ASYNC_TASKS {
@@ -159,6 +164,7 @@ fn queue_push(task_id: usize) {
 }
 
 fn queue_pop() -> Option<usize> {
+// SAFETY: async task slots are accessed under the executor lock.
     with_no_irq(|| unsafe {
         // SAFETY: interrupts are disabled; READY_QUEUE/TASKS are only mutated here.
         let queue = &mut READY_QUEUE;
@@ -176,6 +182,7 @@ fn queue_pop() -> Option<usize> {
 }
 
 fn queue_wake(task_id: usize) {
+// SAFETY: async task slots are accessed under the executor lock.
     with_no_irq(|| unsafe {
         // SAFETY: interrupts are disabled; TASKS/READY_QUEUE are only mutated here.
         if task_id >= MAX_ASYNC_TASKS {
@@ -220,12 +227,14 @@ where
     F: FnOnce() -> R,
 {
     let sstatus: usize;
+// SAFETY: async task slots are accessed under the executor lock.
     unsafe {
         // SAFETY: read/modify sstatus to mask interrupts in a short critical section.
         core::arch::asm!("csrr {0}, sstatus", out(reg) sstatus);
         core::arch::asm!("csrci sstatus, 0x2");
     }
     let ret = f();
+// SAFETY: async task slots are accessed under the executor lock.
     unsafe {
         // SAFETY: restore previous interrupt state captured above.
         core::arch::asm!("csrw sstatus, {0}", in(reg) sstatus);
