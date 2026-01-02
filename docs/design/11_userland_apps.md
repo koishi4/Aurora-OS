@@ -14,6 +14,7 @@
   5) 打包：提供 `scripts/build_iperf3.sh`/`scripts/build_redis.sh` 与 rootfs 复制规则。
 - DNS/配置依赖：优先使用 IP 直连，避免依赖 `/etc/resolv.conf` 与复杂 NSS。
 - 网络测试：iperf3 作为吞吐基线，redis 作为请求/响应基线（get/set、pipeline）。
+- staging：`scripts/stage_userland_apps.sh` 支持将已构建的 iperf3/redis 二进制写入 rootfs 目录（通过 `EXTRA_ROOTFS_DIR` 进入 ext4 镜像）。
 
 ## 覆盖矩阵（初稿）
 | syscall | iperf3 | redis | 备注 |
@@ -22,7 +23,7 @@
 | brk | ✓ | ✓ | 堆增长 |
 | mmap/munmap/mprotect | ✓ | ✓ | 匿名私有映射 |
 | socket/connect/bind/listen/accept | - | - | 需要运行态采集 |
-| epoll/eventfd/timerfd | - | - | 需要运行态采集 |
+| epoll/eventfd/timerfd | - | - | 已实现最小占位（epoll 轮询、eventfd/timerfd 基础语义） |
 | futex/clone | - | ✓ | redis 版本路径出现 futex |
 | clock_gettime/nanosleep | - | - | 需要运行态采集 |
 | access | ✓ | ✓ | 已实现（access→faccessat） |
@@ -49,7 +50,7 @@
 ### 缺口分析（初步）
 - 已补齐：access/pread64/readlink/madvise（详见 syscall 覆盖矩阵）。
 - 可暂时返回 ENOSYS：arch_prctl（riscv 无该 syscall）、rseq（若应用未启用线程/注册）。
-- 运行态后续补齐：epoll/eventfd/timerfd、socket 路径与时间相关 syscall。
+- 运行态后续补齐：socket 路径与时间相关 syscall。
 
 ## 关键数据结构
 - `SyscallCoverageMatrix`：记录 syscall -> 状态/风险/测试点。

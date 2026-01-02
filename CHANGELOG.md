@@ -223,3 +223,5 @@
 - Record initial syscall coverage matrix for iperf3/redis (help/version paths).
 - Add access/readlink wrappers plus pread64/madvise stubs for app syscall coverage.
 - Add rseq ENOSYS stub and document arch_prctl as unsupported on riscv64.
+- Add minimal eventfd/timerfd/epoll syscall support for userland event loops.
+- Add userland staging script for iperf3/redis rootfs injection.

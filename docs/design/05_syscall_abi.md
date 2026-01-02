@@ -30,6 +30,7 @@
 - 早期实现 `open/openat/mkdirat/unlinkat/newfstatat/getdents64/faccessat/statx/readlinkat`，路径解析统一走 VFS，读路径覆盖 `/`、`/dev`、`/init`、`/dev/null` 与 `/dev/zero`。
 - 补齐 `access/readlink/pread64/madvise` 占位：`access/readlink` 转发到 `faccessat/readlinkat`，`pread64` 仅支持 VFS 普通文件并对管道/套接字返回 ESPIPE，`madvise` 返回成功占位。
 - `rseq` 在 riscv64 上占位返回 ENOSYS；`arch_prctl` 不在 riscv64 ABI 中，保持 ENOSYS。
+- 早期实现 `eventfd2/timerfd_*` 与 `epoll_*` 最小语义：eventfd 提供计数器读写与阻塞；timerfd 支持相对/绝对定时与读取过期计数；epoll 以轮询 + sleep-retry 输出就绪事件，忽略信号掩码。
 - 早期实现 `mknodat/symlinkat/linkat/renameat/renameat2`，占位仅校验指针与 AT_FDCWD，未提供真实重命名/链接能力。
 - 早期实现 `statfs/fstatfs`，占位填充基本文件系统信息。
 - 早期实现 `fchmodat/fchownat/utimensat`，占位校验参数与路径，允许根目录与 `/dev` 伪节点。

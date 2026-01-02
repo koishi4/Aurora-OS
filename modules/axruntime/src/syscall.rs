@@ -96,6 +96,30 @@ pub fn handle_syscall(tf: &mut TrapFrame) {
 
 fn dispatch(tf: &mut TrapFrame, ctx: SyscallContext) -> Result<usize, Errno> {
     match ctx.nr {
+        SYS_EVENTFD2 => sys_eventfd2(ctx.args[0], ctx.args[1]),
+        SYS_EPOLL_CREATE1 => sys_epoll_create1(ctx.args[0]),
+        SYS_EPOLL_CTL => sys_epoll_ctl(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_EPOLL_PWAIT => sys_epoll_pwait(
+            ctx.args[0],
+            ctx.args[1],
+            ctx.args[2],
+            ctx.args[3],
+            ctx.args[4],
+            ctx.args[5],
+        ),
+        SYS_EPOLL_PWAIT2 => sys_epoll_pwait2(
+            ctx.args[0],
+            ctx.args[1],
+            ctx.args[2],
+            ctx.args[3],
+            ctx.args[4],
+            ctx.args[5],
+        ),
+        SYS_TIMERFD_CREATE => sys_timerfd_create(ctx.args[0], ctx.args[1]),
+        SYS_TIMERFD_SETTIME => sys_timerfd_settime(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_TIMERFD_GETTIME => sys_timerfd_gettime(ctx.args[0], ctx.args[1]),
+        SYS_TIMERFD_SETTIME64 => sys_timerfd_settime(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_TIMERFD_GETTIME64 => sys_timerfd_gettime(ctx.args[0], ctx.args[1]),
         SYS_EXIT => sys_exit(ctx.args[0]),
         SYS_EXECVE => sys_execve(tf, ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_CLONE => sys_clone(tf, ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
@@ -117,7 +141,6 @@ fn dispatch(tf: &mut TrapFrame, ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_WRITE => sys_write(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_READV => sys_readv(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_WRITEV => sys_writev(ctx.args[0], ctx.args[1], ctx.args[2]),
-        SYS_ACCESS => sys_access(ctx.args[0], ctx.args[1]),
         SYS_OPEN => sys_open(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_OPENAT => sys_openat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_PIPE2 => sys_pipe2(ctx.args[0], ctx.args[1]),
@@ -225,12 +248,21 @@ const SYS_MMAP: usize = 222;
 const SYS_MPROTECT: usize = 226;
 const SYS_MADVISE: usize = 233;
 const SYS_RSEQ: usize = 293;
+const SYS_EVENTFD2: usize = 19;
+const SYS_EPOLL_CREATE1: usize = 20;
+const SYS_EPOLL_CTL: usize = 21;
+const SYS_EPOLL_PWAIT: usize = 22;
+const SYS_TIMERFD_CREATE: usize = 85;
+const SYS_TIMERFD_SETTIME: usize = 86;
+const SYS_TIMERFD_GETTIME: usize = 87;
+const SYS_TIMERFD_GETTIME64: usize = 410;
+const SYS_TIMERFD_SETTIME64: usize = 411;
+const SYS_EPOLL_PWAIT2: usize = 441;
 const SYS_READ: usize = 63;
 const SYS_PREAD64: usize = 67;
 const SYS_WRITE: usize = 64;
 const SYS_READV: usize = 65;
 const SYS_WRITEV: usize = 66;
-const SYS_ACCESS: usize = 21;
 const SYS_OPEN: usize = 1024;
 const SYS_OPENAT: usize = 56;
 const SYS_PIPE2: usize = 59;
@@ -378,6 +410,10 @@ const FD_TABLE_SLOTS: usize = 16;
 const MAX_PROCS: usize = crate::config::MAX_TASKS;
 const PIPE_SLOTS: usize = 8;
 const PIPE_BUFFER_SIZE: usize = 512;
+const EVENTFD_SLOTS: usize = 16;
+const TIMERFD_SLOTS: usize = 16;
+const EPOLL_SLOTS: usize = 16;
+const EPOLL_ITEM_SLOTS: usize = 64;
 const MAX_PATH_LEN: usize = 128;
 const VFS_MOUNT_COUNT: usize = 3;
 const SIG_BLOCK: usize = 0;
@@ -387,12 +423,27 @@ const F_GETFD: usize = 1;
 const F_SETFD: usize = 2;
 const F_GETFL: usize = 3;
 const F_SETFL: usize = 4;
+const EPOLL_CTL_ADD: usize = 1;
+const EPOLL_CTL_DEL: usize = 2;
+const EPOLL_CTL_MOD: usize = 3;
+const EPOLLIN: u32 = 0x001;
+const EPOLLOUT: u32 = 0x004;
+const EPOLLERR: u32 = 0x008;
+const EPOLLHUP: u32 = 0x010;
+const EPOLL_CLOEXEC: usize = 0x80000;
+const EFD_SEMAPHORE: usize = 0x1;
+const EFD_NONBLOCK: usize = 0x800;
+const EFD_CLOEXEC: usize = 0x80000;
+const TFD_NONBLOCK: usize = 0x800;
+const TFD_CLOEXEC: usize = 0x80000;
+const TFD_TIMER_ABSTIME: usize = 0x1;
 const POLLIN: u16 = 0x001;
 const POLLOUT: u16 = 0x004;
 const POLLERR: u16 = 0x008;
 const POLLHUP: u16 = 0x010;
 const POLLNVAL: u16 = 0x020;
 const PPOLL_RETRY_SLEEP_MS: u64 = 10;
+const EPOLL_RETRY_SLEEP_MS: u64 = 10;
 const PR_SET_NAME: usize = 15;
 const PR_GET_NAME: usize = 16;
 const GRND_NONBLOCK: usize = 0x1;
@@ -411,6 +462,13 @@ static mut PRCTL_NAME: [u8; 16] = DEFAULT_PRCTL_NAME;
 struct Timespec {
     tv_sec: i64,
     tv_nsec: i64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Itimerspec {
+    it_interval: Timespec,
+    it_value: Timespec,
 }
 
 #[repr(C)]
@@ -589,6 +647,9 @@ enum FdKind {
     PipeRead(usize),
     PipeWrite(usize),
     Socket(axnet::SocketId),
+    Eventfd(usize),
+    Timerfd(usize),
+    Epoll(usize),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -611,6 +672,39 @@ struct Pipe {
     buf: [u8; PIPE_BUFFER_SIZE],
 }
 
+#[derive(Clone, Copy)]
+struct EventFd {
+    used: bool,
+    refs: usize,
+    counter: u64,
+    flags: usize,
+}
+
+#[derive(Clone, Copy)]
+struct TimerFd {
+    used: bool,
+    refs: usize,
+    next_ns: u64,
+    interval_ns: u64,
+    flags: usize,
+}
+
+#[derive(Clone, Copy)]
+struct EpollItem {
+    used: bool,
+    fd: i32,
+    events: u32,
+    data: u64,
+}
+
+#[derive(Clone, Copy)]
+struct EpollInstance {
+    used: bool,
+    refs: usize,
+    flags: usize,
+    items: [EpollItem; EPOLL_ITEM_SLOTS],
+}
+
 const EMPTY_PIPE: Pipe = Pipe {
     used: false,
     readers: 0,
@@ -619,6 +713,35 @@ const EMPTY_PIPE: Pipe = Pipe {
     write_pos: 0,
     len: 0,
     buf: [0; PIPE_BUFFER_SIZE],
+};
+
+const EMPTY_EVENTFD: EventFd = EventFd {
+    used: false,
+    refs: 0,
+    counter: 0,
+    flags: 0,
+};
+
+const EMPTY_TIMERFD: TimerFd = TimerFd {
+    used: false,
+    refs: 0,
+    next_ns: 0,
+    interval_ns: 0,
+    flags: 0,
+};
+
+const EMPTY_EPOLL_ITEM: EpollItem = EpollItem {
+    used: false,
+    fd: -1,
+    events: 0,
+    data: 0,
+};
+
+const EMPTY_EPOLL: EpollInstance = EpollInstance {
+    used: false,
+    refs: 0,
+    flags: 0,
+    items: [EMPTY_EPOLL_ITEM; EPOLL_ITEM_SLOTS],
 };
 
 const EMPTY_FD_ENTRY: FdEntry = FdEntry {
@@ -645,8 +768,52 @@ static mut PROC_UMASK: [u16; MAX_PROCS] = [0; MAX_PROCS];
 static mut CONSOLE_STASH: i16 = -1;
 // SAFETY: pipe 表在早期阶段串行访问。
 static mut PIPES: [Pipe; PIPE_SLOTS] = [EMPTY_PIPE; PIPE_SLOTS];
+// SAFETY: eventfd 表在早期阶段串行访问。
+static mut EVENTFDS: [EventFd; EVENTFD_SLOTS] = [EMPTY_EVENTFD; EVENTFD_SLOTS];
+// SAFETY: timerfd 表在早期阶段串行访问。
+static mut TIMERFDS: [TimerFd; TIMERFD_SLOTS] = [EMPTY_TIMERFD; TIMERFD_SLOTS];
+// SAFETY: epoll 表在早期阶段串行访问。
+static mut EPOLLS: [EpollInstance; EPOLL_SLOTS] = [EMPTY_EPOLL; EPOLL_SLOTS];
 // SAFETY: pipe 等待队列只在单核早期阶段访问。
 static PIPE_READ_WAITERS: [crate::task_wait_queue::TaskWaitQueue; PIPE_SLOTS] = [
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+];
+// SAFETY: eventfd 等待队列只在单核早期阶段访问。
+static EVENTFD_WAITERS: [crate::task_wait_queue::TaskWaitQueue; EVENTFD_SLOTS] = [
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+];
+// SAFETY: timerfd 等待队列只在单核早期阶段访问。
+static TIMERFD_WAITERS: [crate::task_wait_queue::TaskWaitQueue; TIMERFD_SLOTS] = [
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
     crate::task_wait_queue::TaskWaitQueue::new(),
     crate::task_wait_queue::TaskWaitQueue::new(),
     crate::task_wait_queue::TaskWaitQueue::new(),
@@ -697,6 +864,13 @@ struct PollFd {
     fd: i32,
     events: i16,
     revents: i16,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct EpollEvent {
+    events: u32,
+    data: u64,
 }
 
 #[repr(C)]
@@ -964,6 +1138,222 @@ fn sys_rseq(_rseq: usize, _rseq_len: usize, _flags: usize, _sig: usize) -> Resul
     Err(Errno::NoSys)
 }
 
+fn sys_eventfd2(initval: usize, flags: usize) -> Result<usize, Errno> {
+    if flags & !(EFD_SEMAPHORE | EFD_NONBLOCK | EFD_CLOEXEC) != 0 {
+        return Err(Errno::Inval);
+    }
+    let initval = initval as u64;
+    let event_id = alloc_eventfd(initval, flags).ok_or(Errno::MFile)?;
+    let entry = FdEntry {
+        kind: FdKind::Eventfd(event_id),
+        flags: if (flags & EFD_NONBLOCK) != 0 { O_NONBLOCK } else { 0 },
+        offset: 0,
+        recv_timeout_ms: 0,
+        send_timeout_ms: 0,
+    };
+    let fd = alloc_fd(entry).ok_or(Errno::MFile)?;
+    Ok(fd)
+}
+
+fn sys_epoll_create1(flags: usize) -> Result<usize, Errno> {
+    if flags & !EPOLL_CLOEXEC != 0 {
+        return Err(Errno::Inval);
+    }
+    let epoll_id = alloc_epoll(flags).ok_or(Errno::MFile)?;
+    let entry = FdEntry {
+        kind: FdKind::Epoll(epoll_id),
+        flags: 0,
+        offset: 0,
+        recv_timeout_ms: 0,
+        send_timeout_ms: 0,
+    };
+    let fd = alloc_fd(entry).ok_or(Errno::MFile)?;
+    Ok(fd)
+}
+
+fn sys_epoll_ctl(epfd: usize, op: usize, fd: usize, event_ptr: usize) -> Result<usize, Errno> {
+    let entry = resolve_fd(epfd).ok_or(Errno::Badf)?;
+    let epoll_id = match entry.kind {
+        FdKind::Epoll(id) => id,
+        _ => return Err(Errno::Badf),
+    };
+    if resolve_fd(fd).is_none() {
+        return Err(Errno::Badf);
+    }
+    let mut event = EpollEvent { events: 0, data: 0 };
+    if matches!(op, EPOLL_CTL_ADD | EPOLL_CTL_MOD) {
+        if event_ptr == 0 {
+            return Err(Errno::Fault);
+        }
+        let root_pa = mm::current_root_pa();
+        if root_pa == 0 {
+            return Err(Errno::Fault);
+        }
+        event = UserPtr::<EpollEvent>::new(event_ptr)
+            .read(root_pa)
+            .ok_or(Errno::Fault)?;
+    }
+    // SAFETY: 单核早期阶段，epoll 表串行更新。
+    unsafe {
+        let epoll = EPOLLS.get_mut(epoll_id).ok_or(Errno::Badf)?;
+        if !epoll.used {
+            return Err(Errno::Badf);
+        }
+        match op {
+            EPOLL_CTL_ADD => {
+                for item in epoll.items.iter() {
+                    if item.used && item.fd == fd as i32 {
+                        return Err(Errno::Exist);
+                    }
+                }
+                if let Some(slot) = epoll.items.iter_mut().find(|item| !item.used) {
+                    *slot = EpollItem {
+                        used: true,
+                        fd: fd as i32,
+                        events: event.events,
+                        data: event.data,
+                    };
+                    return Ok(0);
+                }
+                Err(Errno::MFile)
+            }
+            EPOLL_CTL_MOD => {
+                for item in epoll.items.iter_mut() {
+                    if item.used && item.fd == fd as i32 {
+                        item.events = event.events;
+                        item.data = event.data;
+                        return Ok(0);
+                    }
+                }
+                Err(Errno::NoEnt)
+            }
+            EPOLL_CTL_DEL => {
+                for item in epoll.items.iter_mut() {
+                    if item.used && item.fd == fd as i32 {
+                        *item = EMPTY_EPOLL_ITEM;
+                        return Ok(0);
+                    }
+                }
+                Err(Errno::NoEnt)
+            }
+            _ => Err(Errno::Inval),
+        }
+    }
+}
+
+fn sys_epoll_pwait(
+    epfd: usize,
+    events_ptr: usize,
+    maxevents: usize,
+    timeout: usize,
+    _sigmask: usize,
+    _sigsetsize: usize,
+) -> Result<usize, Errno> {
+    let timeout = timeout as isize;
+    let timeout_ms = if timeout < 0 { None } else { Some(timeout as u64) };
+    epoll_wait(epfd, events_ptr, maxevents, timeout_ms)
+}
+
+fn sys_epoll_pwait2(
+    epfd: usize,
+    events_ptr: usize,
+    maxevents: usize,
+    timeout: usize,
+    _sigmask: usize,
+    _sigsetsize: usize,
+) -> Result<usize, Errno> {
+    let timeout_ms = epoll_timeout_ms(timeout)?;
+    epoll_wait(epfd, events_ptr, maxevents, timeout_ms)
+}
+
+fn sys_timerfd_create(clockid: usize, flags: usize) -> Result<usize, Errno> {
+    if clockid != CLOCK_MONOTONIC && clockid != CLOCK_BOOTTIME {
+        return Err(Errno::Inval);
+    }
+    if flags & !(TFD_NONBLOCK | TFD_CLOEXEC) != 0 {
+        return Err(Errno::Inval);
+    }
+    let timer_id = alloc_timerfd(flags).ok_or(Errno::MFile)?;
+    let entry = FdEntry {
+        kind: FdKind::Timerfd(timer_id),
+        flags: if (flags & TFD_NONBLOCK) != 0 { O_NONBLOCK } else { 0 },
+        offset: 0,
+        recv_timeout_ms: 0,
+        send_timeout_ms: 0,
+    };
+    let fd = alloc_fd(entry).ok_or(Errno::MFile)?;
+    Ok(fd)
+}
+
+fn sys_timerfd_settime(fd: usize, flags: usize, new_ptr: usize, old_ptr: usize) -> Result<usize, Errno> {
+    if flags & !TFD_TIMER_ABSTIME != 0 {
+        return Err(Errno::Inval);
+    }
+    if new_ptr == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    let timer_id = match entry.kind {
+        FdKind::Timerfd(id) => id,
+        _ => return Err(Errno::Badf),
+    };
+    let new_value = UserPtr::<Itimerspec>::new(new_ptr)
+        .read(root_pa)
+        .ok_or(Errno::Fault)?;
+    if old_ptr != 0 {
+        let old = timerfd_current_spec(timer_id)?;
+        UserPtr::new(old_ptr).write(root_pa, old).ok_or(Errno::Fault)?;
+    }
+    let value_ns = timespec_to_ns(new_value.it_value)?;
+    let interval_ns = timespec_to_ns(new_value.it_interval)?;
+    let now = time::monotonic_ns();
+    let next_ns = if value_ns == 0 {
+        0
+    } else if (flags & TFD_TIMER_ABSTIME) != 0 {
+        value_ns
+    } else {
+        now.saturating_add(value_ns)
+    };
+    // SAFETY: 单核早期阶段串行更新 timerfd。
+    unsafe {
+        if let Some(timer) = TIMERFDS.get_mut(timer_id) {
+            if !timer.used {
+                return Err(Errno::Badf);
+            }
+            timer.next_ns = next_ns;
+            timer.interval_ns = interval_ns;
+        } else {
+            return Err(Errno::Badf);
+        }
+    }
+    let _ = crate::runtime::wake_all(timerfd_queue(timer_id));
+    Ok(0)
+}
+
+fn sys_timerfd_gettime(fd: usize, curr_ptr: usize) -> Result<usize, Errno> {
+    if curr_ptr == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    let timer_id = match entry.kind {
+        FdKind::Timerfd(id) => id,
+        _ => return Err(Errno::Badf),
+    };
+    let current = timerfd_current_spec(timer_id)?;
+    UserPtr::new(curr_ptr)
+        .write(root_pa, current)
+        .ok_or(Errno::Fault)?;
+    Ok(0)
+}
+
 const EXECVE_IMAGE_MAX: usize = 0x100000;
 // SAFETY: 单核 execve 过程复用该缓冲区读取 ELF 镜像。
 static mut EXECVE_IMAGE: [u8; EXECVE_IMAGE_MAX] = [0; EXECVE_IMAGE_MAX];
@@ -1100,7 +1490,10 @@ fn sys_pread64(fd: usize, buf: usize, len: usize, offset: usize) -> Result<usize
         | FdKind::Stderr
         | FdKind::PipeRead(_)
         | FdKind::PipeWrite(_)
-        | FdKind::Socket(_) => Err(Errno::Pipe),
+        | FdKind::Socket(_)
+        | FdKind::Eventfd(_)
+        | FdKind::Timerfd(_)
+        | FdKind::Epoll(_) => Err(Errno::Pipe),
         FdKind::Empty => Err(Errno::Badf),
     }
 }
@@ -4201,10 +4594,103 @@ fn free_pipe(pipe_id: usize) {
     }
 }
 
+fn eventfd_queue(event_id: usize) -> &'static crate::task_wait_queue::TaskWaitQueue {
+    &EVENTFD_WAITERS[event_id]
+}
+
+fn timerfd_queue(timer_id: usize) -> &'static crate::task_wait_queue::TaskWaitQueue {
+    &TIMERFD_WAITERS[timer_id]
+}
+
+fn alloc_eventfd(initval: u64, flags: usize) -> Option<usize> {
+    // SAFETY: 单核早期阶段串行更新 eventfd 表。
+    unsafe {
+        for (idx, slot) in EVENTFDS.iter_mut().enumerate() {
+            if !slot.used {
+                *slot = EventFd {
+                    used: true,
+                    refs: 1,
+                    counter: initval,
+                    flags,
+                };
+                return Some(idx);
+            }
+        }
+    }
+    None
+}
+
+fn alloc_timerfd(flags: usize) -> Option<usize> {
+    // SAFETY: 单核早期阶段串行更新 timerfd 表。
+    unsafe {
+        for (idx, slot) in TIMERFDS.iter_mut().enumerate() {
+            if !slot.used {
+                *slot = TimerFd {
+                    used: true,
+                    refs: 1,
+                    next_ns: 0,
+                    interval_ns: 0,
+                    flags,
+                };
+                return Some(idx);
+            }
+        }
+    }
+    None
+}
+
+fn alloc_epoll(flags: usize) -> Option<usize> {
+    // SAFETY: 单核早期阶段串行更新 epoll 表。
+    unsafe {
+        for (idx, slot) in EPOLLS.iter_mut().enumerate() {
+            if !slot.used {
+                *slot = EpollInstance {
+                    used: true,
+                    refs: 1,
+                    flags,
+                    items: [EMPTY_EPOLL_ITEM; EPOLL_ITEM_SLOTS],
+                };
+                return Some(idx);
+            }
+        }
+    }
+    None
+}
+
 fn pipe_acquire(kind: FdKind) {
     let (pipe_id, is_read) = match kind {
         FdKind::PipeRead(id) => (id, true),
         FdKind::PipeWrite(id) => (id, false),
+        FdKind::Eventfd(id) => {
+            if id < EVENTFD_SLOTS {
+                unsafe {
+                    if EVENTFDS[id].used {
+                        EVENTFDS[id].refs += 1;
+                    }
+                }
+            }
+            return;
+        }
+        FdKind::Timerfd(id) => {
+            if id < TIMERFD_SLOTS {
+                unsafe {
+                    if TIMERFDS[id].used {
+                        TIMERFDS[id].refs += 1;
+                    }
+                }
+            }
+            return;
+        }
+        FdKind::Epoll(id) => {
+            if id < EPOLL_SLOTS {
+                unsafe {
+                    if EPOLLS[id].used {
+                        EPOLLS[id].refs += 1;
+                    }
+                }
+            }
+            return;
+        }
         _ => return,
     };
     if pipe_id >= PIPE_SLOTS {
@@ -4227,6 +4713,45 @@ fn pipe_release(kind: FdKind) {
     let (pipe_id, is_read) = match kind {
         FdKind::PipeRead(id) => (id, true),
         FdKind::PipeWrite(id) => (id, false),
+        FdKind::Eventfd(id) => {
+            if id < EVENTFD_SLOTS {
+                unsafe {
+                    if EVENTFDS[id].used && EVENTFDS[id].refs > 0 {
+                        EVENTFDS[id].refs -= 1;
+                        if EVENTFDS[id].refs == 0 {
+                            EVENTFDS[id] = EMPTY_EVENTFD;
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        FdKind::Timerfd(id) => {
+            if id < TIMERFD_SLOTS {
+                unsafe {
+                    if TIMERFDS[id].used && TIMERFDS[id].refs > 0 {
+                        TIMERFDS[id].refs -= 1;
+                        if TIMERFDS[id].refs == 0 {
+                            TIMERFDS[id] = EMPTY_TIMERFD;
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        FdKind::Epoll(id) => {
+            if id < EPOLL_SLOTS {
+                unsafe {
+                    if EPOLLS[id].used && EPOLLS[id].refs > 0 {
+                        EPOLLS[id].refs -= 1;
+                        if EPOLLS[id].refs == 0 {
+                            EPOLLS[id] = EMPTY_EPOLL;
+                        }
+                    }
+                }
+            }
+            return;
+        }
         _ => return,
     };
     if pipe_id >= PIPE_SLOTS {
@@ -4422,12 +4947,52 @@ fn poll_revents_for_fd(fd: i32, events: u16) -> u16 {
             }
             revents
         }
+        FdKind::Eventfd(event_id) => {
+            if event_id >= EVENTFD_SLOTS {
+                return POLLNVAL;
+            }
+            let mut revents = 0u16;
+            let event = unsafe { &EVENTFDS[event_id] };
+            if !event.used {
+                return POLLNVAL;
+            }
+            let counter = event.counter;
+            if (events & POLLIN) != 0 && counter > 0 {
+                revents |= POLLIN;
+            }
+            if (events & POLLOUT) != 0 && counter < u64::MAX - 1 {
+                revents |= POLLOUT;
+            }
+            revents
+        }
+        FdKind::Timerfd(timer_id) => {
+            if timer_id >= TIMERFD_SLOTS {
+                return POLLNVAL;
+            }
+            let mut revents = 0u16;
+            let timer = unsafe { &TIMERFDS[timer_id] };
+            if !timer.used {
+                return POLLNVAL;
+            }
+            let next_ns = timer.next_ns;
+            if (events & POLLIN) != 0 && next_ns != 0 && time::monotonic_ns() >= next_ns {
+                revents |= POLLIN;
+            }
+            revents
+        }
         FdKind::Stdout | FdKind::Stderr => {
             if (events & POLLOUT) != 0 {
                 POLLOUT
             } else {
                 0
             }
+        }
+        FdKind::Epoll(epoll_id) => {
+            let mut revents = 0u16;
+            if (events & POLLIN) != 0 && epoll_has_ready(epoll_id) {
+                revents |= POLLIN;
+            }
+            revents
         }
         FdKind::Vfs(handle) => {
             let mut revents = 0u16;
@@ -4546,6 +5111,57 @@ fn ppoll_sleep_ms(sleep_ms: u64) {
     }
 }
 
+fn epoll_wait(
+    epfd: usize,
+    events_ptr: usize,
+    maxevents: usize,
+    timeout_ms: Option<u64>,
+) -> Result<usize, Errno> {
+    if maxevents == 0 || maxevents > EPOLL_ITEM_SLOTS {
+        return Err(Errno::Inval);
+    }
+    if events_ptr == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let total = maxevents
+        .checked_mul(size_of::<EpollEvent>())
+        .ok_or(Errno::Fault)?;
+    validate_user_write(root_pa, events_ptr, total)?;
+    let ready = epoll_scan(epfd, root_pa, events_ptr, maxevents)?;
+    if ready > 0 || !can_block_current() {
+        return Ok(ready);
+    }
+    if let Some(0) = timeout_ms {
+        return Ok(0);
+    }
+    let mut remaining_ms = timeout_ms;
+    loop {
+        let sleep_ms = match remaining_ms {
+            Some(0) => return Ok(0),
+            Some(ms) => core::cmp::min(ms, EPOLL_RETRY_SLEEP_MS),
+            None => EPOLL_RETRY_SLEEP_MS,
+        };
+        if sleep_ms == 0 {
+            return Ok(0);
+        }
+        ppoll_sleep_ms(sleep_ms);
+        if let Some(ms) = remaining_ms {
+            remaining_ms = Some(ms.saturating_sub(sleep_ms));
+        }
+        let ready_retry = epoll_scan(epfd, root_pa, events_ptr, maxevents)?;
+        if ready_retry > 0 {
+            return Ok(ready_retry);
+        }
+        if !can_block_current() {
+            return Ok(0);
+        }
+    }
+}
+
 fn ppoll_scan(root_pa: usize, fds: usize, nfds: usize) -> Result<(usize, Option<(i32, u16)>), Errno> {
     let stride = size_of::<PollFd>();
     let mut ready = 0usize;
@@ -4575,6 +5191,66 @@ fn ppoll_scan(root_pa: usize, fds: usize, nfds: usize) -> Result<(usize, Option<
     Ok((ready, single))
 }
 
+fn epoll_scan(epfd: usize, root_pa: usize, events_ptr: usize, maxevents: usize) -> Result<usize, Errno> {
+    let entry = resolve_fd(epfd).ok_or(Errno::Badf)?;
+    let epoll_id = match entry.kind {
+        FdKind::Epoll(id) => id,
+        _ => return Err(Errno::Badf),
+    };
+    let mut ready = 0usize;
+    // SAFETY: 单核早期阶段串行读取 epoll 表。
+    unsafe {
+        let epoll = EPOLLS.get(epoll_id).ok_or(Errno::Badf)?;
+        if !epoll.used {
+            return Err(Errno::Badf);
+        }
+        for item in epoll.items.iter() {
+            if !item.used {
+                continue;
+            }
+            let revents = poll_revents_for_fd(item.fd, item.events as u16);
+            if revents == 0 {
+                continue;
+            }
+            if ready >= maxevents {
+                break;
+            }
+            let out = EpollEvent {
+                events: revents as u32,
+                data: item.data,
+            };
+            let base = events_ptr
+                .checked_add(ready * size_of::<EpollEvent>())
+                .ok_or(Errno::Fault)?;
+            UserPtr::new(base).write(root_pa, out).ok_or(Errno::Fault)?;
+            ready += 1;
+        }
+    }
+    Ok(ready)
+}
+
+fn epoll_has_ready(epoll_id: usize) -> bool {
+    // SAFETY: 单核早期阶段串行读取 epoll 表。
+    unsafe {
+        let Some(epoll) = EPOLLS.get(epoll_id) else {
+            return false;
+        };
+        if !epoll.used {
+            return false;
+        }
+        for item in epoll.items.iter() {
+            if !item.used {
+                continue;
+            }
+            let revents = poll_revents_for_fd(item.fd, item.events as u16);
+            if revents != 0 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn ppoll_timeout_ms(root_pa: usize, tmo: usize) -> Result<Option<u64>, Errno> {
     if tmo == 0 {
         return Ok(None);
@@ -4592,6 +5268,45 @@ fn ppoll_timeout_ms(root_pa: usize, tmo: usize) -> Result<Option<u64>, Errno> {
     Ok(Some(timeout_ms))
 }
 
+fn epoll_timeout_ms(tmo: usize) -> Result<Option<u64>, Errno> {
+    if tmo == 0 {
+        return Ok(None);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let ts = UserPtr::<Timespec>::new(tmo)
+        .read(root_pa)
+        .ok_or(Errno::Fault)?;
+    if ts.tv_sec < 0 || ts.tv_nsec < 0 || ts.tv_nsec >= 1_000_000_000 {
+        return Err(Errno::Inval);
+    }
+    let total_ns = (ts.tv_sec as u64)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(ts.tv_nsec as u64);
+    let timeout_ms = total_ns.saturating_add(999_999) / 1_000_000;
+    Ok(Some(timeout_ms))
+}
+
+fn timespec_to_ns(ts: Timespec) -> Result<u64, Errno> {
+    if ts.tv_sec < 0 || ts.tv_nsec < 0 || ts.tv_nsec >= 1_000_000_000 {
+        return Err(Errno::Inval);
+    }
+    Ok((ts.tv_sec as u64)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(ts.tv_nsec as u64))
+}
+
+fn ns_to_timespec(ns: u64) -> Timespec {
+    let sec = ns / 1_000_000_000;
+    let nsec = ns % 1_000_000_000;
+    Timespec {
+        tv_sec: sec as i64,
+        tv_nsec: nsec as i64,
+    }
+}
+
 fn ppoll_single_waiter_queue(fd: i32, events: u16) -> Option<&'static crate::task_wait_queue::TaskWaitQueue> {
     if fd < 0 {
         return None;
@@ -4600,6 +5315,8 @@ fn ppoll_single_waiter_queue(fd: i32, events: u16) -> Option<&'static crate::tas
     match entry.kind {
         FdKind::PipeRead(pipe_id) if (events & POLLIN) != 0 => Some(pipe_read_queue(pipe_id)),
         FdKind::PipeWrite(pipe_id) if (events & POLLOUT) != 0 => Some(pipe_write_queue(pipe_id)),
+        FdKind::Eventfd(event_id) if (events & POLLIN) != 0 => Some(eventfd_queue(event_id)),
+        FdKind::Timerfd(timer_id) if (events & POLLIN) != 0 => Some(timerfd_queue(timer_id)),
         FdKind::Socket(_) if (events & (POLLIN | POLLOUT)) != 0 => Some(crate::runtime::net_wait_queue()),
         _ => None,
     }
@@ -4724,6 +5441,164 @@ fn write_sockaddr_in(
     Ok(())
 }
 
+fn eventfd_read(event_id: usize, root_pa: usize, buf: usize, len: usize, nonblock: bool) -> Result<usize, Errno> {
+    if event_id >= EVENTFD_SLOTS {
+        return Err(Errno::Badf);
+    }
+    if len < size_of::<u64>() {
+        return Err(Errno::Inval);
+    }
+    loop {
+        let (used, counter, flags) = unsafe {
+            let event = &EVENTFDS[event_id];
+            (event.used, event.counter, event.flags)
+        };
+        if !used {
+            return Err(Errno::Badf);
+        }
+        if counter == 0 {
+            if nonblock || !can_block_current() {
+                return Err(Errno::Again);
+            }
+            crate::runtime::block_current(eventfd_queue(event_id));
+            continue;
+        }
+        let value = if (flags & EFD_SEMAPHORE) != 0 { 1 } else { counter };
+        // SAFETY: 单核早期阶段串行更新 eventfd。
+        unsafe {
+            let event = &mut EVENTFDS[event_id];
+            if (flags & EFD_SEMAPHORE) != 0 {
+                event.counter = event.counter.saturating_sub(1);
+            } else {
+                event.counter = 0;
+            }
+        }
+        UserPtr::new(buf)
+            .write(root_pa, value)
+            .ok_or(Errno::Fault)?;
+        return Ok(size_of::<u64>());
+    }
+}
+
+fn eventfd_write(event_id: usize, root_pa: usize, buf: usize, len: usize, nonblock: bool) -> Result<usize, Errno> {
+    if event_id >= EVENTFD_SLOTS {
+        return Err(Errno::Badf);
+    }
+    if len < size_of::<u64>() {
+        return Err(Errno::Inval);
+    }
+    let value = UserPtr::<u64>::new(buf)
+        .read(root_pa)
+        .ok_or(Errno::Fault)?;
+    if value == 0 || value == u64::MAX {
+        return Err(Errno::Inval);
+    }
+    loop {
+        let (used, counter) = unsafe {
+            let event = &EVENTFDS[event_id];
+            (event.used, event.counter)
+        };
+        if !used {
+            return Err(Errno::Badf);
+        }
+        if counter > u64::MAX - value {
+            if nonblock || !can_block_current() {
+                return Err(Errno::Again);
+            }
+            crate::runtime::block_current(eventfd_queue(event_id));
+            continue;
+        }
+        unsafe {
+            let event = &mut EVENTFDS[event_id];
+            event.counter = event.counter.saturating_add(value);
+        }
+        let _ = crate::runtime::wake_all(eventfd_queue(event_id));
+        return Ok(size_of::<u64>());
+    }
+}
+
+fn timerfd_current_spec(timer_id: usize) -> Result<Itimerspec, Errno> {
+    if timer_id >= TIMERFD_SLOTS {
+        return Err(Errno::Badf);
+    }
+    let now = time::monotonic_ns();
+    // SAFETY: 单核早期阶段串行读取 timerfd。
+    unsafe {
+        let timer = TIMERFDS.get(timer_id).ok_or(Errno::Badf)?;
+        if !timer.used {
+            return Err(Errno::Badf);
+        }
+        let remaining = if timer.next_ns == 0 || now >= timer.next_ns {
+            0
+        } else {
+            timer.next_ns - now
+        };
+        Ok(Itimerspec {
+            it_interval: ns_to_timespec(timer.interval_ns),
+            it_value: ns_to_timespec(remaining),
+        })
+    }
+}
+
+fn timerfd_read(timer_id: usize, root_pa: usize, buf: usize, len: usize, nonblock: bool) -> Result<usize, Errno> {
+    if timer_id >= TIMERFD_SLOTS {
+        return Err(Errno::Badf);
+    }
+    if len < size_of::<u64>() {
+        return Err(Errno::Inval);
+    }
+    loop {
+        let (used, next_ns, interval_ns) = unsafe {
+            let timer = &TIMERFDS[timer_id];
+            (timer.used, timer.next_ns, timer.interval_ns)
+        };
+        if !used {
+            return Err(Errno::Badf);
+        }
+        if next_ns == 0 {
+            if nonblock || !can_block_current() {
+                return Err(Errno::Again);
+            }
+            crate::runtime::block_current(timerfd_queue(timer_id));
+            continue;
+        }
+        let now = time::monotonic_ns();
+        if now < next_ns {
+            if nonblock || !can_block_current() {
+                return Err(Errno::Again);
+            }
+            let delta_ns = next_ns - now;
+            let mut sleep_ms = delta_ns / 1_000_000;
+            if sleep_ms == 0 {
+                sleep_ms = 1;
+            }
+            let _ = crate::runtime::wait_timeout_ms(timerfd_queue(timer_id), sleep_ms);
+            continue;
+        }
+        let mut expirations = 1u64;
+        let mut new_next = 0u64;
+        if interval_ns != 0 {
+            let missed = (now - next_ns) / interval_ns;
+            expirations = expirations.saturating_add(missed);
+            new_next = next_ns.saturating_add(expirations.saturating_mul(interval_ns));
+        }
+        // SAFETY: 单核早期阶段串行更新 timerfd。
+        unsafe {
+            if let Some(timer) = TIMERFDS.get_mut(timer_id) {
+                if interval_ns == 0 {
+                    timer.next_ns = 0;
+                } else {
+                    timer.next_ns = new_next;
+                }
+            }
+        }
+        UserPtr::new(buf)
+            .write(root_pa, expirations)
+            .ok_or(Errno::Fault)?;
+        return Ok(size_of::<u64>());
+    }
+}
+
 fn read_from_entry(fd: usize, entry: FdEntry, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     match entry.kind {
         FdKind::Stdin => {
@@ -4744,7 +5619,16 @@ fn read_from_entry(fd: usize, entry: FdEntry, root_pa: usize, buf: usize, len: u
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             read_socket(root_pa, socket_id, buf, len, nonblock)
         }
+        FdKind::Eventfd(event_id) => {
+            let nonblock = (entry.flags & O_NONBLOCK) != 0;
+            eventfd_read(event_id, root_pa, buf, len, nonblock)
+        }
+        FdKind::Timerfd(timer_id) => {
+            let nonblock = (entry.flags & O_NONBLOCK) != 0;
+            timerfd_read(timer_id, root_pa, buf, len, nonblock)
+        }
         FdKind::Stdout | FdKind::Stderr | FdKind::PipeWrite(_) => Err(Errno::Badf),
+        FdKind::Epoll(_) => Err(Errno::Inval),
         FdKind::Empty => Err(Errno::Badf),
     }
 }
@@ -4867,6 +5751,11 @@ fn write_to_entry(fd: usize, entry: FdEntry, root_pa: usize, buf: usize, len: us
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             write_socket(root_pa, socket_id, buf, len, nonblock)
         }
+        FdKind::Eventfd(event_id) => {
+            let nonblock = (entry.flags & O_NONBLOCK) != 0;
+            eventfd_write(event_id, root_pa, buf, len, nonblock)
+        }
+        FdKind::Timerfd(_) | FdKind::Epoll(_) => Err(Errno::Inval),
         FdKind::Stdin | FdKind::PipeRead(_) => Err(Errno::Badf),
         FdKind::Empty => Err(Errno::Badf),
     }
