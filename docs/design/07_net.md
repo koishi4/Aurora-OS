@@ -16,6 +16,7 @@
 - 对本机 IPv4 目的地址的发送帧进行 loopback 注入，支持单机 TCP 自测。
 - `sockaddr_in` 解析严格按网络字节序处理，避免用户态传参导致目标地址反转。
 - 连接进行中保持 net poll，避免缺中断时 TCP 建连停滞。
+- 非阻塞 connect 返回 EINPROGRESS，重复 connect 返回 EALREADY，失败通过 SO_ERROR 读取映射错误码。
 - 启动后发送一次 ARP probe 探测网关，收到应答即认为 RX/IRQ 路径可用。
 - socket 就绪判定通过 `SocketTable` 的监听标记区分 `accept` 与 `recv` 语义，`poll/ppoll` 走统一判定入口。
 - TCP loopback 自测使用内核内置 loopback 设备，避免依赖外部网络环境。
