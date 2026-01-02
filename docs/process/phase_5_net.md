@@ -29,6 +29,7 @@
 - 增加 getsockname/getpeername 与 SO_ERROR/setsockopt/shutdown 最小实现，补齐用户态 socket 语义。
 - 支持 SO_RCVTIMEO/SO_SNDTIMEO 并在 send/recv/accept 阻塞路径中应用超时。
 - sys_connect 在阻塞模式下遵循 SO_SNDTIMEO 超时设置。
+- sys_connect 在非阻塞重复调用时返回 EALREADY，避免覆盖连接中的状态。
 - 增加 sendmsg/recvmsg 最小实现，支持 iovec 聚散发送与接收。
 - 增加 sendmmsg/recvmmsg 批量收发支持，UDP 自测覆盖多包路径。
 - UDP 自测补充 SO_RCVTIMEO 超时校验，覆盖超时错误码路径。

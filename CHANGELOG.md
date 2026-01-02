@@ -96,6 +96,7 @@
 - Increase TCP socket buffer length to 8192 and set net-perf default payload to 65536.
 - Guard net poll reentrancy, surface TCP recv window events from the stack, and lift TCP buffers to 64KB.
 - Document 1MiB net-perf run requiring extended TIMEOUT.
+- Return EALREADY when nonblocking connect is invoked on a connecting socket.
 - Route faccessat/statx/readlinkat path resolution through memfs.
 - Route statfs path resolution through memfs.
 - Route path-based stub syscalls (mkdirat/unlinkat/linkat/renameat* and chmod/chown/utimensat) through memfs.

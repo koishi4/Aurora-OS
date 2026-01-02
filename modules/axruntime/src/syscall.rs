@@ -35,6 +35,7 @@ pub enum Errno {
     NotConn = 107,
     ConnRefused = 111,
     TimedOut = 110,
+    Already = 114,
     InProgress = 115,
 }
 
@@ -1845,6 +1846,7 @@ fn sys_connect(fd: usize, addr: usize, len: usize) -> Result<usize, Errno> {
     let (socket_id, entry) = resolve_socket_entry(fd)?;
     let nonblock = (entry.flags & O_NONBLOCK) != 0;
     let timeout_ms = entry.send_timeout_ms;
+    let was_connecting = axnet::socket_connecting(socket_id).map_err(map_net_err)?;
     if cfg!(feature = "user-tcp-echo") && TCP_CONNECT_LOGGED.swap(1, Ordering::Relaxed) == 0 {
         crate::println!("sys_connect: fd={} nonblock={}", fd, nonblock);
     }
@@ -1853,6 +1855,9 @@ fn sys_connect(fd: usize, addr: usize, len: usize) -> Result<usize, Errno> {
         Ok(()) => {}
         Err(axnet::NetError::InProgress) => {
             if nonblock || !can_block_current() {
+                if was_connecting {
+                    return Err(Errno::Already);
+                }
                 return Err(Errno::InProgress);
             }
         }
