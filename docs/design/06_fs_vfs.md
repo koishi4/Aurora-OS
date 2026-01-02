@@ -28,6 +28,7 @@
 - ext4 提供最小写路径骨架（create/write/truncate），支持 direct + single-indirect blocks、inode 内 extent(depth=0) 与 extent tree(depth=1/2) 写入；单组 bitmap 分配，暂不支持 extent tree 深度>2 与 journaling。
 - 打开文件时支持 `O_TRUNC` 与 `ftruncate`，统一走 VFS truncate。
 - 写入路径支持 `O_APPEND` 追加语义，`lseek` 可调整 VFS 句柄偏移。
+- fd 表统一为 `FdObject`，携带 VFS 句柄或管道/套接字对象，open/read/write/stat/getdents64 走统一对象分发。
 - 权限与时间戳语义对齐 Linux，错误码通过 errno 映射返回。
 
 ## 关键数据结构

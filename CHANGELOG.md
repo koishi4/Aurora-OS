@@ -115,6 +115,7 @@
 - Add minimal FAT32 write_at support for existing files and cover it in host tests.
 - Implement ext4 group descriptor/inode table parsing with read-only directory lookup and extent depth-0 reads.
 - Switch fd entries to carry VFS handles so open/read/write/stat/getdents64 route through VFS.
+- Rename fd kind tracking to fd object and standardize stdio object helpers.
 - Load execve images from VFS-backed /init instead of the memfile path.
 - Allow opening /proc as a directory and return minimal entries via getdents64.
 - Extend USER_TEST to cover getdents64 on / and /dev.

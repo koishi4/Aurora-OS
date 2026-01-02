@@ -653,7 +653,7 @@ struct VfsHandle {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum FdKind {
+enum FdObject {
     Empty,
     Stdin,
     Stdout,
@@ -669,7 +669,7 @@ enum FdKind {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct FdEntry {
-    kind: FdKind,
+    object: FdObject,
     flags: usize,
     offset: usize,
     recv_timeout_ms: u64,
@@ -760,7 +760,7 @@ const EMPTY_EPOLL: EpollInstance = EpollInstance {
 };
 
 const EMPTY_FD_ENTRY: FdEntry = FdEntry {
-    kind: FdKind::Empty,
+    object: FdObject::Empty,
     flags: 0,
     offset: 0,
     recv_timeout_ms: 0,
@@ -1160,7 +1160,7 @@ fn sys_eventfd2(initval: usize, flags: usize) -> Result<usize, Errno> {
     let initval = initval as u64;
     let event_id = alloc_eventfd(initval, flags).ok_or(Errno::MFile)?;
     let entry = FdEntry {
-        kind: FdKind::Eventfd(event_id),
+        object: FdObject::Eventfd(event_id),
         flags: if (flags & EFD_NONBLOCK) != 0 { O_NONBLOCK } else { 0 },
         offset: 0,
         recv_timeout_ms: 0,
@@ -1176,7 +1176,7 @@ fn sys_epoll_create1(flags: usize) -> Result<usize, Errno> {
     }
     let epoll_id = alloc_epoll(flags).ok_or(Errno::MFile)?;
     let entry = FdEntry {
-        kind: FdKind::Epoll(epoll_id),
+        object: FdObject::Epoll(epoll_id),
         flags: 0,
         offset: 0,
         recv_timeout_ms: 0,
@@ -1188,8 +1188,8 @@ fn sys_epoll_create1(flags: usize) -> Result<usize, Errno> {
 
 fn sys_epoll_ctl(epfd: usize, op: usize, fd: usize, event_ptr: usize) -> Result<usize, Errno> {
     let entry = resolve_fd(epfd).ok_or(Errno::Badf)?;
-    let epoll_id = match entry.kind {
-        FdKind::Epoll(id) => id,
+    let epoll_id = match entry.object {
+        FdObject::Epoll(id) => id,
         _ => return Err(Errno::Badf),
     };
     if resolve_fd(fd).is_none() {
@@ -1290,7 +1290,7 @@ fn sys_timerfd_create(clockid: usize, flags: usize) -> Result<usize, Errno> {
     }
     let timer_id = alloc_timerfd(flags).ok_or(Errno::MFile)?;
     let entry = FdEntry {
-        kind: FdKind::Timerfd(timer_id),
+        object: FdObject::Timerfd(timer_id),
         flags: if (flags & TFD_NONBLOCK) != 0 { O_NONBLOCK } else { 0 },
         offset: 0,
         recv_timeout_ms: 0,
@@ -1312,8 +1312,8 @@ fn sys_timerfd_settime(fd: usize, flags: usize, new_ptr: usize, old_ptr: usize) 
         return Err(Errno::Fault);
     }
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    let timer_id = match entry.kind {
-        FdKind::Timerfd(id) => id,
+    let timer_id = match entry.object {
+        FdObject::Timerfd(id) => id,
         _ => return Err(Errno::Badf),
     };
     let new_value = UserPtr::<Itimerspec>::new(new_ptr)
@@ -1358,8 +1358,8 @@ fn sys_timerfd_gettime(fd: usize, curr_ptr: usize) -> Result<usize, Errno> {
         return Err(Errno::Fault);
     }
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    let timer_id = match entry.kind {
-        FdKind::Timerfd(id) => id,
+    let timer_id = match entry.object {
+        FdObject::Timerfd(id) => id,
         _ => return Err(Errno::Badf),
     };
     let current = timerfd_current_spec(timer_id)?;
@@ -1490,8 +1490,8 @@ fn sys_pread64(fd: usize, buf: usize, len: usize, offset: usize) -> Result<usize
         return Err(Errno::Fault);
     }
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    match entry.kind {
-        FdKind::Vfs(handle) => {
+    match entry.object {
+        FdObject::Vfs(handle) => {
             if handle.file_type == FileType::Dir {
                 return Err(Errno::IsDir);
             }
@@ -1500,16 +1500,16 @@ fn sys_pread64(fd: usize, buf: usize, len: usize, offset: usize) -> Result<usize
                 read_vfs_at(root_pa, fs, handle.inode, offset, buf, len)
             })
         }
-        FdKind::Stdin
-        | FdKind::Stdout
-        | FdKind::Stderr
-        | FdKind::PipeRead(_)
-        | FdKind::PipeWrite(_)
-        | FdKind::Socket(_)
-        | FdKind::Eventfd(_)
-        | FdKind::Timerfd(_)
-        | FdKind::Epoll(_) => Err(Errno::Pipe),
-        FdKind::Empty => Err(Errno::Badf),
+        FdObject::Stdin
+        | FdObject::Stdout
+        | FdObject::Stderr
+        | FdObject::PipeRead(_)
+        | FdObject::PipeWrite(_)
+        | FdObject::Socket(_)
+        | FdObject::Eventfd(_)
+        | FdObject::Timerfd(_)
+        | FdObject::Epoll(_) => Err(Errno::Pipe),
+        FdObject::Empty => Err(Errno::Badf),
     }
 }
 
@@ -1522,8 +1522,8 @@ fn sys_pwrite64(fd: usize, buf: usize, len: usize, offset: usize) -> Result<usiz
         return Err(Errno::Fault);
     }
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    match entry.kind {
-        FdKind::Vfs(handle) => {
+    match entry.object {
+        FdObject::Vfs(handle) => {
             if handle.file_type == FileType::Dir {
                 return Err(Errno::IsDir);
             }
@@ -1532,16 +1532,16 @@ fn sys_pwrite64(fd: usize, buf: usize, len: usize, offset: usize) -> Result<usiz
                 write_vfs_at(root_pa, fs, handle.inode, offset, buf, len)
             })
         }
-        FdKind::Stdin
-        | FdKind::Stdout
-        | FdKind::Stderr
-        | FdKind::PipeRead(_)
-        | FdKind::PipeWrite(_)
-        | FdKind::Socket(_)
-        | FdKind::Eventfd(_)
-        | FdKind::Timerfd(_)
-        | FdKind::Epoll(_) => Err(Errno::Pipe),
-        FdKind::Empty => Err(Errno::Badf),
+        FdObject::Stdin
+        | FdObject::Stdout
+        | FdObject::Stderr
+        | FdObject::PipeRead(_)
+        | FdObject::PipeWrite(_)
+        | FdObject::Socket(_)
+        | FdObject::Eventfd(_)
+        | FdObject::Timerfd(_)
+        | FdObject::Epoll(_) => Err(Errno::Pipe),
+        FdObject::Empty => Err(Errno::Badf),
     }
 }
 
@@ -1560,8 +1560,8 @@ fn sys_preadv(fd: usize, iov_ptr: usize, iovcnt: usize, offset: usize) -> Result
         return Err(Errno::Fault);
     }
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    match entry.kind {
-        FdKind::Vfs(handle) => {
+    match entry.object {
+        FdObject::Vfs(handle) => {
             if handle.file_type == FileType::Dir {
                 return Err(Errno::IsDir);
             }
@@ -1586,7 +1586,7 @@ fn sys_preadv(fd: usize, iov_ptr: usize, iovcnt: usize, offset: usize) -> Result
                 Ok(total)
             })
         }
-        FdKind::Empty => Err(Errno::Badf),
+        FdObject::Empty => Err(Errno::Badf),
         _ => Err(Errno::Pipe),
     }
 }
@@ -1606,8 +1606,8 @@ fn sys_pwritev(fd: usize, iov_ptr: usize, iovcnt: usize, offset: usize) -> Resul
         return Err(Errno::Fault);
     }
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    match entry.kind {
-        FdKind::Vfs(handle) => {
+    match entry.object {
+        FdObject::Vfs(handle) => {
             if handle.file_type == FileType::Dir {
                 return Err(Errno::IsDir);
             }
@@ -1635,7 +1635,7 @@ fn sys_pwritev(fd: usize, iov_ptr: usize, iovcnt: usize, offset: usize) -> Resul
                 Ok(total)
             })
         }
-        FdKind::Empty => Err(Errno::Badf),
+        FdObject::Empty => Err(Errno::Badf),
         _ => Err(Errno::Pipe),
     }
 }
@@ -1756,7 +1756,7 @@ fn sys_pipe2(pipefd: usize, flags: usize) -> Result<usize, Errno> {
     let pipe_id = alloc_pipe().ok_or(Errno::MFile)?;
     let status_flags = if (flags & O_NONBLOCK) != 0 { O_NONBLOCK } else { 0 };
     let read_fd = match alloc_fd(FdEntry {
-        kind: FdKind::PipeRead(pipe_id),
+        object: FdObject::PipeRead(pipe_id),
         flags: status_flags,
         offset: 0,
         recv_timeout_ms: 0,
@@ -1769,7 +1769,7 @@ fn sys_pipe2(pipefd: usize, flags: usize) -> Result<usize, Errno> {
         }
     };
     let write_fd = match alloc_fd(FdEntry {
-        kind: FdKind::PipeWrite(pipe_id),
+        object: FdObject::PipeWrite(pipe_id),
         flags: status_flags,
         offset: 0,
         recv_timeout_ms: 0,
@@ -1799,7 +1799,7 @@ fn sys_socket(domain: usize, sock_type: usize, protocol: usize) -> Result<usize,
         0
     };
     let entry = FdEntry {
-        kind: FdKind::Socket(socket_id),
+        object: FdObject::Socket(socket_id),
         flags,
         offset: 0,
         recv_timeout_ms: 0,
@@ -2068,7 +2068,7 @@ fn sys_accept(fd: usize, addr: usize, addrlen: usize) -> Result<usize, Errno> {
             Ok((accepted_id, listener_id, remote)) => {
                 replace_socket_fd(fd, listener_id)?;
                 let entry = FdEntry {
-                    kind: FdKind::Socket(accepted_id),
+                    object: FdObject::Socket(accepted_id),
                     flags: entry.flags & O_NONBLOCK,
                     offset: 0,
                     recv_timeout_ms: entry.recv_timeout_ms,
@@ -2560,7 +2560,7 @@ fn sys_openat(_dirfd: usize, pathname: usize, flags: usize, _mode: usize) -> Res
             file_type: meta.file_type,
         };
         alloc_fd(FdEntry {
-            kind: FdKind::Vfs(handle),
+            object: FdObject::Vfs(handle),
             flags: status_flags,
             offset: 0,
             recv_timeout_ms: 0,
@@ -2715,8 +2715,8 @@ fn sys_getdents64(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
     let index = fd_offset(fd).ok_or(Errno::Badf)?;
     with_mounts(|mounts| {
-        let handle = match entry.kind {
-            FdKind::Vfs(handle) if handle.file_type == FileType::Dir => handle,
+        let handle = match entry.object {
+            FdObject::Vfs(handle) if handle.file_type == FileType::Dir => handle,
             _ => return Err(Errno::NotDir),
         };
         let mount_id = handle.mount;
@@ -2921,8 +2921,8 @@ fn sys_ftruncate(fd: usize, len: usize) -> Result<usize, Errno> {
         return Err(Errno::Fault);
     }
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    let handle = match entry.kind {
-        FdKind::Vfs(handle) => handle,
+    let handle = match entry.object {
+        FdObject::Vfs(handle) => handle,
         _ => return Err(Errno::Inval),
     };
     if handle.file_type != FileType::File {
@@ -3347,8 +3347,8 @@ fn sys_chdir(pathname: usize) -> Result<usize, Errno> {
 
 fn sys_fchdir(fd: usize) -> Result<usize, Errno> {
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    match entry.kind {
-        FdKind::Vfs(handle) if handle.file_type == FileType::Dir => {
+    match entry.object {
+        FdObject::Vfs(handle) if handle.file_type == FileType::Dir => {
             let mut updated = false;
             if handle.mount == MountId::Dev && handle.inode == devfs::ROOT_ID {
                 set_current_cwd("/dev")?;
@@ -3415,7 +3415,7 @@ fn sys_prlimit64(_pid: usize, _resource: usize, new_rlim: usize, old_rlim: usize
 
 fn sys_ioctl(fd: usize, cmd: usize, arg: usize) -> Result<usize, Errno> {
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    if matches!(entry.kind, FdKind::PipeRead(_) | FdKind::PipeWrite(_)) {
+    if matches!(entry.object, FdObject::PipeRead(_) | FdObject::PipeWrite(_)) {
         return Err(Errno::Inval);
     }
     match cmd {
@@ -3595,9 +3595,9 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    let (mode, size) = match entry.kind {
-        FdKind::PipeRead(_) | FdKind::PipeWrite(_) => (S_IFIFO | 0o600, 0),
-        FdKind::Vfs(handle) => with_mounts(|mounts| {
+    let (mode, size) = match entry.object {
+        FdObject::PipeRead(_) | FdObject::PipeWrite(_) => (S_IFIFO | 0o600, 0),
+        FdObject::Vfs(handle) => with_mounts(|mounts| {
             let fs = mounts.fs_for(handle.mount).ok_or(Errno::NoEnt)?;
             vfs_meta_for(fs, handle.inode)
         })?,
@@ -3636,8 +3636,8 @@ fn sys_dup3(oldfd: usize, newfd: usize, flags: usize) -> Result<usize, Errno> {
 
 fn sys_lseek(fd: usize, offset: usize, whence: usize) -> Result<usize, Errno> {
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    match entry.kind {
-        FdKind::Vfs(handle) => {
+    match entry.object {
+        FdObject::Vfs(handle) => {
             let base = match whence {
                 SEEK_SET => 0isize,
                 SEEK_CUR => fd_offset(fd).ok_or(Errno::Badf)? as isize,
@@ -3657,7 +3657,7 @@ fn sys_lseek(fd: usize, offset: usize, whence: usize) -> Result<usize, Errno> {
             set_fd_offset(fd, new_offset);
             Ok(new_offset)
         }
-        FdKind::Empty => Err(Errno::Badf),
+        FdObject::Empty => Err(Errno::Badf),
         _ => Err(Errno::Pipe),
     }
 }
@@ -3743,10 +3743,10 @@ fn sys_fcntl(fd: usize, cmd: usize, arg: usize) -> Result<usize, Errno> {
         F_GETFD => Ok(0),
         F_SETFD => Ok(0),
         F_GETFL => {
-            let mode = match entry.kind {
-                FdKind::Stdin | FdKind::PipeRead(_) => O_RDONLY,
-                FdKind::Stdout | FdKind::Stderr | FdKind::PipeWrite(_) => O_WRONLY,
-                FdKind::Vfs(_) => entry.flags & O_ACCMODE,
+            let mode = match entry.object {
+                FdObject::Stdin | FdObject::PipeRead(_) => O_RDONLY,
+                FdObject::Stdout | FdObject::Stderr | FdObject::PipeWrite(_) => O_WRONLY,
+                FdObject::Vfs(_) => entry.flags & O_ACCMODE,
                 _ => O_RDWR,
             };
             Ok(mode | (entry.flags & (O_NONBLOCK | O_APPEND)))
@@ -4459,17 +4459,17 @@ fn read_user_path_abs<'a>(root_pa: usize, path: usize, buf: &'a mut [u8]) -> Res
     normalize_path(base, raw, buf)
 }
 
-fn stdio_kind(fd: usize) -> Option<FdKind> {
+fn stdio_object(fd: usize) -> Option<FdObject> {
     match fd {
-        0 => Some(FdKind::Stdin),
-        1 => Some(FdKind::Stdout),
-        2 => Some(FdKind::Stderr),
+        0 => Some(FdObject::Stdin),
+        1 => Some(FdObject::Stdout),
+        2 => Some(FdObject::Stderr),
         _ => None,
     }
 }
 
 fn stdio_entry(fd: usize) -> Option<FdEntry> {
-    let kind = stdio_kind(fd)?;
+    let object = stdio_object(fd)?;
     let proc_idx = current_proc_index()?;
     // SAFETY: 单核早期阶段访问重定向表/标志。
     unsafe {
@@ -4477,7 +4477,7 @@ fn stdio_entry(fd: usize) -> Option<FdEntry> {
             Some(entry)
         } else {
             Some(FdEntry {
-                kind,
+                object,
                 flags: STDIO_FLAGS[proc_idx][fd],
                 offset: 0,
                 recv_timeout_ms: 0,
@@ -4495,7 +4495,7 @@ fn resolve_fd(fd: usize) -> Option<FdEntry> {
     let idx = fd_table_index(fd)?;
     // SAFETY: 单核早期阶段，fd 表无并发访问。
     let entry = unsafe { FD_TABLES[proc_idx][idx] };
-    if entry.kind == FdKind::Empty {
+    if entry.object == FdObject::Empty {
         None
     } else {
         Some(entry)
@@ -4515,7 +4515,7 @@ fn fd_table_index(fd: usize) -> Option<usize> {
 }
 
 fn fd_offset(fd: usize) -> Option<usize> {
-    if stdio_kind(fd).is_some() {
+    if stdio_object(fd).is_some() {
         let proc_idx = current_proc_index()?;
         // SAFETY: 单核早期阶段访问重定向表。
         unsafe {
@@ -4529,7 +4529,7 @@ fn fd_offset(fd: usize) -> Option<usize> {
     let idx = fd_table_index(fd)?;
     // SAFETY: 单核早期阶段，fd 表无并发访问。
     let entry = unsafe { FD_TABLES[proc_idx][idx] };
-    if entry.kind == FdKind::Empty {
+    if entry.object == FdObject::Empty {
         None
     } else {
         Some(entry.offset)
@@ -4540,7 +4540,7 @@ fn set_fd_offset(fd: usize, offset: usize) {
     let Some(proc_idx) = current_proc_index() else {
         return;
     };
-    if stdio_kind(fd).is_some() {
+    if stdio_object(fd).is_some() {
         // SAFETY: 单核早期阶段访问重定向表。
         unsafe {
             if let Some(mut entry) = STDIO_REDIRECT[proc_idx][fd] {
@@ -4555,7 +4555,7 @@ fn set_fd_offset(fd: usize, offset: usize) {
     };
     // SAFETY: 单核早期阶段，偏移顺序访问。
     unsafe {
-        if FD_TABLES[proc_idx][idx].kind == FdKind::Empty {
+        if FD_TABLES[proc_idx][idx].object == FdObject::Empty {
             return;
         }
         FD_TABLES[proc_idx][idx].offset = offset;
@@ -4563,16 +4563,16 @@ fn set_fd_offset(fd: usize, offset: usize) {
 }
 
 fn alloc_fd(entry: FdEntry) -> Option<usize> {
-    if entry.kind == FdKind::Empty {
+    if entry.object == FdObject::Empty {
         return None;
     }
     let proc_idx = current_proc_index()?;
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
         for (idx, slot) in FD_TABLES[proc_idx].iter_mut().enumerate() {
-            if slot.kind == FdKind::Empty {
+            if slot.object == FdObject::Empty {
                 *slot = entry;
-                pipe_acquire(entry.kind);
+                pipe_acquire(entry.object);
                 return Some(FD_TABLE_BASE + idx);
             }
         }
@@ -4581,7 +4581,7 @@ fn alloc_fd(entry: FdEntry) -> Option<usize> {
 }
 
 fn dup_to_fd(newfd: usize, entry: FdEntry) -> Result<usize, Errno> {
-    if stdio_kind(newfd).is_some() {
+    if stdio_object(newfd).is_some() {
         return set_stdio_redirect(newfd, entry);
     }
     let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
@@ -4589,17 +4589,17 @@ fn dup_to_fd(newfd: usize, entry: FdEntry) -> Result<usize, Errno> {
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
         let old = FD_TABLES[proc_idx][idx];
-        if old.kind != FdKind::Empty {
-            pipe_release(old.kind);
+        if old.object != FdObject::Empty {
+            pipe_release(old.object);
         }
         FD_TABLES[proc_idx][idx] = entry;
     }
-    pipe_acquire(entry.kind);
+    pipe_acquire(entry.object);
     Ok(newfd)
 }
 
 fn replace_socket_fd(fd: usize, socket_id: axnet::SocketId) -> Result<(), Errno> {
-    if stdio_kind(fd).is_some() {
+    if stdio_object(fd).is_some() {
         return Err(Errno::Badf);
     }
     let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
@@ -4607,10 +4607,10 @@ fn replace_socket_fd(fd: usize, socket_id: axnet::SocketId) -> Result<(), Errno>
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
         let entry = &mut FD_TABLES[proc_idx][idx];
-        if !matches!(entry.kind, FdKind::Socket(_)) {
+        if !matches!(entry.object, FdObject::Socket(_)) {
             return Err(Errno::Badf);
         }
-        entry.kind = FdKind::Socket(socket_id);
+        entry.object = FdObject::Socket(socket_id);
         entry.offset = 0;
     }
     Ok(())
@@ -4618,11 +4618,11 @@ fn replace_socket_fd(fd: usize, socket_id: axnet::SocketId) -> Result<(), Errno>
 
 fn close_fd(fd: usize) -> Result<usize, Errno> {
     let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
-    if stdio_kind(fd).is_some() {
+    if stdio_object(fd).is_some() {
         // SAFETY: 单核早期阶段访问重定向表。
         unsafe {
             if let Some(old) = STDIO_REDIRECT[proc_idx][fd] {
-                pipe_release(old.kind);
+                pipe_release(old.object);
                 STDIO_REDIRECT[proc_idx][fd] = None;
             }
         }
@@ -4632,41 +4632,41 @@ fn close_fd(fd: usize) -> Result<usize, Errno> {
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
         let old = FD_TABLES[proc_idx][idx];
-        if old.kind == FdKind::Empty {
+        if old.object == FdObject::Empty {
             return Err(Errno::Badf);
         }
         FD_TABLES[proc_idx][idx] = EMPTY_FD_ENTRY;
-        if let FdKind::Socket(socket_id) = old.kind {
+        if let FdObject::Socket(socket_id) = old.object {
             let _ = axnet::socket_close(socket_id);
         }
-        pipe_release(old.kind);
+        pipe_release(old.object);
     }
     Ok(0)
 }
 
 fn set_stdio_redirect(fd: usize, entry: FdEntry) -> Result<usize, Errno> {
-    if stdio_kind(fd).is_none() {
+    if stdio_object(fd).is_none() {
         return Err(Errno::Badf);
     }
     let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
     // SAFETY: 单核早期阶段访问重定向表。
     unsafe {
         if let Some(old) = STDIO_REDIRECT[proc_idx][fd] {
-        if let FdKind::Socket(socket_id) = old.kind {
-            let _ = axnet::socket_close(socket_id);
-        }
-        pipe_release(old.kind);
+            if let FdObject::Socket(socket_id) = old.object {
+                let _ = axnet::socket_close(socket_id);
+            }
+            pipe_release(old.object);
         }
         STDIO_REDIRECT[proc_idx][fd] = Some(entry);
     }
-    pipe_acquire(entry.kind);
+    pipe_acquire(entry.object);
     Ok(fd)
 }
 
 fn set_fd_flags(fd: usize, flags: usize) -> Result<(), Errno> {
     let flags = flags & (O_NONBLOCK | O_APPEND);
     let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
-    if stdio_kind(fd).is_some() {
+    if stdio_object(fd).is_some() {
         // SAFETY: 单核早期阶段访问重定向表/标志。
         unsafe {
             if let Some(mut entry) = STDIO_REDIRECT[proc_idx][fd] {
@@ -4681,7 +4681,7 @@ fn set_fd_flags(fd: usize, flags: usize) -> Result<(), Errno> {
     let idx = fd_table_index(fd).ok_or(Errno::Badf)?;
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
-        if FD_TABLES[proc_idx][idx].kind == FdKind::Empty {
+        if FD_TABLES[proc_idx][idx].object == FdObject::Empty {
             return Err(Errno::Badf);
         }
         FD_TABLES[proc_idx][idx].flags = (FD_TABLES[proc_idx][idx].flags & O_ACCMODE) | flags;
@@ -4696,14 +4696,14 @@ fn clear_fd_table(idx: usize) {
     // SAFETY: 单核早期阶段按进程顺序清理 fd 表。
     unsafe {
         for entry in FD_TABLES[idx].iter_mut() {
-            if entry.kind != FdKind::Empty {
-                pipe_release(entry.kind);
+            if entry.object != FdObject::Empty {
+                pipe_release(entry.object);
                 *entry = EMPTY_FD_ENTRY;
             }
         }
         for slot in STDIO_REDIRECT[idx].iter_mut() {
             if let Some(entry) = *slot {
-                pipe_release(entry.kind);
+                pipe_release(entry.object);
             }
             *slot = None;
         }
@@ -4735,11 +4735,11 @@ pub fn clone_fd_table(parent: TaskId, child: TaskId) {
         STDIO_REDIRECT[child] = STDIO_REDIRECT[parent];
         STDIO_FLAGS[child] = STDIO_FLAGS[parent];
         for entry in FD_TABLES[child].iter() {
-            pipe_acquire(entry.kind);
+            pipe_acquire(entry.object);
         }
         for slot in STDIO_REDIRECT[child].iter() {
             if let Some(entry) = *slot {
-                pipe_acquire(entry.kind);
+                pipe_acquire(entry.object);
             }
         }
     }
@@ -4855,11 +4855,11 @@ fn alloc_epoll(flags: usize) -> Option<usize> {
     None
 }
 
-fn pipe_acquire(kind: FdKind) {
-    let (pipe_id, is_read) = match kind {
-        FdKind::PipeRead(id) => (id, true),
-        FdKind::PipeWrite(id) => (id, false),
-        FdKind::Eventfd(id) => {
+fn pipe_acquire(object: FdObject) {
+    let (pipe_id, is_read) = match object {
+        FdObject::PipeRead(id) => (id, true),
+        FdObject::PipeWrite(id) => (id, false),
+        FdObject::Eventfd(id) => {
             if id < EVENTFD_SLOTS {
                 unsafe {
                     if EVENTFDS[id].used {
@@ -4869,7 +4869,7 @@ fn pipe_acquire(kind: FdKind) {
             }
             return;
         }
-        FdKind::Timerfd(id) => {
+        FdObject::Timerfd(id) => {
             if id < TIMERFD_SLOTS {
                 unsafe {
                     if TIMERFDS[id].used {
@@ -4879,7 +4879,7 @@ fn pipe_acquire(kind: FdKind) {
             }
             return;
         }
-        FdKind::Epoll(id) => {
+        FdObject::Epoll(id) => {
             if id < EPOLL_SLOTS {
                 unsafe {
                     if EPOLLS[id].used {
@@ -4907,11 +4907,11 @@ fn pipe_acquire(kind: FdKind) {
     }
 }
 
-fn pipe_release(kind: FdKind) {
-    let (pipe_id, is_read) = match kind {
-        FdKind::PipeRead(id) => (id, true),
-        FdKind::PipeWrite(id) => (id, false),
-        FdKind::Eventfd(id) => {
+fn pipe_release(object: FdObject) {
+    let (pipe_id, is_read) = match object {
+        FdObject::PipeRead(id) => (id, true),
+        FdObject::PipeWrite(id) => (id, false),
+        FdObject::Eventfd(id) => {
             if id < EVENTFD_SLOTS {
                 unsafe {
                     if EVENTFDS[id].used && EVENTFDS[id].refs > 0 {
@@ -4924,7 +4924,7 @@ fn pipe_release(kind: FdKind) {
             }
             return;
         }
-        FdKind::Timerfd(id) => {
+        FdObject::Timerfd(id) => {
             if id < TIMERFD_SLOTS {
                 unsafe {
                     if TIMERFDS[id].used && TIMERFDS[id].refs > 0 {
@@ -4937,7 +4937,7 @@ fn pipe_release(kind: FdKind) {
             }
             return;
         }
-        FdKind::Epoll(id) => {
+        FdObject::Epoll(id) => {
             if id < EPOLL_SLOTS {
                 unsafe {
                     if EPOLLS[id].used && EPOLLS[id].refs > 0 {
@@ -5104,15 +5104,15 @@ fn poll_revents_for_fd(fd: i32, events: u16) -> u16 {
         Some(entry) => entry,
         None => return POLLNVAL,
     };
-    match entry.kind {
-        FdKind::Stdin => {
+    match entry.object {
+        FdObject::Stdin => {
             let mut revents = 0u16;
             if (events & POLLIN) != 0 && console_peek() {
                 revents |= POLLIN;
             }
             revents
         }
-        FdKind::PipeRead(pipe_id) => {
+        FdObject::PipeRead(pipe_id) => {
             let (len, _readers, writers) = match pipe_snapshot(pipe_id) {
                 Some(state) => state,
                 None => return POLLNVAL,
@@ -5129,7 +5129,7 @@ fn poll_revents_for_fd(fd: i32, events: u16) -> u16 {
             }
             revents
         }
-        FdKind::PipeWrite(pipe_id) => {
+        FdObject::PipeWrite(pipe_id) => {
             let (len, readers, _writers) = match pipe_snapshot(pipe_id) {
                 Some(state) => state,
                 None => return POLLNVAL,
@@ -5145,7 +5145,7 @@ fn poll_revents_for_fd(fd: i32, events: u16) -> u16 {
             }
             revents
         }
-        FdKind::Eventfd(event_id) => {
+        FdObject::Eventfd(event_id) => {
             if event_id >= EVENTFD_SLOTS {
                 return POLLNVAL;
             }
@@ -5163,7 +5163,7 @@ fn poll_revents_for_fd(fd: i32, events: u16) -> u16 {
             }
             revents
         }
-        FdKind::Timerfd(timer_id) => {
+        FdObject::Timerfd(timer_id) => {
             if timer_id >= TIMERFD_SLOTS {
                 return POLLNVAL;
             }
@@ -5178,21 +5178,21 @@ fn poll_revents_for_fd(fd: i32, events: u16) -> u16 {
             }
             revents
         }
-        FdKind::Stdout | FdKind::Stderr => {
+        FdObject::Stdout | FdObject::Stderr => {
             if (events & POLLOUT) != 0 {
                 POLLOUT
             } else {
                 0
             }
         }
-        FdKind::Epoll(epoll_id) => {
+        FdObject::Epoll(epoll_id) => {
             let mut revents = 0u16;
             if (events & POLLIN) != 0 && epoll_has_ready(epoll_id) {
                 revents |= POLLIN;
             }
             revents
         }
-        FdKind::Vfs(handle) => {
+        FdObject::Vfs(handle) => {
             let mut revents = 0u16;
             if (events & POLLIN) != 0 {
                 revents |= POLLIN;
@@ -5202,7 +5202,7 @@ fn poll_revents_for_fd(fd: i32, events: u16) -> u16 {
             }
             revents
         }
-        FdKind::Socket(socket_id) => {
+        FdObject::Socket(socket_id) => {
             match axnet::socket_poll(socket_id, events) {
                 Ok(revents) => revents,
                 Err(axnet::NetError::Invalid | axnet::NetError::NotReady) => POLLNVAL,
@@ -5391,8 +5391,8 @@ fn ppoll_scan(root_pa: usize, fds: usize, nfds: usize) -> Result<(usize, Option<
 
 fn epoll_scan(epfd: usize, root_pa: usize, events_ptr: usize, maxevents: usize) -> Result<usize, Errno> {
     let entry = resolve_fd(epfd).ok_or(Errno::Badf)?;
-    let epoll_id = match entry.kind {
-        FdKind::Epoll(id) => id,
+    let epoll_id = match entry.object {
+        FdObject::Epoll(id) => id,
         _ => return Err(Errno::Badf),
     };
     let mut ready = 0usize;
@@ -5510,35 +5510,35 @@ fn ppoll_single_waiter_queue(fd: i32, events: u16) -> Option<&'static crate::tas
         return None;
     }
     let entry = resolve_fd(fd as usize)?;
-    match entry.kind {
-        FdKind::PipeRead(pipe_id) if (events & POLLIN) != 0 => Some(pipe_read_queue(pipe_id)),
-        FdKind::PipeWrite(pipe_id) if (events & POLLOUT) != 0 => Some(pipe_write_queue(pipe_id)),
-        FdKind::Eventfd(event_id) if (events & POLLIN) != 0 => Some(eventfd_queue(event_id)),
-        FdKind::Timerfd(timer_id) if (events & POLLIN) != 0 => Some(timerfd_queue(timer_id)),
-        FdKind::Socket(_) if (events & (POLLIN | POLLOUT)) != 0 => Some(crate::runtime::net_wait_queue()),
+    match entry.object {
+        FdObject::PipeRead(pipe_id) if (events & POLLIN) != 0 => Some(pipe_read_queue(pipe_id)),
+        FdObject::PipeWrite(pipe_id) if (events & POLLOUT) != 0 => Some(pipe_write_queue(pipe_id)),
+        FdObject::Eventfd(event_id) if (events & POLLIN) != 0 => Some(eventfd_queue(event_id)),
+        FdObject::Timerfd(timer_id) if (events & POLLIN) != 0 => Some(timerfd_queue(timer_id)),
+        FdObject::Socket(_) if (events & (POLLIN | POLLOUT)) != 0 => Some(crate::runtime::net_wait_queue()),
         _ => None,
     }
 }
 
 fn resolve_socket_fd(fd: usize) -> Result<axnet::SocketId, Errno> {
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    match entry.kind {
-        FdKind::Socket(id) => Ok(id),
+    match entry.object {
+        FdObject::Socket(id) => Ok(id),
         _ => Err(Errno::Badf),
     }
 }
 
 fn resolve_socket_entry(fd: usize) -> Result<(axnet::SocketId, FdEntry), Errno> {
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    match entry.kind {
-        FdKind::Socket(id) => Ok((id, entry)),
+    match entry.object {
+        FdObject::Socket(id) => Ok((id, entry)),
         _ => Err(Errno::Badf),
     }
 }
 
 fn socket_timeouts(fd: usize) -> Result<(u64, u64), Errno> {
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    if !matches!(entry.kind, FdKind::Socket(_)) {
+    if !matches!(entry.object, FdObject::Socket(_)) {
         return Err(Errno::Badf);
     }
     Ok((entry.recv_timeout_ms, entry.send_timeout_ms))
@@ -5550,11 +5550,11 @@ fn set_socket_timeout(
     send_timeout_ms: Option<u64>,
 ) -> Result<usize, Errno> {
     let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
-    if stdio_kind(fd).is_some() {
+    if stdio_object(fd).is_some() {
         // SAFETY: 单核早期阶段访问重定向表。
         unsafe {
             if let Some(mut entry) = STDIO_REDIRECT[proc_idx][fd] {
-                if !matches!(entry.kind, FdKind::Socket(_)) {
+                if !matches!(entry.object, FdObject::Socket(_)) {
                     return Err(Errno::Badf);
                 }
                 if let Some(value) = recv_timeout_ms {
@@ -5573,7 +5573,7 @@ fn set_socket_timeout(
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
         let entry = &mut FD_TABLES[proc_idx][idx];
-        if entry.kind == FdKind::Empty || !matches!(entry.kind, FdKind::Socket(_)) {
+        if entry.object == FdObject::Empty || !matches!(entry.object, FdObject::Socket(_)) {
             return Err(Errno::Badf);
         }
         if let Some(value) = recv_timeout_ms {
@@ -5798,36 +5798,36 @@ fn timerfd_read(timer_id: usize, root_pa: usize, buf: usize, len: usize, nonbloc
 }
 
 fn read_from_entry(fd: usize, entry: FdEntry, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
-    match entry.kind {
-        FdKind::Stdin => {
+    match entry.object {
+        FdObject::Stdin => {
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             read_console_into(root_pa, buf, len, nonblock)
         }
-        FdKind::Vfs(handle) => {
+        FdObject::Vfs(handle) => {
             if handle.file_type == FileType::Dir {
                 return Err(Errno::IsDir);
             }
             read_vfs_fd(fd, root_pa, handle.mount, handle.inode, buf, len)
         }
-        FdKind::PipeRead(pipe_id) => {
+        FdObject::PipeRead(pipe_id) => {
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             pipe_read(pipe_id, root_pa, buf, len, nonblock)
         }
-        FdKind::Socket(socket_id) => {
+        FdObject::Socket(socket_id) => {
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             read_socket(root_pa, socket_id, buf, len, nonblock)
         }
-        FdKind::Eventfd(event_id) => {
+        FdObject::Eventfd(event_id) => {
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             eventfd_read(event_id, root_pa, buf, len, nonblock)
         }
-        FdKind::Timerfd(timer_id) => {
+        FdObject::Timerfd(timer_id) => {
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             timerfd_read(timer_id, root_pa, buf, len, nonblock)
         }
-        FdKind::Stdout | FdKind::Stderr | FdKind::PipeWrite(_) => Err(Errno::Badf),
-        FdKind::Epoll(_) => Err(Errno::Inval),
-        FdKind::Empty => Err(Errno::Badf),
+        FdObject::Stdout | FdObject::Stderr | FdObject::PipeWrite(_) => Err(Errno::Badf),
+        FdObject::Epoll(_) => Err(Errno::Inval),
+        FdObject::Empty => Err(Errno::Badf),
     }
 }
 
@@ -5933,9 +5933,9 @@ fn write_vfs_at(
 }
 
 fn write_to_entry(fd: usize, entry: FdEntry, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
-    match entry.kind {
-        FdKind::Stdout | FdKind::Stderr => write_console_from(root_pa, buf, len),
-        FdKind::Vfs(handle) => {
+    match entry.object {
+        FdObject::Stdout | FdObject::Stderr => write_console_from(root_pa, buf, len),
+        FdObject::Vfs(handle) => {
             if handle.file_type == FileType::Dir {
                 return Err(Errno::IsDir);
             }
@@ -5951,21 +5951,21 @@ fn write_to_entry(fd: usize, entry: FdEntry, root_pa: usize, buf: usize, len: us
             }
             write_vfs_fd(fd, root_pa, handle.mount, handle.inode, buf, len)
         }
-        FdKind::PipeWrite(pipe_id) => {
+        FdObject::PipeWrite(pipe_id) => {
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             pipe_write(pipe_id, root_pa, buf, len, nonblock)
         }
-        FdKind::Socket(socket_id) => {
+        FdObject::Socket(socket_id) => {
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             write_socket(root_pa, socket_id, buf, len, nonblock)
         }
-        FdKind::Eventfd(event_id) => {
+        FdObject::Eventfd(event_id) => {
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             eventfd_write(event_id, root_pa, buf, len, nonblock)
         }
-        FdKind::Timerfd(_) | FdKind::Epoll(_) => Err(Errno::Inval),
-        FdKind::Stdin | FdKind::PipeRead(_) => Err(Errno::Badf),
-        FdKind::Empty => Err(Errno::Badf),
+        FdObject::Timerfd(_) | FdObject::Epoll(_) => Err(Errno::Inval),
+        FdObject::Stdin | FdObject::PipeRead(_) => Err(Errno::Badf),
+        FdObject::Empty => Err(Errno::Badf),
     }
 }
 
