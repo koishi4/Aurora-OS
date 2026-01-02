@@ -76,23 +76,7 @@ pub fn on_tick(ticks: u64) {
     if ticks % NET_POLL_TICK_INTERVAL == 0 {
         axnet::request_poll();
         if let Some(event) = axnet::poll(time::uptime_ms()) {
-            if let axnet::NetEvent::TcpRecvWindow {
-                id,
-                port,
-                window,
-                capacity,
-                queued,
-            } = event
-            {
-                crate::println!(
-                    "tcp: recv_win tick id={} port={} win={} cap={} queued={}",
-                    id,
-                    port,
-                    window,
-                    capacity,
-                    queued
-                );
-            }
+            log_net_event(event, "tick");
             let _ = wake_all(net_wait_queue());
         }
     }
@@ -117,6 +101,41 @@ pub fn on_tick(ticks: u64) {
     }
     if woke_any {
         NEED_RESCHED.store(true, Ordering::Relaxed);
+    }
+}
+
+fn log_net_event(event: axnet::NetEvent, tag: &str) {
+    match event {
+        axnet::NetEvent::IcmpEchoReply { seq, from } => {
+            crate::println!("net: icmp echo reply seq={} from={}", seq, from);
+        }
+        axnet::NetEvent::ArpReply { from } => {
+            crate::println!("net: arp reply from {}", from);
+        }
+        axnet::NetEvent::ArpProbeSent { target } => {
+            crate::println!("net: arp probe sent to {}", target);
+        }
+        axnet::NetEvent::RxFrameSeen => {
+            crate::println!("net: rx frame seen");
+        }
+        axnet::NetEvent::TcpRecvWindow {
+            id,
+            port,
+            window,
+            capacity,
+            queued,
+        } => {
+            crate::println!(
+                "tcp: recv_win {} id={} port={} win={} cap={} queued={}",
+                tag,
+                id,
+                port,
+                window,
+                capacity,
+                queued
+            );
+        }
+        axnet::NetEvent::Activity => {}
     }
 }
 
@@ -595,37 +614,7 @@ pub fn idle_loop() -> ! {
             last_net_poll_ms = now_ms;
         }
         if let Some(event) = axnet::poll(now_ms) {
-            match event {
-                axnet::NetEvent::IcmpEchoReply { seq, from } => {
-                    crate::println!("net: icmp echo reply seq={} from={}", seq, from);
-                }
-                axnet::NetEvent::ArpReply { from } => {
-                    crate::println!("net: arp reply from {}", from);
-                }
-                axnet::NetEvent::ArpProbeSent { target } => {
-                    crate::println!("net: arp probe sent to {}", target);
-                }
-                axnet::NetEvent::RxFrameSeen => {
-                    crate::println!("net: rx frame seen");
-                }
-                axnet::NetEvent::TcpRecvWindow {
-                    id,
-                    port,
-                    window,
-                    capacity,
-                    queued,
-                } => {
-                    crate::println!(
-                        "tcp: recv_win idle id={} port={} win={} cap={} queued={}",
-                        id,
-                        port,
-                        window,
-                        capacity,
-                        queued
-                    );
-                }
-                axnet::NetEvent::Activity => {}
-            }
+            log_net_event(event, "idle");
             let _ = wake_all(net_wait_queue());
         }
         yield_if_needed();
