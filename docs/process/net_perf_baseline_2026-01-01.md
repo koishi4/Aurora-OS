@@ -83,3 +83,19 @@ make test-net-perf ARCH=riscv64 PLATFORM=qemu
 
 ## 备注
 - 当前基线验证覆盖脚本闭环、hostfwd 注入与 /init 替换路径；大负载需提高 PERF_QEMU_TIMEOUT 与 PERF_IO_TIMEOUT。
+
+## 追加记录（2026-01-02）
+### 环境
+- 内核提交：91b6d4bf1c0a0e904d108b4d5ec0e97ca5d3f5b7
+- PERF_INIT_ELF：build/net_bench.elf
+- PERF_ROOTFS_DIR：build/rootfs-extra
+
+### 命令
+```bash
+PERF_INIT_ELF=build/net_bench.elf \
+PERF_ROOTFS_DIR=build/rootfs-extra \
+scripts/net_perf_baseline.sh
+```
+
+### 结果
+- 64K 基线：rx_bytes=65536，sent_bytes=65536。
