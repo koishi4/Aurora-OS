@@ -11,6 +11,8 @@ const SYS_READ: usize = 63;
 const SYS_LSEEK: usize = 62;
 const SYS_PREAD64: usize = 67;
 const SYS_PWRITE64: usize = 68;
+const SYS_PREADV: usize = 69;
+const SYS_PWRITEV: usize = 70;
 const SYS_FTRUNCATE: usize = 46;
 
 const AT_FDCWD: isize = -100;
@@ -31,6 +33,12 @@ const FAIL_MSG: &[u8] = b"fs-smoke: fail\n";
 const HELLO: &[u8] = b"hello";
 const PATCH: &[u8] = b"XY";
 const APPEND: &[u8] = b"++";
+
+#[repr(C)]
+struct Iovec {
+    iov_base: usize,
+    iov_len: usize,
+}
 
 #[inline(always)]
 unsafe fn syscall6(
@@ -127,6 +135,14 @@ fn syscall_pwrite64(fd: usize, buf: &[u8], offset: usize) -> usize {
     check(unsafe { syscall6(SYS_PWRITE64, fd, buf.as_ptr() as usize, buf.len(), offset, 0, 0) })
 }
 
+fn syscall_preadv(fd: usize, iov: &mut [Iovec], offset: usize) -> usize {
+    check(unsafe { syscall6(SYS_PREADV, fd, iov.as_mut_ptr() as usize, iov.len(), offset, 0, 0) })
+}
+
+fn syscall_pwritev(fd: usize, iov: &[Iovec], offset: usize) -> usize {
+    check(unsafe { syscall6(SYS_PWRITEV, fd, iov.as_ptr() as usize, iov.len(), offset, 0, 0) })
+}
+
 fn syscall_ftruncate(fd: usize, len: usize) {
     check(unsafe { syscall6(SYS_FTRUNCATE, fd, len, 0, 0, 0, 0) });
 }
@@ -156,9 +172,38 @@ pub extern "C" fn _start() -> ! {
 
     let fd_rw = syscall_openat(PATH, O_RDWR, 0);
     check_eq(syscall_lseek(fd_rw, 0, SEEK_END), 7);
+    let seg1 = [b'1', b'2'];
+    let seg2 = [b'3', b'4'];
+    let iov_out = [
+        Iovec {
+            iov_base: seg1.as_ptr() as usize,
+            iov_len: seg1.len(),
+        },
+        Iovec {
+            iov_base: seg2.as_ptr() as usize,
+            iov_len: seg2.len(),
+        },
+    ];
+    check_eq(syscall_pwritev(fd_rw, &iov_out, 1), 4);
+    let mut read1 = [0u8; 2];
+    let mut read2 = [0u8; 2];
+    let mut iov_in = [
+        Iovec {
+            iov_base: read1.as_mut_ptr() as usize,
+            iov_len: read1.len(),
+        },
+        Iovec {
+            iov_base: read2.as_mut_ptr() as usize,
+            iov_len: read2.len(),
+        },
+    ];
+    check_eq(syscall_preadv(fd_rw, &mut iov_in, 1), 4);
+    if &read1 != b"12" || &read2 != b"34" {
+        fail();
+    }
     let mut pread_buf = [0u8; 5];
     check_eq(syscall_pread64(fd_rw, &mut pread_buf, 0), 5);
-    if &pread_buf != b"hXYlo" {
+    if &pread_buf != b"h1234" {
         fail();
     }
     syscall_ftruncate(fd_rw, 4);
