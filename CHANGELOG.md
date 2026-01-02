@@ -102,6 +102,7 @@
 - Cover MSG_DONTWAIT EAGAIN behavior in udp_echo.
 - Implement FD_CLOEXEC tracking and close-on-exec for file descriptors.
 - Parse SOCK_NONBLOCK/SOCK_CLOEXEC in socket creation.
+- Extend tcp_echo to validate SOCK_NONBLOCK/SOCK_CLOEXEC via F_GETFD.
 - Route faccessat/statx/readlinkat path resolution through memfs.
 - Route statfs path resolution through memfs.
 - Route path-based stub syscalls (mkdirat/unlinkat/linkat/renameat* and chmod/chown/utimensat) through memfs.

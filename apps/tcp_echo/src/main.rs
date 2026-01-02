@@ -21,8 +21,12 @@ const SYS_CLOSE: usize = 57;
 
 const AF_INET: u16 = 2;
 const SOCK_STREAM: usize = 1;
+const SOCK_NONBLOCK: usize = 0x800;
+const SOCK_CLOEXEC: usize = 0x80000;
 
+const F_GETFD: usize = 1;
 const F_SETFL: usize = 4;
+const FD_CLOEXEC: isize = 1;
 const O_NONBLOCK: usize = 0x800;
 const SOL_SOCKET: usize = 1;
 const SO_ERROR: usize = 4;
@@ -297,6 +301,10 @@ fn syscall_fcntl(fd: usize, cmd: usize, arg: usize) {
     check(unsafe { syscall6(SYS_FCNTL, fd, cmd, arg, 0, 0, 0) });
 }
 
+fn syscall_fcntl_getfd(fd: usize) -> isize {
+    unsafe { syscall6(SYS_FCNTL, fd, F_GETFD, 0, 0, 0, 0) }
+}
+
 fn syscall_close(fd: usize) {
     let _ = unsafe { syscall6(SYS_CLOSE, fd, 0, 0, 0, 0, 0) };
 }
@@ -340,6 +348,15 @@ fn sockaddr_matches(addr: &SockAddrIn, ip: [u8; 4], port: u16) -> bool {
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
+    let probe = syscall_socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+    syscall_close(probe);
+    let cloexec_sock = syscall_socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    let cloexec_flags = syscall_fcntl_getfd(cloexec_sock);
+    if cloexec_flags != FD_CLOEXEC {
+        fail();
+    }
+    syscall_close(cloexec_sock);
+
     let server = syscall_socket(AF_INET, SOCK_STREAM, 0);
     let client = syscall_socket(AF_INET, SOCK_STREAM, 0);
     let fail_client = syscall_socket(AF_INET, SOCK_STREAM, 0);
