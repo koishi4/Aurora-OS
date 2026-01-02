@@ -1120,7 +1120,7 @@ fn sys_connect(fd: usize, addr: usize, len: usize) -> Result<usize, Errno> {
             return Ok(0);
         }
         if (revents & POLLHUP) != 0 {
-            return Err(Errno::ConnRefused);
+            return Err(connect_hup_error(socket_id));
         }
         return Err(Errno::InProgress);
     }
@@ -1131,7 +1131,7 @@ fn sys_connect(fd: usize, addr: usize, len: usize) -> Result<usize, Errno> {
             return Ok(0);
         }
         if (revents & POLLHUP) != 0 {
-            return Err(Errno::ConnRefused);
+            return Err(connect_hup_error(socket_id));
         }
         if !can_block_current() {
             return Err(Errno::Again);
@@ -1140,6 +1140,13 @@ fn sys_connect(fd: usize, addr: usize, len: usize) -> Result<usize, Errno> {
             crate::println!("sys_connect: blocking");
         }
         crate::runtime::block_current(crate::runtime::net_wait_queue());
+    }
+}
+
+fn connect_hup_error(socket_id: axnet::SocketId) -> Errno {
+    match axnet::socket_take_error(socket_id) {
+        Ok(Some(err)) => map_net_err(err),
+        _ => Errno::ConnRefused,
     }
 }
 

@@ -17,6 +17,7 @@
 - 为本机 IPv4 目的地址注入 loopback 队列，支持用户态 `/tcp_echo` 单机互连。
 - 新增用户态 TCP echo 程序 `/tcp_echo`，冒烟测试可覆盖 socket syscall 端到端路径。
 - TCP echo 增加非阻塞 connect + ppoll + SO_ERROR 校验，覆盖 EINPROGRESS 与连接完成语义。
+- sys_connect 在 POLLHUP 时回读 socket error（若存在）并映射到 Errno，完善失败错误码一致性。
 - TCP echo 使用 sendmsg/recvmsg + iovec 分段收发，覆盖 stream 聚散 I/O 路径。
 - TCP echo 覆盖 getsockname/getpeername 地址回读，验证本地/对端端口一致性。
 - 新增用户态 UDP echo 程序 `/udp_echo`，冒烟测试可覆盖 datagram send/recv 路径。

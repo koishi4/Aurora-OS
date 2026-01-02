@@ -211,3 +211,4 @@
 - Keep net polling active while TCP handshake is pending to avoid stalled connects.
 - Grow RISC-V boot stack to 64KB to avoid deep syscall stack overflows.
 - Map user stacks page-by-page to avoid execve stack zeroing overflows.
+- Refine sys_connect HUP handling to return the socket error when available.
