@@ -8,6 +8,7 @@ WORKDIR=${WORKDIR:-"${ROOT}/build/rootfs"}
 INIT_ELF=${INIT_ELF:-"${ROOT}/build/init.elf"}
 TCP_ECHO_ELF=${TCP_ECHO_ELF:-}
 UDP_ECHO_ELF=${UDP_ECHO_ELF:-}
+FS_SMOKE_ELF=${FS_SMOKE_ELF:-}
 EXTRA_ROOTFS_DIR=${EXTRA_ROOTFS_DIR:-}
 INIT_ELF_SKIP_BUILD=${INIT_ELF_SKIP_BUILD:-0}
 
@@ -41,6 +42,13 @@ if [[ -n "${UDP_ECHO_ELF}" ]]; then
     exit 1
   fi
   cp "${UDP_ECHO_ELF}" "${WORKDIR}/udp_echo"
+fi
+if [[ -n "${FS_SMOKE_ELF}" ]]; then
+  if [[ ! -f "${FS_SMOKE_ELF}" ]]; then
+    echo "FS_SMOKE_ELF not found: ${FS_SMOKE_ELF}" >&2
+    exit 1
+  fi
+  cp "${FS_SMOKE_ELF}" "${WORKDIR}/fs_smoke"
 fi
 if [[ -n "${EXTRA_ROOTFS_DIR}" ]]; then
   if [[ ! -d "${EXTRA_ROOTFS_DIR}" ]]; then

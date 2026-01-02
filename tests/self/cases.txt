@@ -6,3 +6,4 @@ net
 net-loopback
 tcp-echo
 udp-echo
+fs-smoke

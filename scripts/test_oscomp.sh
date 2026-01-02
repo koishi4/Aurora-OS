@@ -110,6 +110,8 @@ for case_name in "${CASES[@]}"; do
   expect_tcp_echo=0
   udp_echo_test=0
   expect_udp_echo=0
+  fs_smoke_test=0
+  expect_fs_smoke=0
   if [[ "${case_name}" == "ext4-init" ]]; then
     ensure_ext4_image
     FS_EXT4="$(abs_path "${FS_EXT4}")"
@@ -146,6 +148,9 @@ for case_name in "${CASES[@]}"; do
   elif [[ "${case_name}" == "udp-echo" ]]; then
     udp_echo_test=1
     expect_udp_echo=1
+  elif [[ "${case_name}" == "fs-smoke" ]]; then
+    fs_smoke_test=1
+    expect_fs_smoke=1
   elif [[ "${case_name}" == "ramdisk" ]]; then
     expect_fat32=1
   fi
@@ -157,7 +162,8 @@ for case_name in "${CASES[@]}"; do
     NET="${net}" EXPECT_NET="${expect_net}" NET_LOOPBACK_TEST="${net_loopback_test}" \
     EXPECT_NET_LOOPBACK="${expect_net_loopback}" TCP_ECHO_TEST="${tcp_echo_test}" \
     EXPECT_TCP_ECHO="${expect_tcp_echo}" UDP_ECHO_TEST="${udp_echo_test}" \
-    EXPECT_UDP_ECHO="${expect_udp_echo}" TIMEOUT="${TIMEOUT}" \
+    EXPECT_UDP_ECHO="${expect_udp_echo}" FS_SMOKE_TEST="${fs_smoke_test}" \
+    EXPECT_FS_SMOKE="${expect_fs_smoke}" TIMEOUT="${TIMEOUT}" \
     QEMU_BIN="${QEMU_BIN}" BIOS="${BIOS}" MEM="${MEM}" SMP="${SMP}" \
     LOG_DIR="${LOG_DIR}" LOG_FILE="${case_log}" \
     "${ROOT}/scripts/test_qemu_smoke.sh"

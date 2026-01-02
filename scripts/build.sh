@@ -11,6 +11,7 @@ EXT4_WRITE_TEST=${EXT4_WRITE_TEST:-0}
 NET_LOOPBACK_TEST=${NET_LOOPBACK_TEST:-0}
 TCP_ECHO_TEST=${TCP_ECHO_TEST:-0}
 UDP_ECHO_TEST=${UDP_ECHO_TEST:-0}
+FS_SMOKE_TEST=${FS_SMOKE_TEST:-0}
 TARGET=riscv64gc-unknown-none-elf
 CRATE=axruntime
 
@@ -59,6 +60,9 @@ if [[ "${TCP_ECHO_TEST}" == "1" ]]; then
 fi
 if [[ "${UDP_ECHO_TEST}" == "1" ]]; then
   CARGO_FLAGS+=(--features user-udp-echo)
+fi
+if [[ "${FS_SMOKE_TEST}" == "1" ]]; then
+  CARGO_FLAGS+=(--features user-fs-smoke)
 fi
 
 (

@@ -10,6 +10,7 @@ ext4-write-test = []
 net-loopback-test = []
 user-tcp-echo = []
 user-udp-echo = []
+user-fs-smoke = []
 
 [dependencies]
 axfs = { path = "../axfs" }

@@ -21,6 +21,8 @@ TCP_ECHO_TEST=${TCP_ECHO_TEST:-0}
 EXPECT_TCP_ECHO=${EXPECT_TCP_ECHO:-0}
 UDP_ECHO_TEST=${UDP_ECHO_TEST:-0}
 EXPECT_UDP_ECHO=${EXPECT_UDP_ECHO:-0}
+FS_SMOKE_TEST=${FS_SMOKE_TEST:-0}
+EXPECT_FS_SMOKE=${EXPECT_FS_SMOKE:-0}
 EXPECT_EXT4_ISSUE=${EXPECT_EXT4_ISSUE:-}
 TARGET=riscv64gc-unknown-none-elf
 CRATE=axruntime
@@ -49,6 +51,10 @@ fi
 
 if [[ "${TCP_ECHO_TEST}" == "1" && "${UDP_ECHO_TEST}" == "1" ]]; then
   echo "TCP_ECHO_TEST and UDP_ECHO_TEST are mutually exclusive." >&2
+  exit 1
+fi
+if [[ "${FS_SMOKE_TEST}" == "1" && ( "${TCP_ECHO_TEST}" == "1" || "${UDP_ECHO_TEST}" == "1" ) ]]; then
+  echo "FS_SMOKE_TEST cannot be combined with TCP_ECHO_TEST or UDP_ECHO_TEST." >&2
   exit 1
 fi
 
@@ -94,6 +100,26 @@ if [[ "${UDP_ECHO_TEST}" == "1" ]]; then
   fi
 fi
 
+if [[ "${FS_SMOKE_TEST}" == "1" ]]; then
+  USER_TEST=1
+  if [[ -z "${FS}" ]]; then
+    FS_SMOKE_ELF="${ROOT}/build/fs_smoke.elf"
+    FS_SMOKE_IMAGE="${ROOT}/build/rootfs-fs-smoke.ext4"
+    MODE="${MODE}" OUT="${FS_SMOKE_ELF}" "${ROOT}/scripts/build_fs_smoke.sh"
+    OUT="${FS_SMOKE_IMAGE}" FS_SMOKE_ELF="${FS_SMOKE_ELF}" "${ROOT}/scripts/mkfs_ext4.sh"
+    FS="${FS_SMOKE_IMAGE}"
+  fi
+  if [[ "${EXPECT_EXT4}" == "0" ]]; then
+    EXPECT_EXT4=1
+  fi
+  if [[ -z "${EXPECT_EXT4_ISSUE}" ]]; then
+    EXPECT_EXT4_ISSUE=0
+  fi
+  if [[ "${EXPECT_FS_SMOKE}" == "0" ]]; then
+    EXPECT_FS_SMOKE=1
+  fi
+fi
+
 if ! command -v "${QEMU_BIN}" >/dev/null 2>&1; then
   echo "QEMU binary not found: ${QEMU_BIN}" >&2
   exit 1
@@ -104,6 +130,7 @@ export USER_TEST
 export NET_LOOPBACK_TEST
 export TCP_ECHO_TEST
 export UDP_ECHO_TEST
+export FS_SMOKE_TEST
 "${ROOT}/scripts/build.sh"
 
 OUT_DIR=debug
@@ -269,6 +296,14 @@ fi
 if [[ "${EXPECT_UDP_ECHO}" == "1" ]]; then
   if ! grep -q "udp-echo: ok" "${LOG_FILE}"; then
     echo "Smoke test failed: UDP echo banner not found." >&2
+    cat "${LOG_FILE}" >&2
+    exit 1
+  fi
+fi
+
+if [[ "${EXPECT_FS_SMOKE}" == "1" ]]; then
+  if ! grep -q "fs-smoke: ok" "${LOG_FILE}"; then
+    echo "Smoke test failed: fs-smoke banner not found." >&2
     cat "${LOG_FILE}" >&2
     exit 1
   fi
