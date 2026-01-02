@@ -29,6 +29,7 @@
 | clock_gettime/nanosleep | - | - | 需要运行态采集 |
 | access | ✓ | ✓ | 已实现（access→faccessat） |
 | pread64 | ✓ | ✓ | 已实现（仅 VFS 普通文件，非 seekable 返回 ESPIPE） |
+| preadv/pwritev | ✓ | ✓ | 已实现（仅 VFS 普通文件，偏移不改变 fd） |
 | rseq | ✓ | ✓ | 已占位，返回 ENOSYS |
 | arch_prctl | ✓ | ✓ | riscv 无该 syscall，保持 ENOSYS |
 | madvise | - | ✓ | 已实现占位（返回 0） |
@@ -49,7 +50,7 @@
 - redis-server：access, arch_prctl, brk, close, execve, exit_group, fstat, futex, getcwd, getpid, getrandom, ioctl, lseek, madvise, mmap, mprotect, munmap, open, openat, pipe2, prctl, pread64, prlimit64, read, readlink, rseq, sched_getaffinity, set_robust_list, set_tid_address, umask, write
 
 ### 缺口分析（初步）
-- 已补齐：access/pread64/readlink/madvise（详见 syscall 覆盖矩阵）。
+- 已补齐：access/pread64/preadv/pwritev/readlink/madvise（详见 syscall 覆盖矩阵）。
 - 可暂时返回 ENOSYS：arch_prctl（riscv 无该 syscall）、rseq（若应用未启用线程/注册）。
 - 运行态后续补齐：socket 路径与时间相关 syscall。
 
