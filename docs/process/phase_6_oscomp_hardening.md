@@ -10,6 +10,8 @@
 - 新增 `fs-smoke` 自研用例，覆盖 lseek/pread64/pwrite64/preadv/pwritev/ftruncate/O_APPEND 文件偏移语义。
 - 运行 `make test-oscomp ARCH=riscv64 PLATFORM=qemu`，覆盖新增 fs-smoke 用例并通过。
 - 运行 `scripts/collect_syscall_matrix.sh` 生成 iperf3/redis help/version 路径 syscall 采集日志。
+- 增加 userland-staging 自测项：若已在 `build/rootfs-extra` 放置 iperf3/redis，将其打包进 ext4 并启动验证；无二进制时跳过。
+- 运行 `make test-oscomp ARCH=riscv64 PLATFORM=qemu`，userland-staging 用例已纳入自测流程。
 - tcp-echo 增加连接失败路径校验（SO_ERROR 映射），提升连接错误码一致性覆盖。
 - net-perf 基线脚本支持 `PERF_QEMU_TIMEOUT`，避免大流量下 QEMU 超时截断。
 - net-perf 增加 `PERF_IO_TIMEOUT` 发送端超时参数，并补充 1MiB/4MiB 基线记录。

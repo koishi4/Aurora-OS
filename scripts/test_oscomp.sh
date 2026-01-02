@@ -112,6 +112,7 @@ for case_name in "${CASES[@]}"; do
   expect_udp_echo=0
   fs_smoke_test=0
   expect_fs_smoke=0
+  userland_staging_test=0
   if [[ "${case_name}" == "ext4-init" ]]; then
     ensure_ext4_image
     FS_EXT4="$(abs_path "${FS_EXT4}")"
@@ -151,8 +152,36 @@ for case_name in "${CASES[@]}"; do
   elif [[ "${case_name}" == "fs-smoke" ]]; then
     fs_smoke_test=1
     expect_fs_smoke=1
+  elif [[ "${case_name}" == "userland-staging" ]]; then
+    userland_staging_test=1
   elif [[ "${case_name}" == "ramdisk" ]]; then
     expect_fat32=1
+  fi
+
+  if [[ "${userland_staging_test}" == "1" ]]; then
+    EXTRA_ROOTFS_DIR="${ROOT}/build/rootfs-extra"
+    iperf_bin="${ROOT}/build/iperf3"
+    redis_bin="${ROOT}/build/redis-server"
+    IPERF3_BIN=""
+    REDIS_BIN=""
+    if [[ -f "${iperf_bin}" ]]; then
+      IPERF3_BIN="${iperf_bin}"
+    fi
+    if [[ -f "${redis_bin}" ]]; then
+      REDIS_BIN="${redis_bin}"
+    fi
+    EXTRA_ROOTFS_DIR="${EXTRA_ROOTFS_DIR}" IPERF3_BIN="${IPERF3_BIN}" \
+      REDIS_BIN="${REDIS_BIN}" "${ROOT}/scripts/stage_userland_apps.sh"
+    if [[ ! -f "${EXTRA_ROOTFS_DIR}/iperf3" && ! -f "${EXTRA_ROOTFS_DIR}/redis-server" ]]; then
+      echo "${case_name}: status=skipped log=${case_log} detail=no-staged-apps" >> "${SUMMARY_FILE}"
+      continue
+    fi
+    expect_ext4=1
+    expect_ext4_write=1
+    ext4_write_test=1
+    OUT="${ROOT}/build/rootfs-userland.ext4" EXTRA_ROOTFS_DIR="${EXTRA_ROOTFS_DIR}" \
+      "${ROOT}/scripts/mkfs_ext4.sh"
+    case_fs="${ROOT}/build/rootfs-userland.ext4"
   fi
 
   set +e

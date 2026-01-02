@@ -37,7 +37,7 @@ make test-* -> scripts/test_*.sh
 - NET=1 TCP_ECHO_TEST=1 EXPECT_TCP_ECHO=1 make test-qemu-smoke (用户态 TCP echo 覆盖 socket syscall 路径)
 - NET=1 UDP_ECHO_TEST=1 EXPECT_UDP_ECHO=1 make test-qemu-smoke (用户态 UDP echo 覆盖 datagram syscall 路径)
 - FS_SMOKE_TEST=1 EXPECT_FS_SMOKE=1 make test-qemu-smoke（用户态 fs-smoke 覆盖 lseek/pwrite64/O_APPEND）
-- make test-oscomp（运行 tests/self 用例：ramdisk + ext4 + ext4-init + net + net-loopback + tcp-echo + udp-echo + fs-smoke）
+- make test-oscomp（运行 tests/self 用例：ramdisk + ext4 + ext4-init + net + net-loopback + tcp-echo + udp-echo + fs-smoke + userland-staging）
 - make test-net-baseline（顺序执行 net/net-loopback/tcp-echo/udp-echo 并记录日志）
 - make test-net-perf（需要自定义 /init 与用户态二进制，脚本启用 USER_TEST 触发 execve，记录性能基线日志）
 - make test-net-perf（通过 hostfwd 触发 net_perf_send 发送端，支持 PERF_HOST_PORT=auto 避免端口冲突）
