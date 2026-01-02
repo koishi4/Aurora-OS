@@ -120,6 +120,7 @@
 - Extend user-mode smoke to cover clone/wait4 and CoW write path validation.
 - Add virtio-blk MMIO support and prefer external rootfs images over the ramdisk.
 - Extend ext4 write to allocate single-indirect blocks and add an indirect write/read test.
+- Add ftruncate and O_TRUNC support for VFS-backed files.
 - Use an IRQ-driven wait queue for virtio-blk completion and fall back to polling when needed.
 - Add an ext4-init host-side VFS check for reading `/init` from an ext4 image.
 - Extend ext4-init host test to validate root directory entries, `/etc/issue`, and larger reads.

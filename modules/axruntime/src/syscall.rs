@@ -159,6 +159,7 @@ fn dispatch(tf: &mut TrapFrame, ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_READLINKAT => sys_readlinkat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_STATFS => sys_statfs(ctx.args[0], ctx.args[1]),
         SYS_FSTATFS => sys_fstatfs(ctx.args[0], ctx.args[1]),
+        SYS_FTRUNCATE => sys_ftruncate(ctx.args[0], ctx.args[1]),
         SYS_FCHMODAT => sys_fchmodat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_FCHOWNAT => sys_fchownat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
         SYS_UTIMENSAT => sys_utimensat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
@@ -280,6 +281,7 @@ const SYS_FACCESSAT: usize = 48;
 const SYS_STATX: usize = 291;
 const SYS_STATFS: usize = 43;
 const SYS_FSTATFS: usize = 44;
+const SYS_FTRUNCATE: usize = 46;
 const SYS_FCHMODAT: usize = 53;
 const SYS_FCHOWNAT: usize = 54;
 const SYS_UTIMENSAT: usize = 88;
@@ -389,6 +391,7 @@ const O_CLOEXEC: usize = 0x80000;
 const O_NONBLOCK: usize = 0x4000;
 const O_CREAT: usize = 0x40;
 const O_EXCL: usize = 0x80;
+const O_TRUNC: usize = 0x200;
 const O_RDONLY: usize = 0;
 const O_WRONLY: usize = 1;
 const O_RDWR: usize = 2;
@@ -2397,6 +2400,16 @@ fn sys_openat(_dirfd: usize, pathname: usize, flags: usize, _mode: usize) -> Res
                 }
             }
         }
+        if (flags & O_TRUNC) != 0 {
+            if accmode == O_RDONLY {
+                return Err(Errno::Inval);
+            }
+            match meta.file_type {
+                FileType::Dir => return Err(Errno::IsDir),
+                FileType::File => fs.truncate(inode, 0).map_err(map_vfs_err)?,
+                _ => return Err(Errno::Inval),
+            }
+        }
         let handle = VfsHandle {
             mount,
             inode,
@@ -2756,6 +2769,26 @@ fn sys_fstatfs(fd: usize, buf: usize) -> Result<usize, Errno> {
         .write(root_pa, default_statfs())
         .ok_or(Errno::Fault)?;
     Ok(0)
+}
+
+fn sys_ftruncate(fd: usize, len: usize) -> Result<usize, Errno> {
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    let handle = match entry.kind {
+        FdKind::Vfs(handle) => handle,
+        _ => return Err(Errno::Inval),
+    };
+    if handle.file_type != FileType::File {
+        return Err(Errno::Inval);
+    }
+    with_mounts(|mounts| {
+        let fs = mounts.fs_for(handle.mount).ok_or(Errno::NoEnt)?;
+        fs.truncate(handle.inode, len as u64).map_err(map_vfs_err)?;
+        Ok(0)
+    })
 }
 
 fn sys_fchmodat(dirfd: usize, pathname: usize, _mode: usize, flags: usize) -> Result<usize, Errno> {
