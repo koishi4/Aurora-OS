@@ -55,6 +55,7 @@
 - Add console input stash and polling readiness for stdin; USER_TEST now covers pipe poll readiness.
 - Add lseek support for VFS handles and honor O_APPEND in VFS writes; expose O_APPEND via fcntl.
 - Fix O_NONBLOCK flag value to match Linux userspace expectations.
+- Add pwrite64 for VFS files to support offset-based writes.
 - Enable timer-driven preemption by returning running tasks to the run queue and scheduling from idle.
 - Allow user tasks to be preempted by timer ticks and resume via trapframe-backed paths.
 - Add execve loader for `/init` built-in ELF image with argv/envp stack layout.
