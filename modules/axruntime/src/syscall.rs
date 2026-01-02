@@ -434,6 +434,7 @@ const SIG_UNBLOCK: usize = 1;
 const SIG_SETMASK: usize = 2;
 const F_GETFD: usize = 1;
 const F_SETFD: usize = 2;
+const FD_CLOEXEC: usize = 1;
 const F_GETFL: usize = 3;
 const F_SETFL: usize = 4;
 const SEEK_SET: usize = 0;
@@ -902,6 +903,7 @@ const AF_INET: u16 = 2;
 const SOCK_STREAM: usize = 1;
 const SOCK_DGRAM: usize = 2;
 const SOCK_NONBLOCK: usize = 0x800;
+const SOCK_CLOEXEC: usize = 0x80000;
 const MSG_DONTWAIT: usize = 0x40;
 
 fn sys_exit(_code: usize) -> Result<usize, Errno> {
@@ -971,6 +973,7 @@ fn sys_execve(tf: &mut TrapFrame, pathname: usize, argv: usize, envp: usize) -> 
         let _ = crate::task::set_heap_top(task_id, ctx.heap_top);
     }
     let _ = crate::process::update_current_root(ctx.root_pa);
+    close_cloexec_fds();
     if ctx.root_pa != root_pa {
         crate::mm::release_user_root(root_pa);
     }
@@ -1161,9 +1164,16 @@ fn sys_eventfd2(initval: usize, flags: usize) -> Result<usize, Errno> {
     }
     let initval = initval as u64;
     let event_id = alloc_eventfd(initval, flags).ok_or(Errno::MFile)?;
+    let mut status_flags = 0;
+    if (flags & EFD_NONBLOCK) != 0 {
+        status_flags |= O_NONBLOCK;
+    }
+    if (flags & EFD_CLOEXEC) != 0 {
+        status_flags |= O_CLOEXEC;
+    }
     let entry = FdEntry {
         object: FdObject::Eventfd(event_id),
-        flags: if (flags & EFD_NONBLOCK) != 0 { O_NONBLOCK } else { 0 },
+        flags: status_flags,
         offset: 0,
         recv_timeout_ms: 0,
         send_timeout_ms: 0,
@@ -1177,9 +1187,10 @@ fn sys_epoll_create1(flags: usize) -> Result<usize, Errno> {
         return Err(Errno::Inval);
     }
     let epoll_id = alloc_epoll(flags).ok_or(Errno::MFile)?;
+    let status_flags = if (flags & EPOLL_CLOEXEC) != 0 { O_CLOEXEC } else { 0 };
     let entry = FdEntry {
         object: FdObject::Epoll(epoll_id),
-        flags: 0,
+        flags: status_flags,
         offset: 0,
         recv_timeout_ms: 0,
         send_timeout_ms: 0,
@@ -1291,9 +1302,16 @@ fn sys_timerfd_create(clockid: usize, flags: usize) -> Result<usize, Errno> {
         return Err(Errno::Inval);
     }
     let timer_id = alloc_timerfd(flags).ok_or(Errno::MFile)?;
+    let mut status_flags = 0;
+    if (flags & TFD_NONBLOCK) != 0 {
+        status_flags |= O_NONBLOCK;
+    }
+    if (flags & TFD_CLOEXEC) != 0 {
+        status_flags |= O_CLOEXEC;
+    }
     let entry = FdEntry {
         object: FdObject::Timerfd(timer_id),
-        flags: if (flags & TFD_NONBLOCK) != 0 { O_NONBLOCK } else { 0 },
+        flags: status_flags,
         offset: 0,
         recv_timeout_ms: 0,
         send_timeout_ms: 0,
@@ -1756,7 +1774,7 @@ fn sys_pipe2(pipefd: usize, flags: usize) -> Result<usize, Errno> {
     }
     // 占位 pipe：固定缓冲区，空/满时阻塞或返回 EAGAIN。
     let pipe_id = alloc_pipe().ok_or(Errno::MFile)?;
-    let status_flags = if (flags & O_NONBLOCK) != 0 { O_NONBLOCK } else { 0 };
+    let status_flags = flags & (O_NONBLOCK | O_CLOEXEC);
     let read_fd = match alloc_fd(FdEntry {
         object: FdObject::PipeRead(pipe_id),
         flags: status_flags,
@@ -1793,13 +1811,16 @@ fn sys_pipe2(pipefd: usize, flags: usize) -> Result<usize, Errno> {
 }
 
 fn sys_socket(domain: usize, sock_type: usize, protocol: usize) -> Result<usize, Errno> {
-    let socket_id = axnet::socket_create(domain as i32, sock_type as i32, protocol as i32)
+    let sock_type_base = sock_type & 0xf;
+    let socket_id = axnet::socket_create(domain as i32, sock_type_base as i32, protocol as i32)
         .map_err(map_net_err)?;
-    let flags = if (sock_type & SOCK_NONBLOCK) != 0 {
-        O_NONBLOCK
-    } else {
-        0
-    };
+    let mut flags = 0;
+    if (sock_type & SOCK_NONBLOCK) != 0 {
+        flags |= O_NONBLOCK;
+    }
+    if (sock_type & SOCK_CLOEXEC) != 0 {
+        flags |= O_CLOEXEC;
+    }
     let entry = FdEntry {
         object: FdObject::Socket(socket_id),
         flags,
@@ -3617,7 +3638,8 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
 }
 
 fn sys_dup(oldfd: usize) -> Result<usize, Errno> {
-    let entry = resolve_fd(oldfd).ok_or(Errno::Badf)?;
+    let mut entry = resolve_fd(oldfd).ok_or(Errno::Badf)?;
+    entry.flags &= !O_CLOEXEC;
     let newfd = alloc_fd(entry).ok_or(Errno::MFile)?;
     if let Some(offset) = fd_offset(oldfd) {
         set_fd_offset(newfd, offset);
@@ -3626,12 +3648,16 @@ fn sys_dup(oldfd: usize) -> Result<usize, Errno> {
 }
 
 fn sys_dup3(oldfd: usize, newfd: usize, flags: usize) -> Result<usize, Errno> {
-    let entry = resolve_fd(oldfd).ok_or(Errno::Badf)?;
+    let mut entry = resolve_fd(oldfd).ok_or(Errno::Badf)?;
     if flags != 0 && flags != O_CLOEXEC {
         return Err(Errno::Inval);
     }
     if oldfd == newfd {
         return if flags == 0 { Ok(newfd) } else { Err(Errno::Inval) };
+    }
+    entry.flags &= !O_CLOEXEC;
+    if flags == O_CLOEXEC {
+        entry.flags |= O_CLOEXEC;
     }
     let newfd = dup_to_fd(newfd, entry)?;
     if let Some(offset) = fd_offset(oldfd) {
@@ -3746,8 +3772,20 @@ fn sys_rt_sigprocmask(how: usize, set: usize, oldset: usize, sigsetsize: usize) 
 fn sys_fcntl(fd: usize, cmd: usize, arg: usize) -> Result<usize, Errno> {
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
     match cmd {
-        F_GETFD => Ok(0),
-        F_SETFD => Ok(0),
+        F_GETFD => {
+            if (entry.flags & O_CLOEXEC) != 0 {
+                Ok(FD_CLOEXEC)
+            } else {
+                Ok(0)
+            }
+        }
+        F_SETFD => {
+            if arg & !FD_CLOEXEC != 0 {
+                return Err(Errno::Inval);
+            }
+            set_fd_cloexec(fd, (arg & FD_CLOEXEC) != 0)?;
+            Ok(0)
+        }
         F_GETFL => {
             let mode = match entry.object {
                 FdObject::Stdin | FdObject::PipeRead(_) => O_RDONLY,
@@ -4650,6 +4688,38 @@ fn close_fd(fd: usize) -> Result<usize, Errno> {
     Ok(0)
 }
 
+fn close_cloexec_fds() {
+    let Some(proc_idx) = current_proc_index() else {
+        return;
+    };
+    // SAFETY: 单核早期阶段，fd 表按进程顺序访问。
+    unsafe {
+        for (idx, entry) in FD_TABLES[proc_idx].iter_mut().enumerate() {
+            if entry.object == FdObject::Empty || (entry.flags & O_CLOEXEC) == 0 {
+                continue;
+            }
+            if let FdObject::Socket(socket_id) = entry.object {
+                let _ = axnet::socket_close(socket_id);
+            }
+            pipe_release(entry.object);
+            FD_TABLES[proc_idx][idx] = EMPTY_FD_ENTRY;
+        }
+        for fd in 0..STDIO_REDIRECT[proc_idx].len() {
+            if let Some(entry) = STDIO_REDIRECT[proc_idx][fd] {
+                if (entry.flags & O_CLOEXEC) != 0 {
+                    if let FdObject::Socket(socket_id) = entry.object {
+                        let _ = axnet::socket_close(socket_id);
+                    }
+                    pipe_release(entry.object);
+                    STDIO_REDIRECT[proc_idx][fd] = None;
+                }
+            } else if (STDIO_FLAGS[proc_idx][fd] & O_CLOEXEC) != 0 {
+                STDIO_FLAGS[proc_idx][fd] &= !O_CLOEXEC;
+            }
+        }
+    }
+}
+
 fn set_stdio_redirect(fd: usize, entry: FdEntry) -> Result<usize, Errno> {
     if stdio_object(fd).is_none() {
         return Err(Errno::Badf);
@@ -4691,6 +4761,41 @@ fn set_fd_flags(fd: usize, flags: usize) -> Result<(), Errno> {
             return Err(Errno::Badf);
         }
         FD_TABLES[proc_idx][idx].flags = (FD_TABLES[proc_idx][idx].flags & O_ACCMODE) | flags;
+    }
+    Ok(())
+}
+
+fn set_fd_cloexec(fd: usize, cloexec: bool) -> Result<(), Errno> {
+    let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
+    if stdio_object(fd).is_some() {
+        // SAFETY: 单核早期阶段访问重定向表/标志。
+        unsafe {
+            if let Some(mut entry) = STDIO_REDIRECT[proc_idx][fd] {
+                if cloexec {
+                    entry.flags |= O_CLOEXEC;
+                } else {
+                    entry.flags &= !O_CLOEXEC;
+                }
+                STDIO_REDIRECT[proc_idx][fd] = Some(entry);
+            } else if cloexec {
+                STDIO_FLAGS[proc_idx][fd] |= O_CLOEXEC;
+            } else {
+                STDIO_FLAGS[proc_idx][fd] &= !O_CLOEXEC;
+            }
+        }
+        return Ok(());
+    }
+    let idx = fd_table_index(fd).ok_or(Errno::Badf)?;
+    // SAFETY: 单核早期阶段，fd 表串行更新。
+    unsafe {
+        if FD_TABLES[proc_idx][idx].object == FdObject::Empty {
+            return Err(Errno::Badf);
+        }
+        if cloexec {
+            FD_TABLES[proc_idx][idx].flags |= O_CLOEXEC;
+        } else {
+            FD_TABLES[proc_idx][idx].flags &= !O_CLOEXEC;
+        }
     }
     Ok(())
 }

@@ -33,6 +33,7 @@
 - tcp_echo 覆盖重复 connect 调用，允许 EINPROGRESS/EALREADY/EISCONN/0 的兼容返回。
 - sendto/recvfrom/sendmsg/recvmsg 支持 MSG_DONTWAIT，单次调用可覆盖阻塞语义。
 - udp_echo 覆盖 MSG_DONTWAIT 返回 EAGAIN。
+- socket 支持 SOCK_NONBLOCK/SOCK_CLOEXEC 标志位解析并落入 fd 状态。
 - 增加 sendmsg/recvmsg 最小实现，支持 iovec 聚散发送与接收。
 - 增加 sendmmsg/recvmmsg 批量收发支持，UDP 自测覆盖多包路径。
 - UDP 自测补充 SO_RCVTIMEO 超时校验，覆盖超时错误码路径。
