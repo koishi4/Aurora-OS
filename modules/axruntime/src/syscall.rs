@@ -110,10 +110,13 @@ fn dispatch(tf: &mut TrapFrame, ctx: SyscallContext) -> Result<usize, Errno> {
         ),
         SYS_MUNMAP => sys_munmap(ctx.args[0], ctx.args[1]),
         SYS_MPROTECT => sys_mprotect(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_MADVISE => sys_madvise(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_READ => sys_read(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_PREAD64 => sys_pread64(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_WRITE => sys_write(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_READV => sys_readv(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_WRITEV => sys_writev(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_ACCESS => sys_access(ctx.args[0], ctx.args[1]),
         SYS_OPEN => sys_open(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_OPENAT => sys_openat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_PIPE2 => sys_pipe2(ctx.args[0], ctx.args[1]),
@@ -128,6 +131,7 @@ fn dispatch(tf: &mut TrapFrame, ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_NEWFSTATAT => sys_newfstatat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_FACCESSAT => sys_faccessat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_STATX => sys_statx(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
+        SYS_READLINK => sys_readlink(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_READLINKAT => sys_readlinkat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_STATFS => sys_statfs(ctx.args[0], ctx.args[1]),
         SYS_FSTATFS => sys_fstatfs(ctx.args[0], ctx.args[1]),
@@ -218,10 +222,13 @@ const SYS_BRK: usize = 214;
 const SYS_MUNMAP: usize = 215;
 const SYS_MMAP: usize = 222;
 const SYS_MPROTECT: usize = 226;
+const SYS_MADVISE: usize = 233;
 const SYS_READ: usize = 63;
+const SYS_PREAD64: usize = 67;
 const SYS_WRITE: usize = 64;
 const SYS_READV: usize = 65;
 const SYS_WRITEV: usize = 66;
+const SYS_ACCESS: usize = 21;
 const SYS_OPEN: usize = 1024;
 const SYS_OPENAT: usize = 56;
 const SYS_PIPE2: usize = 59;
@@ -233,6 +240,7 @@ const SYS_LINKAT: usize = 37;
 const SYS_RENAMEAT: usize = 38;
 const SYS_GETDENTS64: usize = 61;
 const SYS_NEWFSTATAT: usize = 79;
+const SYS_READLINK: usize = 89;
 const SYS_READLINKAT: usize = 78;
 const SYS_FACCESSAT: usize = 48;
 const SYS_STATX: usize = 291;
@@ -940,6 +948,16 @@ fn sys_mprotect(addr: usize, len: usize, prot: usize) -> Result<usize, Errno> {
     Ok(0)
 }
 
+fn sys_madvise(_addr: usize, len: usize, _advice: usize) -> Result<usize, Errno> {
+    if len == 0 {
+        return Err(Errno::Inval);
+    }
+    if mm::current_root_pa() == 0 {
+        return Err(Errno::Fault);
+    }
+    Ok(0)
+}
+
 const EXECVE_IMAGE_MAX: usize = 0x100000;
 // SAFETY: 单核 execve 过程复用该缓冲区读取 ELF 镜像。
 static mut EXECVE_IMAGE: [u8; EXECVE_IMAGE_MAX] = [0; EXECVE_IMAGE_MAX];
@@ -1052,6 +1070,35 @@ fn sys_read(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     read_from_entry(fd, entry, root_pa, buf, len)
 }
 
+fn sys_pread64(fd: usize, buf: usize, len: usize, offset: usize) -> Result<usize, Errno> {
+    if len == 0 {
+        return Ok(0);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    match entry.kind {
+        FdKind::Vfs(handle) => {
+            if handle.file_type == FileType::Dir {
+                return Err(Errno::IsDir);
+            }
+            with_mounts(|mounts| {
+                let fs = mounts.fs_for(handle.mount).ok_or(Errno::NoEnt)?;
+                read_vfs_at(root_pa, fs, handle.inode, offset, buf, len)
+            })
+        }
+        FdKind::Stdin
+        | FdKind::Stdout
+        | FdKind::Stderr
+        | FdKind::PipeRead(_)
+        | FdKind::PipeWrite(_)
+        | FdKind::Socket(_) => Err(Errno::Pipe),
+        FdKind::Empty => Err(Errno::Badf),
+    }
+}
+
 fn sys_write(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     if len == 0 {
         return Ok(0);
@@ -1143,6 +1190,10 @@ fn sys_writev(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> 
         }
     }
     Ok(total)
+}
+
+fn sys_access(pathname: usize, mode: usize) -> Result<usize, Errno> {
+    sys_faccessat(AT_FDCWD as usize, pathname, mode, 0)
 }
 
 fn sys_open(pathname: usize, flags: usize, mode: usize) -> Result<usize, Errno> {
@@ -2267,6 +2318,10 @@ fn sys_readlinkat(_dirfd: usize, pathname: usize, buf: usize, len: usize) -> Res
         }
         Err(Errno::Inval)
     })
+}
+
+fn sys_readlink(pathname: usize, buf: usize, len: usize) -> Result<usize, Errno> {
+    sys_readlinkat(AT_FDCWD as usize, pathname, buf, len)
 }
 
 fn sys_statfs(pathname: usize, buf: usize) -> Result<usize, Errno> {

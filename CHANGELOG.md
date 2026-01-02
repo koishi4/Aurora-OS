@@ -221,3 +221,4 @@
 - Add userland app adaptation plan document (iperf3/redis).
 - Add syscall matrix collection script for iperf3/redis.
 - Record initial syscall coverage matrix for iperf3/redis (help/version paths).
+- Add access/readlink wrappers plus pread64/madvise stubs for app syscall coverage.

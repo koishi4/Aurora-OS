@@ -25,12 +25,12 @@
 | epoll/eventfd/timerfd | - | - | 需要运行态采集 |
 | futex/clone | - | ✓ | redis 版本路径出现 futex |
 | clock_gettime/nanosleep | - | - | 需要运行态采集 |
-| access | ✓ | ✓ | 建议兼容 access→faccessat |
-| pread64 | ✓ | ✓ | 缺失（待实现） |
+| access | ✓ | ✓ | 已实现（access→faccessat） |
+| pread64 | ✓ | ✓ | 已实现（仅 VFS 普通文件，非 seekable 返回 ESPIPE） |
 | rseq | ✓ | ✓ | 缺失（可暂时返回 ENOSYS） |
 | arch_prctl | ✓ | ✓ | riscv 可返回 ENOSYS |
-| madvise | - | ✓ | 缺失（待实现） |
-| readlink | - | ✓ | readlinkat 已有，需补 readlink |
+| madvise | - | ✓ | 已实现占位（返回 0） |
+| readlink | - | ✓ | 已实现（readlink→readlinkat，symlink 仍未支持） |
 | prlimit64 | ✓ | ✓ | 已支持 |
 | getrandom | ✓ | ✓ | 已支持 |
 | prctl | - | ✓ | 已支持 |
@@ -47,7 +47,7 @@
 - redis-server：access, arch_prctl, brk, close, execve, exit_group, fstat, futex, getcwd, getpid, getrandom, ioctl, lseek, madvise, mmap, mprotect, munmap, open, openat, pipe2, prctl, pread64, prlimit64, read, readlink, rseq, sched_getaffinity, set_robust_list, set_tid_address, umask, write
 
 ### 缺口分析（初步）
-- 必须补齐：pread64, readlink, madvise, access（或兼容到 faccessat）。
+- 已补齐：access/pread64/readlink/madvise（详见 syscall 覆盖矩阵）。
 - 可暂时返回 ENOSYS：arch_prctl（riscv）、rseq（若应用未启用线程/注册）。
 - 运行态后续补齐：epoll/eventfd/timerfd、socket 路径与时间相关 syscall。
 
