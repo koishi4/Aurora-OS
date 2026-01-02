@@ -88,6 +88,7 @@
 - Poll once after TCP recv in sys_recvfrom to keep long transfers flowing.
 - Add TCP recv window instrumentation and periodic net poll to stabilize long streams.
 - Increase TCP socket buffer length to 8192 and set net-perf default payload to 65536.
+- Document 1MiB net-perf run requiring extended TIMEOUT.
 - Route faccessat/statx/readlinkat path resolution through memfs.
 - Route statfs path resolution through memfs.
 - Route path-based stub syscalls (mkdirat/unlinkat/linkat/renameat* and chmod/chown/utimensat) through memfs.

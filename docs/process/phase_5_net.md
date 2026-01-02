@@ -38,7 +38,7 @@
 - `net_bench` 增加 8 字节长度头协议，保证吞吐统计稳定输出。
 - TCP 接收后触发 net poll，避免窗口更新停滞导致大包吞吐卡住。
 - sys_recvfrom 在 TCP 收包后主动触发 poll，保证长流量场景持续推进。
-- 增加周期性 net poll（idle/tick）并记录 TCP recv window 变化，64K net-perf 基线通过。
+- 增加周期性 net poll（idle/tick）并记录 TCP recv window 变化，64K 基线通过；1MiB 需提高 TIMEOUT 以完成。
 
 ## 问题与定位
 - QEMU user-net 下 ARP probe 已发送但 RX 帧未进入，定位为 virtio 现代特性头部长度不匹配导致帧损坏。
