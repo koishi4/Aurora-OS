@@ -28,8 +28,10 @@ const SOL_SOCKET: usize = 1;
 const SO_ERROR: usize = 4;
 
 const EINPROGRESS: isize = -115;
+const EALREADY: isize = -114;
 const ECONNREFUSED: isize = -111;
 const ENETUNREACH: isize = -101;
+const EISCONN: isize = -106;
 
 const LOCAL_IP: [u8; 4] = [10, 0, 2, 15];
 const SERVER_PORT: u16 = 22345;
@@ -383,6 +385,10 @@ pub extern "C" fn _start() -> ! {
 
     syscall_fcntl(client, F_SETFL, O_NONBLOCK);
     syscall_connect_nonblock(client, &server_addr);
+    let retry = syscall_connect(client, &server_addr);
+    if retry != EINPROGRESS && retry != EALREADY && retry != EISCONN && retry != 0 {
+        fail();
+    }
 
     let mut pollfd = [PollFd {
         fd: client as i32,
