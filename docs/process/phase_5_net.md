@@ -66,5 +66,5 @@
 - net-perf 基线临时以 `net_bench` 验证脚本闭环，后续替换为 iperf3/redis。
 
 ## 下一步
-- 接入轻量协议栈（ARP/IP/UDP/TCP）与 socket 语义。
-- 追加 ping/iperf/redis 基准与稳定性回归。
+- 继续完善 socket 语义细节（connect/send/recv/close/epoll 兼容性与错误码）。
+- 追加 ping/iperf/redis 基准与稳定性回归（工具链就绪后替换 net_bench）。
