@@ -902,6 +902,7 @@ const AF_INET: u16 = 2;
 const SOCK_STREAM: usize = 1;
 const SOCK_DGRAM: usize = 2;
 const SOCK_NONBLOCK: usize = 0x800;
+const MSG_DONTWAIT: usize = 0x40;
 
 fn sys_exit(_code: usize) -> Result<usize, Errno> {
     let pid = crate::process::current_pid().unwrap_or(1);
@@ -2107,13 +2108,13 @@ fn sys_sendto(
     fd: usize,
     buf: usize,
     len: usize,
-    _flags: usize,
+    flags: usize,
     addr: usize,
     addrlen: usize,
 ) -> Result<usize, Errno> {
     let root_pa = mm::current_root_pa();
     let (socket_id, entry) = resolve_socket_entry(fd)?;
-    let nonblock = (entry.flags & O_NONBLOCK) != 0;
+    let nonblock = (entry.flags & O_NONBLOCK) != 0 || (flags & MSG_DONTWAIT) != 0;
     let timeout_ms = entry.send_timeout_ms;
     let endpoint = if addr != 0 {
         let (ip, port) = parse_sockaddr_in(root_pa, addr, addrlen)?;
@@ -2166,13 +2167,13 @@ fn sys_recvfrom(
     fd: usize,
     buf: usize,
     len: usize,
-    _flags: usize,
+    flags: usize,
     addr: usize,
     addrlen: usize,
 ) -> Result<usize, Errno> {
     let root_pa = mm::current_root_pa();
     let (socket_id, entry) = resolve_socket_entry(fd)?;
-    let nonblock = (entry.flags & O_NONBLOCK) != 0;
+    let nonblock = (entry.flags & O_NONBLOCK) != 0 || (flags & MSG_DONTWAIT) != 0;
     let timeout_ms = entry.recv_timeout_ms;
     if cfg!(feature = "user-tcp-echo") && TCP_RECV_LOGGED.swap(1, Ordering::Relaxed) == 0 {
         crate::println!("sys_recv: fd={} nonblock={}", fd, nonblock);
@@ -2247,13 +2248,13 @@ fn log_tcp_window_event(socket_id: axnet::SocketId, tag: &str) {
     );
 }
 
-fn sendmsg_inner(fd: usize, msg: usize, _flags: usize) -> Result<usize, Errno> {
+fn sendmsg_inner(fd: usize, msg: usize, flags: usize) -> Result<usize, Errno> {
     if msg == 0 {
         return Err(Errno::Fault);
     }
     let root_pa = mm::current_root_pa();
     let (socket_id, entry) = resolve_socket_entry(fd)?;
-    let nonblock = (entry.flags & O_NONBLOCK) != 0;
+    let nonblock = (entry.flags & O_NONBLOCK) != 0 || (flags & MSG_DONTWAIT) != 0;
     let timeout_ms = entry.send_timeout_ms;
     let hdr = UserPtr::<MsgHdr>::new(msg)
         .read(root_pa)
@@ -2318,13 +2319,13 @@ fn sendmsg_inner(fd: usize, msg: usize, _flags: usize) -> Result<usize, Errno> {
     Ok(total)
 }
 
-fn recvmsg_inner(fd: usize, msg: usize, _flags: usize) -> Result<usize, Errno> {
+fn recvmsg_inner(fd: usize, msg: usize, flags: usize) -> Result<usize, Errno> {
     if msg == 0 {
         return Err(Errno::Fault);
     }
     let root_pa = mm::current_root_pa();
     let (socket_id, entry) = resolve_socket_entry(fd)?;
-    let nonblock = (entry.flags & O_NONBLOCK) != 0;
+    let nonblock = (entry.flags & O_NONBLOCK) != 0 || (flags & MSG_DONTWAIT) != 0;
     let timeout_ms = entry.recv_timeout_ms;
     let mut hdr = UserPtr::<MsgHdr>::new(msg)
         .read(root_pa)
