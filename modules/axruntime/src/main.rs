@@ -38,6 +38,7 @@ core::arch::global_asm!(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../..
 #[no_mangle]
 pub extern "C" fn rust_main(hart_id: usize, dtb_addr: usize) -> ! {
     trap::init();
+    print_banner();
     crate::println!("Aurora kernel booting...");
     crate::println!("hart_id={:#x} dtb={:#x}", hart_id, dtb_addr);
     let dtb_info = match dtb::parse(dtb_addr) {
@@ -123,6 +124,16 @@ pub extern "C" fn rust_main(hart_id: usize, dtb_addr: usize) -> ! {
     }
 
     runtime::enter_idle_loop();
+}
+
+fn print_banner() {
+    crate::println!("\x1b[36;1m    ___                       \x1b[0m");
+    crate::println!("\x1b[36;1m   /   | __  __ _________  ___\x1b[0m");
+    crate::println!("\x1b[34;1m  / /| |/ / / // ___/ __ \\/ _ \\\x1b[0m");
+    crate::println!("\x1b[35;1m / ___ / /_/ // /  / /_/ / // /\x1b[0m");
+    crate::println!("\x1b[35;1m/_/  |_\\__,_//_/   \\____/_//_/ \x1b[0m");
+    crate::println!();
+    crate::println!("\x1b[32m :: Aurora OS :: \x1b[90m(Powered by Rust)\x1b[0m");
 }
 
 #[panic_handler]
