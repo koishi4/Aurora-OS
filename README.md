@@ -258,7 +258,7 @@ make test-qemu-smoke ARCH=riscv64 PLATFORM=qemu FS=build/rootfs.ext4
 
 ---
 
-### 自研测试集合（无官方测例）
+### 自研测试集合
 
 - `make test-oscomp ARCH=riscv64 PLATFORM=qemu` 会读取 `tests/self/cases.txt` 中的用例列表。
 - 日志输出目录：`build/selftest/`
