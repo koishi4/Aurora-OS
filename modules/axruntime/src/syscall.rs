@@ -3496,24 +3496,24 @@ fn sys_dup3(oldfd: usize, newfd: usize, flags: usize) -> Result<usize, Errno> {
 
 fn sys_lseek(fd: usize, offset: usize, whence: usize) -> Result<usize, Errno> {
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    let offset = offset as isize;
-    if offset < 0 {
-        return Err(Errno::Inval);
-    }
-    let offset = offset as usize;
     match entry.kind {
         FdKind::Vfs(handle) => {
             let base = match whence {
-                SEEK_SET => 0,
-                SEEK_CUR => fd_offset(fd).ok_or(Errno::Badf)?,
+                SEEK_SET => 0isize,
+                SEEK_CUR => fd_offset(fd).ok_or(Errno::Badf)? as isize,
                 SEEK_END => with_mounts(|mounts| {
                     let fs = mounts.fs_for(handle.mount).ok_or(Errno::NoEnt)?;
                     let (_, size) = vfs_meta_for(fs, handle.inode)?;
-                    Ok(size)
+                    Ok(size as isize)
                 })?,
                 _ => return Err(Errno::Inval),
             };
+            let offset = offset as isize;
             let new_offset = base.checked_add(offset).ok_or(Errno::Inval)?;
+            if new_offset < 0 {
+                return Err(Errno::Inval);
+            }
+            let new_offset = new_offset as usize;
             set_fd_offset(fd, new_offset);
             Ok(new_offset)
         }
