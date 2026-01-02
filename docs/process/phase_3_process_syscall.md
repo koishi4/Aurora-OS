@@ -1,7 +1,7 @@
 # phase_3_process_syscall.md
 
 ## 目标
-- TODO: 进程/线程与系统调用覆盖。
+- 完成进程/线程基础模型与核心系统调用覆盖（clone/execve/wait/futex/ppoll 等）。
 
 ## 进展
 - 引入调度请求标志（need_resched），中断仅设置标志，空闲上下文执行切换。
