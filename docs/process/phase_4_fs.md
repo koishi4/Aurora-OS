@@ -45,7 +45,8 @@
 - `/init` 用户态程序增加 `/etc/issue` 读取并在 ext4 冒烟中检查输出。
 - 用户态自测增加 FAT32 文件写入回读路径，ramdisk 用例验证写入回读日志。
 - ext4 读路径将块读取 scratch 缓冲迁移到共享区，避免内核栈溢出。
-- ext4 增加最小 create/write/truncate 骨架（仅 direct blocks + bitmap 分配），补充 host 侧 `create_write_truncate` 自测。
+- ext4 增加最小 create/write/truncate 骨架（direct + single-indirect blocks + bitmap 分配），补充 host 侧 `create_write_truncate` 自测。
+- ext4 写入路径支持 single-indirect 分配，新增 host 侧 indirect 写入回读测试。
 - QEMU 冒烟新增 ext4 写入自测开关：`EXT4_WRITE_TEST=1 EXPECT_EXT4=1 make test-qemu-smoke`，检查 `ext4: write ok` 日志。
 - ext4 读路径支持稀疏文件空洞读取（hole 读零填充），避免 ELF 加载被误判 EOF。
 

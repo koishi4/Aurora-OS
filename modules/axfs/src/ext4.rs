@@ -437,6 +437,49 @@ impl<'a> Ext4Fs<'a> {
         Err(VfsError::NotSupported)
     }
 
+    fn allocate_data_block(&self, inode: &mut Ext4Inode, block_index: u32) -> VfsResult<u64> {
+        if (inode.flags & EXT4_EXTENTS_FLAG) != 0 {
+            return Err(VfsError::NotSupported);
+        }
+        if block_index < EXT4_DIRECT_BLOCKS as u32 {
+            let new_block = self.allocate_block()?;
+            inode.blocks[block_index as usize] = new_block;
+            self.zero_fs_block(new_block)?;
+            return Ok(new_block as u64);
+        }
+        let block_size = self.fs_block_size() as u64;
+        let ptrs_per_block = block_size / 4;
+        if ptrs_per_block == 0 {
+            return Err(VfsError::Invalid);
+        }
+        let index = block_index as u64 - EXT4_DIRECT_BLOCKS as u64;
+        if index >= ptrs_per_block {
+            return Err(VfsError::NotSupported);
+        }
+        let mut scratch = [0u8; EXT4_SCRATCH_SIZE];
+        let indirect_block = if inode.blocks[12] == 0 {
+            let block = self.allocate_block()?;
+            inode.blocks[12] = block;
+            self.zero_fs_block(block)?;
+            scratch[..block_size as usize].fill(0);
+            block as u64
+        } else {
+            let block = inode.blocks[12] as u64;
+            self.read_fs_block(block, &mut scratch[..block_size as usize])?;
+            block
+        };
+        let entry_offset = (index * 4) as usize;
+        let current = read_u32(&scratch, entry_offset);
+        if current != 0 {
+            return Ok(current as u64);
+        }
+        let new_block = self.allocate_block()?;
+        write_u32(&mut scratch, entry_offset, new_block);
+        self.write_fs_block(indirect_block, &scratch[..block_size as usize])?;
+        self.zero_fs_block(new_block)?;
+        Ok(new_block as u64)
+    }
+
     fn read_indirect_ptr(&self, block: u32, index: u64, block_size: u64) -> VfsResult<u32> {
         if block == 0 {
             return Ok(0);
@@ -656,7 +699,7 @@ impl VfsOps for Ext4Fs<'_> {
         if inode_mode_type(inode_meta.mode) == FileType::Dir {
             return Err(VfsError::NotDir);
         }
-        // Minimal write path: only allocate direct blocks, no extent growth or journaling.
+        // Minimal write path: direct/indirect blocks only, no extent growth or journaling.
         let block_size = self.fs_block_size() as u64;
         let mut total = 0usize;
         let mut cur_offset = offset;
@@ -666,18 +709,7 @@ impl VfsOps for Ext4Fs<'_> {
             let to_copy = core::cmp::min(buf.len() - total, block_size as usize - in_block);
             let phys = match self.map_block(&inode_meta, block_index)? {
                 Some(block) => block,
-                None => {
-                    if (inode_meta.flags & EXT4_EXTENTS_FLAG) != 0 {
-                        return Err(VfsError::NotSupported);
-                    }
-                    if block_index as usize >= EXT4_DIRECT_BLOCKS {
-                        return Err(VfsError::NotSupported);
-                    }
-                    let new_block = self.allocate_block()?;
-                    inode_meta.blocks[block_index as usize] = new_block;
-                    self.zero_fs_block(new_block)?;
-                    new_block as u64
-                }
+                None => self.allocate_data_block(&mut inode_meta, block_index)?,
             };
             let block_offset = phys * block_size + in_block as u64;
             write_bytes(&self.cache, block_offset, &buf[total..total + to_copy])?;
@@ -729,20 +761,12 @@ impl VfsOps for Ext4Fs<'_> {
             inode_meta.size = size;
             return self.write_inode(inode, &inode_meta);
         }
-        if (inode_meta.flags & EXT4_EXTENTS_FLAG) != 0 {
-            return Err(VfsError::NotSupported);
-        }
         let block_size = self.fs_block_size() as u64;
         let blocks_needed = (size + block_size - 1) / block_size;
         for block_index in 0..blocks_needed {
             let block_index = block_index as u32;
             if self.map_block(&inode_meta, block_index)?.is_none() {
-                if block_index as usize >= EXT4_DIRECT_BLOCKS {
-                    return Err(VfsError::NotSupported);
-                }
-                let new_block = self.allocate_block()?;
-                inode_meta.blocks[block_index as usize] = new_block;
-                self.zero_fs_block(new_block)?;
+                let _ = self.allocate_data_block(&mut inode_meta, block_index)?;
             }
         }
         inode_meta.size = size;
@@ -1181,6 +1205,30 @@ mod tests {
         let read = fs.read_at(inode, 0, &mut buf).unwrap();
         assert_eq!(read, 5);
         assert_eq!(&buf[..read], &payload[..read]);
+    }
+
+    #[test]
+    fn write_indirect_block() {
+        let mut data = vec![0u8; 128 * 1024];
+        build_ext4_for_write(&mut data);
+        let dev = FileBlockDevice {
+            block_size: 512,
+            data: RefCell::new(data),
+        };
+        let fs = Ext4Fs::new(&dev).unwrap();
+        let root = fs.root().unwrap();
+        let inode = fs.create(root, "big", FileType::File, 0o644).unwrap();
+        let block_size = fs.fs_block_size() as usize;
+        let offset = block_size * EXT4_DIRECT_BLOCKS;
+        let payload = b"indirect-write";
+        let written = fs.write_at(inode, offset as u64, payload).unwrap();
+        assert_eq!(written, payload.len());
+        let meta = fs.metadata(inode).unwrap();
+        assert_eq!(meta.size, (offset + payload.len()) as u64);
+        let mut buf = [0u8; 32];
+        let read = fs.read_at(inode, offset as u64, &mut buf).unwrap();
+        assert_eq!(read, payload.len());
+        assert_eq!(&buf[..read], payload);
     }
 
     fn build_minimal_ext4(buf: &mut [u8], file_data: &[u8]) {
