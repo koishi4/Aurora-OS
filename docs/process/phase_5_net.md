@@ -42,9 +42,11 @@
 - TCP 接收后触发 net poll，避免窗口更新停滞导致大包吞吐卡住。
 - sys_recvfrom 在 TCP 收包后主动触发 poll，保证长流量场景持续推进。
 - 增加周期性 net poll（idle/tick）并记录 TCP recv window 变化，64K 基线通过；1MiB 需提高 TIMEOUT 以完成。
+- net poll 增加互斥保护，避免中断与 idle 并发进入协议栈。
+- TCP recv window 事件从协议栈轮询侧产出，idle/tick 统一记录窗口变化。
 - net-perf 支持 PERF_QEMU_TIMEOUT 直传 QEMU 超时，避免大流量基准被 5s 超时截断。
 - net-perf 支持 PERF_IO_TIMEOUT 控制发送端 I/O 超时，降低 host 侧提前超时概率。
-- 提升 TCP 缓冲区到 16KB，并将 idle net poll 间隔缩短至 20ms，以改善长流量吞吐。
+- 提升 TCP 缓冲区到 64KB，并将 idle net poll 间隔缩短至 20ms，以改善长流量吞吐。
 - 补充 8MiB/16MiB net-perf 基线记录，覆盖长流量稳定性。
 
 ## 问题与定位

@@ -71,8 +71,31 @@ fn dummy_task_c() -> ! {
 }
 
 pub fn on_tick(ticks: u64) {
+    const NET_POLL_TICK_INTERVAL: u64 = 2;
     TICK_COUNT.store(ticks, Ordering::Relaxed);
-    axnet::request_poll();
+    if ticks % NET_POLL_TICK_INTERVAL == 0 {
+        axnet::request_poll();
+        if let Some(event) = axnet::poll(time::uptime_ms()) {
+            if let axnet::NetEvent::TcpRecvWindow {
+                id,
+                port,
+                window,
+                capacity,
+                queued,
+            } = event
+            {
+                crate::println!(
+                    "tcp: recv_win tick id={} port={} win={} cap={} queued={}",
+                    id,
+                    port,
+                    window,
+                    capacity,
+                    queued
+                );
+            }
+            let _ = wake_all(net_wait_queue());
+        }
+    }
     if config::ENABLE_SCHED_DEMO && ticks % 100 == 0 {
         crate::println!("scheduler: tick={}", ticks);
     }
@@ -584,6 +607,22 @@ pub fn idle_loop() -> ! {
                 }
                 axnet::NetEvent::RxFrameSeen => {
                     crate::println!("net: rx frame seen");
+                }
+                axnet::NetEvent::TcpRecvWindow {
+                    id,
+                    port,
+                    window,
+                    capacity,
+                    queued,
+                } => {
+                    crate::println!(
+                        "tcp: recv_win idle id={} port={} win={} cap={} queued={}",
+                        id,
+                        port,
+                        window,
+                        capacity,
+                        queued
+                    );
                 }
                 axnet::NetEvent::Activity => {}
             }

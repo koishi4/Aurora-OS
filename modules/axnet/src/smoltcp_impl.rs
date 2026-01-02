@@ -26,7 +26,8 @@ const MAX_SOCKETS: usize = 8;
 const SOCKET_STORAGE_LEN: usize = MAX_SOCKETS + 1;
 const ICMP_META_LEN: usize = 4;
 const ICMP_BUF_LEN: usize = 256;
-const TCP_BUF_LEN: usize = 16384;
+// Increase TCP buffers to reduce window exhaustion during perf tests.
+const TCP_BUF_LEN: usize = 65536;
 const UDP_BUF_LEN: usize = 2048;
 const UDP_META_LEN: usize = 4;
 const ARP_POLL_RETRY: u16 = 8;
@@ -50,6 +51,7 @@ static NET_ARP_REPLY_IP: AtomicU32 = AtomicU32::new(0);
 static NET_ARP_SENT_IP: AtomicU32 = AtomicU32::new(0);
 static NET_RX_SEEN: AtomicBool = AtomicBool::new(false);
 static NEXT_EPHEMERAL_PORT: AtomicU16 = AtomicU16::new(49152);
+static NET_POLLING: AtomicBool = AtomicBool::new(false);
 
 static mut RX_BUF: [u8; NET_BUF_SIZE] = [0; NET_BUF_SIZE];
 static mut TX_BUF: [u8; NET_BUF_SIZE] = [0; NET_BUF_SIZE];
@@ -228,6 +230,13 @@ pub enum NetEvent {
     ArpReply { from: Ipv4Address },
     ArpProbeSent { target: Ipv4Address },
     RxFrameSeen,
+    TcpRecvWindow {
+        id: SocketId,
+        port: u16,
+        window: usize,
+        capacity: usize,
+        queued: usize,
+    },
     Activity,
 }
 
@@ -235,6 +244,16 @@ pub fn poll(now_ms: u64) -> Option<NetEvent> {
     if !NET_READY.load(Ordering::Acquire) {
         return None;
     }
+    if NET_POLLING.swap(true, Ordering::AcqRel) {
+        return None;
+    }
+    struct PollGuard;
+    impl Drop for PollGuard {
+        fn drop(&mut self) {
+            NET_POLLING.store(false, Ordering::Release);
+        }
+    }
+    let _guard = PollGuard;
     if !NET_NEED_POLL.swap(false, Ordering::AcqRel) {
         return None;
     }
@@ -314,6 +333,9 @@ pub fn poll(now_ms: u64) -> Option<NetEvent> {
     }
     if activity {
         return Some(NetEvent::Activity);
+    }
+    if let Some(event) = poll_tcp_window_event(state) {
+        return Some(event);
     }
     let pending = NET_ARP_PENDING.load(Ordering::Acquire);
     if pending > 0 {
@@ -597,6 +619,7 @@ struct SocketSlot {
     connecting: bool,
     last_error: Option<NetError>,
     last_rx_window: u32,
+    last_rx_window_poll: u32,
     handle: MaybeUninit<SocketHandle>,
 }
 
@@ -608,6 +631,7 @@ const EMPTY_SOCKET_SLOT: SocketSlot = SocketSlot {
     connecting: false,
     last_error: None,
     last_rx_window: 0,
+    last_rx_window_poll: 0,
     handle: MaybeUninit::uninit(),
 };
 
@@ -885,6 +909,37 @@ pub fn socket_recv_window_event(id: SocketId) -> Result<Option<TcpRecvWindow>, N
     Ok(None)
 }
 
+fn poll_tcp_window_event(state: &mut NetState) -> Option<NetEvent> {
+    // SAFETY: socket table access is serialized by the single-hart runtime.
+    unsafe {
+        for (id, slot) in SOCKET_TABLE.iter_mut().enumerate() {
+            if !slot.used || slot.kind != AxSocketKind::Tcp {
+                continue;
+            }
+            let handle = ptr::read(slot.handle.as_ptr());
+            let socket = state.sockets.get_mut::<TcpSocket>(handle);
+            let capacity = socket.recv_capacity();
+            let queued = socket.recv_queue();
+            let window = capacity.saturating_sub(queued);
+            let last = slot.last_rx_window_poll as usize;
+            slot.last_rx_window_poll = window as u32;
+            if window == last {
+                continue;
+            }
+            if window == 0 || last == 0 {
+                return Some(NetEvent::TcpRecvWindow {
+                    id,
+                    port: slot.local_port,
+                    window,
+                    capacity,
+                    queued,
+                });
+            }
+        }
+    }
+    None
+}
+
 pub fn socket_poll(id: SocketId, events: u16) -> Result<u16, NetError> {
     let state = unsafe { NET_STATE.as_mut() }.ok_or(NetError::NotReady)?;
     let (kind, handle) = socket_handle(id).ok_or(NetError::Invalid)?;
@@ -1043,6 +1098,7 @@ fn reserve_socket_slot(kind: AxSocketKind) -> Option<SocketId> {
                 slot.connecting = false;
                 slot.last_error = None;
                 slot.last_rx_window = 0;
+                slot.last_rx_window_poll = 0;
                 return Some(idx);
             }
         }
@@ -1135,6 +1191,8 @@ fn release_socket_slot(id: SocketId) {
             slot.listening = false;
             slot.connecting = false;
             slot.last_error = None;
+            slot.last_rx_window = 0;
+            slot.last_rx_window_poll = 0;
         }
     }
 }
