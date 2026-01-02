@@ -34,6 +34,7 @@ PERF_SEND_BYTES=65536 \
 PERF_HOST_PORT=auto \
 PERF_READY_TIMEOUT=5 \
 PERF_QEMU_TIMEOUT=20 \
+PERF_IO_TIMEOUT=10 \
 make test-net-perf ARCH=riscv64 PLATFORM=qemu
 ```
 
@@ -46,6 +47,7 @@ make test-net-perf ARCH=riscv64 PLATFORM=qemu
 - `PERF_HOST_PORT=auto` 会自动选择一个可用端口，避免 hostfwd 端口冲突。
 - `PERF_READY_TIMEOUT` 控制等待 `net-bench: ready` 的上限（秒）。
 - `PERF_QEMU_TIMEOUT` 传递给 QEMU 的整体超时（秒）。
+- `PERF_IO_TIMEOUT` 控制发送端的 socket I/O 超时（秒）。
 - `net_bench` 期望收到 8 字节大端长度头（由 `net_perf_send.py` 自动发送）。
 
 ## 结果

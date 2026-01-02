@@ -215,3 +215,4 @@
 - Honor SO_SNDTIMEO when blocking on TCP connect.
 - Extend tcp_echo to validate connect failure via SO_ERROR.
 - Allow net-perf to override QEMU timeout via PERF_QEMU_TIMEOUT.
+- Allow net-perf to override host sender I/O timeout via PERF_IO_TIMEOUT.

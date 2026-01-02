@@ -12,6 +12,7 @@ def parse_args():
     parser.add_argument("--bytes", type=int, default=1024 * 1024)
     parser.add_argument("--chunk", type=int, default=64 * 1024)
     parser.add_argument("--connect-timeout", type=float, default=5.0)
+    parser.add_argument("--io-timeout", type=float, default=10.0)
     return parser.parse_args()
 
 
@@ -45,6 +46,8 @@ def main():
     except OSError as err:
         print(f"net-perf: connect failed ({err})", file=sys.stderr)
         return 1
+    if args.io_timeout > 0:
+        sock.settimeout(args.io_timeout)
 
     header = args.bytes.to_bytes(8, byteorder="big", signed=False)
     remaining = args.bytes
