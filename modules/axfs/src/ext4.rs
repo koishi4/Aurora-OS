@@ -1,3 +1,5 @@
+//! ext4 filesystem implementation.
+
 use axvfs::{DirEntry, FileType, InodeId, Metadata, VfsError, VfsOps, VfsResult};
 use core::cell::UnsafeCell;
 use core::hint::spin_loop;
@@ -26,6 +28,10 @@ const INODE_BLOCK_LEN: usize = 60;
 const INODE_SIZE_HIGH_OFFSET: usize = 108;
 const EXT4_EXTENTS_FLAG: u32 = 0x0008_0000;
 const EXTENT_HEADER_MAGIC: u16 = 0xf30a;
+const EXTENT_HEADER_SIZE: usize = 12;
+const EXTENT_ENTRY_SIZE: usize = 12;
+const EXTENT_LEN_MAX: u16 = 0x7fff;
+const EXTENT_INODE_CAPACITY: usize = (INODE_BLOCK_LEN - EXTENT_HEADER_SIZE) / EXTENT_ENTRY_SIZE;
 const EXT4_SCRATCH_SIZE: usize = 4096;
 const EXT4_MODE_DIR: u16 = 0x4000;
 const EXT4_MODE_FILE: u16 = 0x8000;
@@ -86,15 +92,22 @@ impl Drop for ScratchGuard<'_> {
 static EXT4_SCRATCH: ScratchLock = ScratchLock::new();
 
 #[derive(Clone, Copy, Debug)]
+/// ext4 superblock fields required by this implementation.
 pub struct SuperBlock {
+    /// log2(block_size / 1024).
     pub log_block_size: u32,
+    /// Blocks per group.
     pub blocks_per_group: u32,
+    /// Inodes per group.
     pub inodes_per_group: u32,
+    /// Inode size in bytes.
     pub inode_size: u16,
+    /// ext4 magic value.
     pub magic: u16,
 }
 
 impl SuperBlock {
+    /// Parse a superblock from the provided buffer.
     pub fn parse(buf: &[u8]) -> VfsResult<Self> {
         if buf.len() < SUPERBLOCK_SIZE {
             return Err(VfsError::Invalid);
@@ -120,6 +133,7 @@ impl SuperBlock {
         })
     }
 
+    /// Return the filesystem block size in bytes.
     pub fn block_size(&self) -> u32 {
         1024u32 << self.log_block_size
     }
@@ -159,12 +173,14 @@ struct Ext4Inode {
     blocks: [u32; 15],
 }
 
+/// ext4 filesystem backed by a block device.
 pub struct Ext4Fs<'a> {
     cache: BlockCache<'a>,
     superblock: SuperBlock,
 }
 
 impl<'a> Ext4Fs<'a> {
+    /// Create an ext4 filesystem from a block device.
     pub fn new(device: &'a dyn BlockDevice) -> VfsResult<Self> {
         let cache = BlockCache::new(device);
         let block_size = cache.block_size();
@@ -177,14 +193,17 @@ impl<'a> Ext4Fs<'a> {
         Ok(Self { cache, superblock })
     }
 
+    /// Return the parsed superblock.
     pub fn superblock(&self) -> &SuperBlock {
         &self.superblock
     }
 
+    /// Return the filesystem block size in bytes.
     pub fn fs_block_size(&self) -> u32 {
         self.superblock.block_size()
     }
 
+    /// Read a filesystem block into the provided buffer.
     pub fn read_block(&self, block: BlockId, buf: &mut [u8]) -> VfsResult<()> {
         self.cache.read_block(block, buf)
     }
@@ -437,6 +456,568 @@ impl<'a> Ext4Fs<'a> {
         Err(VfsError::NotSupported)
     }
 
+    fn allocate_data_block(&self, inode: &mut Ext4Inode, block_index: u32) -> VfsResult<u64> {
+        if (inode.flags & EXT4_EXTENTS_FLAG) != 0 {
+            return self.allocate_extent_block(inode, block_index);
+        }
+        if block_index < EXT4_DIRECT_BLOCKS as u32 {
+            let new_block = self.allocate_block()?;
+            inode.blocks[block_index as usize] = new_block;
+            self.zero_fs_block(new_block)?;
+            return Ok(new_block as u64);
+        }
+        let block_size = self.fs_block_size() as u64;
+        let ptrs_per_block = block_size / 4;
+        if ptrs_per_block == 0 {
+            return Err(VfsError::Invalid);
+        }
+        let index = block_index as u64 - EXT4_DIRECT_BLOCKS as u64;
+        if index >= ptrs_per_block {
+            return Err(VfsError::NotSupported);
+        }
+        let mut scratch = [0u8; EXT4_SCRATCH_SIZE];
+        let indirect_block = if inode.blocks[12] == 0 {
+            let block = self.allocate_block()?;
+            inode.blocks[12] = block;
+            self.zero_fs_block(block)?;
+            scratch[..block_size as usize].fill(0);
+            block as u64
+        } else {
+            let block = inode.blocks[12] as u64;
+            self.read_fs_block(block, &mut scratch[..block_size as usize])?;
+            block
+        };
+        let entry_offset = (index * 4) as usize;
+        let current = read_u32(&scratch, entry_offset);
+        if current != 0 {
+            return Ok(current as u64);
+        }
+        let new_block = self.allocate_block()?;
+        write_u32(&mut scratch, entry_offset, new_block);
+        self.write_fs_block(indirect_block, &scratch[..block_size as usize])?;
+        self.zero_fs_block(new_block)?;
+        Ok(new_block as u64)
+    }
+
+    fn allocate_extent_block(&self, inode: &mut Ext4Inode, block_index: u32) -> VfsResult<u64> {
+        let mut raw = inode_extent_raw(inode);
+        let mut header = match parse_extent_header(&raw) {
+            Ok(header) => header,
+            Err(VfsError::NotSupported) => {
+                if raw.iter().all(|&b| b == 0) {
+                    init_extent_raw(&mut raw);
+                    ExtentHeader { entries: 0, depth: 0 }
+                } else {
+                    return Err(VfsError::NotSupported);
+                }
+            }
+            Err(err) => return Err(err),
+        };
+        match header.depth {
+            0 => self.allocate_extent_block_in_inode(inode, &mut raw, &mut header, block_index),
+            1 => self.allocate_extent_block_in_tree(inode, &mut raw, &mut header, block_index, None),
+            _ => Err(VfsError::NotSupported),
+        }
+    }
+
+    fn allocate_extent_block_in_inode(
+        &self,
+        inode: &mut Ext4Inode,
+        raw: &mut [u8; INODE_BLOCK_LEN],
+        header: &mut ExtentHeader,
+        block_index: u32,
+    ) -> VfsResult<u64> {
+        if header.entries as usize > EXTENT_INODE_CAPACITY {
+            return Err(VfsError::Invalid);
+        }
+        let mut entries = [ExtentEntry::default(); EXTENT_INODE_CAPACITY];
+        let count = header.entries as usize;
+        for idx in 0..count {
+            entries[idx] = read_extent_entry(raw, idx);
+        }
+
+        for entry in entries.iter().take(count) {
+            if entry.covers(block_index) {
+                let phys = entry.start + (block_index - entry.block) as u64;
+                return Ok(phys);
+            }
+        }
+
+        let mut insert_pos = count;
+        for idx in 0..count {
+            if block_index < entries[idx].block {
+                insert_pos = idx;
+                break;
+            }
+        }
+
+        let new_block = self.allocate_block()?;
+        self.zero_fs_block(new_block)?;
+        let new_start = new_block as u64;
+
+        if insert_pos > 0 {
+            let prev = entries[insert_pos - 1];
+            if prev.can_extend(block_index, new_start) {
+                let mut updated = prev;
+                updated.len += 1;
+                entries[insert_pos - 1] = updated;
+                write_extent_header(raw, header.entries, header.depth, EXTENT_INODE_CAPACITY as u16);
+                for idx in 0..count {
+                    write_extent_entry(raw, idx, entries[idx]);
+                }
+                store_inode_extents(inode, raw);
+                return Ok(new_start);
+            }
+        }
+
+        if count < EXTENT_INODE_CAPACITY {
+            for idx in (insert_pos..count).rev() {
+                entries[idx + 1] = entries[idx];
+            }
+            entries[insert_pos] = ExtentEntry {
+                block: block_index,
+                len: 1,
+                start: new_start,
+            };
+            header.entries = (count + 1) as u16;
+            write_extent_header(raw, header.entries, header.depth, EXTENT_INODE_CAPACITY as u16);
+            for idx in 0..(count + 1) {
+                write_extent_entry(raw, idx, entries[idx]);
+            }
+            store_inode_extents(inode, raw);
+            return Ok(new_start);
+        }
+
+        self.upgrade_inode_extents(inode, raw, entries, count, block_index, new_start)
+    }
+
+    fn allocate_extent_block_in_tree(
+        &self,
+        inode: &mut Ext4Inode,
+        raw: &mut [u8; INODE_BLOCK_LEN],
+        header: &mut ExtentHeader,
+        block_index: u32,
+        prealloc: Option<u64>,
+    ) -> VfsResult<u64> {
+        if header.depth == 2 {
+            return self.allocate_extent_block_in_depth2(inode, raw, header, block_index, prealloc);
+        }
+        if header.depth != 1 {
+            return Err(VfsError::NotSupported);
+        }
+        if header.entries as usize > EXTENT_INODE_CAPACITY {
+            return Err(VfsError::Invalid);
+        }
+        let mut indices = [ExtentIndex::default(); EXTENT_INODE_CAPACITY];
+        let index_count = header.entries as usize;
+        for idx in 0..index_count {
+            indices[idx] = read_extent_index(raw, idx);
+        }
+        if index_count == 0 {
+            return Err(VfsError::Invalid);
+        }
+        let mut chosen = 0usize;
+        for idx in 1..index_count {
+            if block_index >= indices[idx].block {
+                chosen = idx;
+            } else {
+                break;
+            }
+        }
+        let leaf_block = indices[chosen].leaf;
+        let block_size = self.fs_block_size() as usize;
+        let leaf_capacity = extent_capacity(block_size);
+        let mut scratch = [0u8; EXT4_SCRATCH_SIZE];
+        self.read_fs_block(leaf_block, &mut scratch[..block_size])?;
+        let mut leaf_header = parse_extent_header(&scratch)?;
+        if leaf_header.depth != 0 {
+            return Err(VfsError::Invalid);
+        }
+        let mut leaf_entries = leaf_header.entries as usize;
+        if leaf_entries > leaf_capacity {
+            return Err(VfsError::Invalid);
+        }
+
+        for idx in 0..leaf_entries {
+            let entry = read_extent_entry(&scratch, idx);
+            if entry.covers(block_index) {
+                let phys = entry.start + (block_index - entry.block) as u64;
+                return Ok(phys);
+            }
+        }
+
+        let mut insert_pos = leaf_entries;
+        for idx in 0..leaf_entries {
+            let entry = read_extent_entry(&scratch, idx);
+            if block_index < entry.block {
+                insert_pos = idx;
+                break;
+            }
+        }
+
+        let new_start = match prealloc {
+            Some(addr) => addr,
+            None => {
+                let new_block = self.allocate_block()?;
+                self.zero_fs_block(new_block)?;
+                new_block as u64
+            }
+        };
+
+        if insert_pos > 0 {
+            let prev = read_extent_entry(&scratch, insert_pos - 1);
+            if prev.can_extend(block_index, new_start) {
+                let mut updated = prev;
+                updated.len += 1;
+                write_extent_entry(&mut scratch, insert_pos - 1, updated);
+                write_extent_header(&mut scratch, leaf_header.entries, leaf_header.depth, leaf_capacity as u16);
+                self.write_fs_block(leaf_block, &scratch[..block_size])?;
+                return Ok(new_start);
+            }
+        }
+
+        if leaf_entries < leaf_capacity {
+            let start = extent_entry_offset(insert_pos);
+            let end = extent_entry_offset(leaf_entries);
+            let dst = extent_entry_offset(insert_pos + 1);
+            scratch.copy_within(start..end, dst);
+            write_extent_entry(
+                &mut scratch,
+                insert_pos,
+                ExtentEntry {
+                    block: block_index,
+                    len: 1,
+                    start: new_start,
+                },
+            );
+            leaf_entries += 1;
+            leaf_header.entries = leaf_entries as u16;
+            write_extent_header(&mut scratch, leaf_header.entries, leaf_header.depth, leaf_capacity as u16);
+            self.write_fs_block(leaf_block, &scratch[..block_size])?;
+            return Ok(new_start);
+        }
+
+        let new_leaf = self.allocate_block()?;
+        self.zero_fs_block(new_leaf)?;
+        let mut leaf_raw = [0u8; EXT4_SCRATCH_SIZE];
+        write_extent_header(&mut leaf_raw, 1, 0, leaf_capacity as u16);
+        write_extent_entry(
+            &mut leaf_raw,
+            0,
+            ExtentEntry {
+                block: block_index,
+                len: 1,
+                start: new_start,
+            },
+        );
+        self.write_fs_block(new_leaf as u64, &leaf_raw[..block_size])?;
+
+        if index_count >= EXTENT_INODE_CAPACITY {
+            self.upgrade_extent_root_to_depth2(inode, raw, header)?;
+            return self.allocate_extent_block_in_tree(inode, raw, header, block_index, Some(new_start));
+        }
+        let new_index = ExtentIndex {
+            block: block_index,
+            leaf: new_leaf as u64,
+        };
+        let mut insert_idx = index_count;
+        for idx in 0..index_count {
+            if new_index.block < indices[idx].block {
+                insert_idx = idx;
+                break;
+            }
+        }
+        let start = extent_entry_offset(insert_idx);
+        let end = extent_entry_offset(index_count);
+        let dst = extent_entry_offset(insert_idx + 1);
+        raw.copy_within(start..end, dst);
+        write_extent_index(raw, insert_idx, new_index);
+        header.entries = (index_count + 1) as u16;
+        write_extent_header(raw, header.entries, header.depth, EXTENT_INODE_CAPACITY as u16);
+        store_inode_extents(inode, raw);
+        Ok(new_start)
+    }
+
+    fn allocate_extent_block_in_depth2(
+        &self,
+        inode: &mut Ext4Inode,
+        raw: &mut [u8; INODE_BLOCK_LEN],
+        header: &mut ExtentHeader,
+        block_index: u32,
+        prealloc: Option<u64>,
+    ) -> VfsResult<u64> {
+        if header.entries as usize > EXTENT_INODE_CAPACITY {
+            return Err(VfsError::Invalid);
+        }
+        let mut root_indices = [ExtentIndex::default(); EXTENT_INODE_CAPACITY];
+        let root_count = header.entries as usize;
+        for idx in 0..root_count {
+            root_indices[idx] = read_extent_index(raw, idx);
+        }
+        if root_count == 0 {
+            return Err(VfsError::Invalid);
+        }
+        let mut root_pos = 0usize;
+        for idx in 1..root_count {
+            if block_index >= root_indices[idx].block {
+                root_pos = idx;
+            } else {
+                break;
+            }
+        }
+        let index_block = root_indices[root_pos].leaf;
+        let block_size = self.fs_block_size() as usize;
+        let index_capacity = extent_capacity(block_size);
+        let mut index_buf = [0u8; EXT4_SCRATCH_SIZE];
+        self.read_fs_block(index_block, &mut index_buf[..block_size])?;
+        let mut index_header = parse_extent_header(&index_buf)?;
+        if index_header.depth != 1 {
+            return Err(VfsError::Invalid);
+        }
+        let mut index_count = index_header.entries as usize;
+        if index_count == 0 || index_count > index_capacity {
+            return Err(VfsError::Invalid);
+        }
+        let mut leaf_index = read_extent_index(&index_buf, 0);
+        for idx in 1..index_count {
+            let entry = read_extent_index(&index_buf, idx);
+            if block_index >= entry.block {
+                leaf_index = entry;
+            } else {
+                break;
+            }
+        }
+        let leaf_block = leaf_index.leaf;
+        let leaf_capacity = extent_capacity(block_size);
+        let mut leaf_buf = [0u8; EXT4_SCRATCH_SIZE];
+        self.read_fs_block(leaf_block, &mut leaf_buf[..block_size])?;
+        let mut leaf_header = parse_extent_header(&leaf_buf)?;
+        if leaf_header.depth != 0 {
+            return Err(VfsError::Invalid);
+        }
+        let mut leaf_entries = leaf_header.entries as usize;
+        if leaf_entries > leaf_capacity {
+            return Err(VfsError::Invalid);
+        }
+        for idx in 0..leaf_entries {
+            let entry = read_extent_entry(&leaf_buf, idx);
+            if entry.covers(block_index) {
+                let phys = entry.start + (block_index - entry.block) as u64;
+                return Ok(phys);
+            }
+        }
+
+        let mut insert_pos = leaf_entries;
+        for idx in 0..leaf_entries {
+            let entry = read_extent_entry(&leaf_buf, idx);
+            if block_index < entry.block {
+                insert_pos = idx;
+                break;
+            }
+        }
+
+        let new_start = match prealloc {
+            Some(addr) => addr,
+            None => {
+                let new_block = self.allocate_block()?;
+                self.zero_fs_block(new_block)?;
+                new_block as u64
+            }
+        };
+
+        if insert_pos > 0 {
+            let prev = read_extent_entry(&leaf_buf, insert_pos - 1);
+            if prev.can_extend(block_index, new_start) {
+                let mut updated = prev;
+                updated.len += 1;
+                write_extent_entry(&mut leaf_buf, insert_pos - 1, updated);
+                write_extent_header(&mut leaf_buf, leaf_header.entries, leaf_header.depth, leaf_capacity as u16);
+                self.write_fs_block(leaf_block, &leaf_buf[..block_size])?;
+                return Ok(new_start);
+            }
+        }
+
+        if leaf_entries < leaf_capacity {
+            let start = extent_entry_offset(insert_pos);
+            let end = extent_entry_offset(leaf_entries);
+            let dst = extent_entry_offset(insert_pos + 1);
+            leaf_buf.copy_within(start..end, dst);
+            write_extent_entry(
+                &mut leaf_buf,
+                insert_pos,
+                ExtentEntry {
+                    block: block_index,
+                    len: 1,
+                    start: new_start,
+                },
+            );
+            leaf_entries += 1;
+            leaf_header.entries = leaf_entries as u16;
+            write_extent_header(&mut leaf_buf, leaf_header.entries, leaf_header.depth, leaf_capacity as u16);
+            self.write_fs_block(leaf_block, &leaf_buf[..block_size])?;
+            return Ok(new_start);
+        }
+
+        let new_leaf = self.allocate_block()?;
+        self.zero_fs_block(new_leaf)?;
+        let mut new_leaf_buf = [0u8; EXT4_SCRATCH_SIZE];
+        write_extent_header(&mut new_leaf_buf, 1, 0, leaf_capacity as u16);
+        write_extent_entry(
+            &mut new_leaf_buf,
+            0,
+            ExtentEntry {
+                block: block_index,
+                len: 1,
+                start: new_start,
+            },
+        );
+        self.write_fs_block(new_leaf as u64, &new_leaf_buf[..block_size])?;
+
+        if index_count < index_capacity {
+            let new_index = ExtentIndex {
+                block: block_index,
+                leaf: new_leaf as u64,
+            };
+            let mut insert_idx = index_count;
+            for idx in 0..index_count {
+                let entry = read_extent_index(&index_buf, idx);
+                if new_index.block < entry.block {
+                    insert_idx = idx;
+                    break;
+                }
+            }
+            let start = extent_entry_offset(insert_idx);
+            let end = extent_entry_offset(index_count);
+            let dst = extent_entry_offset(insert_idx + 1);
+            index_buf.copy_within(start..end, dst);
+            write_extent_index(&mut index_buf, insert_idx, new_index);
+            index_count += 1;
+            index_header.entries = index_count as u16;
+            write_extent_header(&mut index_buf, index_header.entries, index_header.depth, index_capacity as u16);
+            self.write_fs_block(index_block, &index_buf[..block_size])?;
+            return Ok(new_start);
+        }
+
+        let last_entry = read_extent_index(&index_buf, index_count - 1);
+        if block_index <= last_entry.block {
+            return Err(VfsError::NotSupported);
+        }
+        let new_index_block = self.allocate_block()?;
+        self.zero_fs_block(new_index_block)?;
+        let mut new_index_buf = [0u8; EXT4_SCRATCH_SIZE];
+        write_extent_header(&mut new_index_buf, 1, 1, index_capacity as u16);
+        write_extent_index(
+            &mut new_index_buf,
+            0,
+            ExtentIndex {
+                block: block_index,
+                leaf: new_leaf as u64,
+            },
+        );
+        self.write_fs_block(new_index_block as u64, &new_index_buf[..block_size])?;
+
+        if root_count >= EXTENT_INODE_CAPACITY {
+            return Err(VfsError::NotSupported);
+        }
+        let new_root = ExtentIndex {
+            block: block_index,
+            leaf: new_index_block as u64,
+        };
+        let mut insert_root = root_count;
+        for idx in 0..root_count {
+            if new_root.block < root_indices[idx].block {
+                insert_root = idx;
+                break;
+            }
+        }
+        let start = extent_entry_offset(insert_root);
+        let end = extent_entry_offset(root_count);
+        let dst = extent_entry_offset(insert_root + 1);
+        raw.copy_within(start..end, dst);
+        write_extent_index(raw, insert_root, new_root);
+        header.entries = (root_count + 1) as u16;
+        write_extent_header(raw, header.entries, header.depth, EXTENT_INODE_CAPACITY as u16);
+        store_inode_extents(inode, raw);
+        Ok(new_start)
+    }
+
+    fn upgrade_extent_root_to_depth2(
+        &self,
+        inode: &mut Ext4Inode,
+        raw: &mut [u8; INODE_BLOCK_LEN],
+        header: &mut ExtentHeader,
+    ) -> VfsResult<()> {
+        if header.depth != 1 {
+            return Err(VfsError::Invalid);
+        }
+        let count = header.entries as usize;
+        if count == 0 || count > EXTENT_INODE_CAPACITY {
+            return Err(VfsError::Invalid);
+        }
+        let block_size = self.fs_block_size() as usize;
+        let index_capacity = extent_capacity(block_size);
+        let index_block = self.allocate_block()?;
+        self.zero_fs_block(index_block)?;
+        let mut index_buf = [0u8; EXT4_SCRATCH_SIZE];
+        write_extent_header(&mut index_buf, count as u16, 1, index_capacity as u16);
+        for idx in 0..count {
+            let entry = read_extent_index(raw, idx);
+            write_extent_index(&mut index_buf, idx, entry);
+        }
+        self.write_fs_block(index_block as u64, &index_buf[..block_size])?;
+        let first_block = read_extent_index(raw, 0).block;
+        raw.fill(0);
+        write_extent_header(raw, 1, 2, EXTENT_INODE_CAPACITY as u16);
+        write_extent_index(
+            raw,
+            0,
+            ExtentIndex {
+                block: first_block,
+                leaf: index_block as u64,
+            },
+        );
+        store_inode_extents(inode, raw);
+        header.entries = 1;
+        header.depth = 2;
+        Ok(())
+    }
+
+    fn upgrade_inode_extents(
+        &self,
+        inode: &mut Ext4Inode,
+        raw: &mut [u8; INODE_BLOCK_LEN],
+        entries: [ExtentEntry; EXTENT_INODE_CAPACITY],
+        count: usize,
+        block_index: u32,
+        new_start: u64,
+    ) -> VfsResult<u64> {
+        let block_size = self.fs_block_size() as usize;
+        let leaf_capacity = extent_capacity(block_size);
+        let leaf_block = self.allocate_block()?;
+        self.zero_fs_block(leaf_block)?;
+        let mut scratch = [0u8; EXT4_SCRATCH_SIZE];
+        write_extent_header(&mut scratch, count as u16, 0, leaf_capacity as u16);
+        for idx in 0..count {
+            write_extent_entry(&mut scratch, idx, entries[idx]);
+        }
+        self.write_fs_block(leaf_block as u64, &scratch[..block_size])?;
+
+        raw.fill(0);
+        write_extent_header(raw, 1, 1, EXTENT_INODE_CAPACITY as u16);
+        let first_block = entries[0].block;
+        write_extent_index(
+            raw,
+            0,
+            ExtentIndex {
+                block: first_block,
+                leaf: leaf_block as u64,
+            },
+        );
+        store_inode_extents(inode, raw);
+        let mut header = ExtentHeader { entries: 1, depth: 1 };
+        self.allocate_extent_block_in_tree(inode, raw, &mut header, block_index, Some(new_start))
+    }
+
     fn read_indirect_ptr(&self, block: u32, index: u64, block_size: u64) -> VfsResult<u32> {
         if block == 0 {
             return Ok(0);
@@ -618,12 +1199,13 @@ impl VfsOps for Ext4Fs<'_> {
             return Err(VfsError::NotDir);
         }
         let inode = self.allocate_inode()?;
-        let inode_meta = Ext4Inode {
+        let mut inode_meta = Ext4Inode {
             mode: EXT4_MODE_FILE | (mode & 0o777),
             size: 0,
-            flags: 0,
+            flags: EXT4_EXTENTS_FLAG,
             blocks: [0u32; 15],
         };
+        init_inode_extents(&mut inode_meta);
         self.write_inode(inode, &inode_meta)?;
         self.insert_dir_entry(parent, name, inode, kind)?;
         Ok(inode)
@@ -656,7 +1238,7 @@ impl VfsOps for Ext4Fs<'_> {
         if inode_mode_type(inode_meta.mode) == FileType::Dir {
             return Err(VfsError::NotDir);
         }
-        // Minimal write path: only allocate direct blocks, no extent growth or journaling.
+        // Minimal write path: direct/indirect blocks only, no extent growth or journaling.
         let block_size = self.fs_block_size() as u64;
         let mut total = 0usize;
         let mut cur_offset = offset;
@@ -666,18 +1248,7 @@ impl VfsOps for Ext4Fs<'_> {
             let to_copy = core::cmp::min(buf.len() - total, block_size as usize - in_block);
             let phys = match self.map_block(&inode_meta, block_index)? {
                 Some(block) => block,
-                None => {
-                    if (inode_meta.flags & EXT4_EXTENTS_FLAG) != 0 {
-                        return Err(VfsError::NotSupported);
-                    }
-                    if block_index as usize >= EXT4_DIRECT_BLOCKS {
-                        return Err(VfsError::NotSupported);
-                    }
-                    let new_block = self.allocate_block()?;
-                    inode_meta.blocks[block_index as usize] = new_block;
-                    self.zero_fs_block(new_block)?;
-                    new_block as u64
-                }
+                None => self.allocate_data_block(&mut inode_meta, block_index)?,
             };
             let block_offset = phys * block_size + in_block as u64;
             write_bytes(&self.cache, block_offset, &buf[total..total + to_copy])?;
@@ -719,6 +1290,10 @@ impl VfsOps for Ext4Fs<'_> {
         Ok(written)
     }
 
+    fn flush(&self) -> VfsResult<()> {
+        self.cache.flush()
+    }
+
     fn truncate(&self, inode: InodeId, size: u64) -> VfsResult<()> {
         let mut inode_meta = self.read_inode(inode)?;
         if inode_mode_type(inode_meta.mode) == FileType::Dir {
@@ -729,20 +1304,12 @@ impl VfsOps for Ext4Fs<'_> {
             inode_meta.size = size;
             return self.write_inode(inode, &inode_meta);
         }
-        if (inode_meta.flags & EXT4_EXTENTS_FLAG) != 0 {
-            return Err(VfsError::NotSupported);
-        }
         let block_size = self.fs_block_size() as u64;
         let blocks_needed = (size + block_size - 1) / block_size;
         for block_index in 0..blocks_needed {
             let block_index = block_index as u32;
             if self.map_block(&inode_meta, block_index)?.is_none() {
-                if block_index as usize >= EXT4_DIRECT_BLOCKS {
-                    return Err(VfsError::NotSupported);
-                }
-                let new_block = self.allocate_block()?;
-                inode_meta.blocks[block_index as usize] = new_block;
-                self.zero_fs_block(new_block)?;
+                let _ = self.allocate_data_block(&mut inode_meta, block_index)?;
             }
         }
         inode_meta.size = size;
@@ -871,8 +1438,53 @@ struct ExtentHeader {
     depth: u16,
 }
 
+#[derive(Clone, Copy)]
+struct ExtentEntry {
+    block: u32,
+    len: u16,
+    start: u64,
+}
+
+impl Default for ExtentEntry {
+    fn default() -> Self {
+        Self {
+            block: 0,
+            len: 0,
+            start: 0,
+        }
+    }
+}
+
+impl ExtentEntry {
+    fn covers(&self, logical: u32) -> bool {
+        if self.len == 0 {
+            return false;
+        }
+        logical >= self.block && logical < self.block + self.len as u32
+    }
+
+    fn can_extend(&self, logical: u32, phys: u64) -> bool {
+        if self.len == 0 || self.len >= EXTENT_LEN_MAX {
+            return false;
+        }
+        logical == self.block + self.len as u32 && phys == self.start + self.len as u64
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ExtentIndex {
+    block: u32,
+    leaf: u64,
+}
+
+impl Default for ExtentIndex {
+    fn default() -> Self {
+        Self { block: 0, leaf: 0 }
+    }
+}
+
 fn parse_extent_header(buf: &[u8]) -> VfsResult<ExtentHeader> {
-    if buf.len() < 12 {
+    if buf.len() < EXTENT_HEADER_SIZE {
         return Err(VfsError::Invalid);
     }
     let magic = read_u16(buf, 0);
@@ -884,30 +1496,115 @@ fn parse_extent_header(buf: &[u8]) -> VfsResult<ExtentHeader> {
     Ok(ExtentHeader { entries, depth })
 }
 
+fn init_inode_extents(inode: &mut Ext4Inode) {
+    let mut raw = [0u8; INODE_BLOCK_LEN];
+    init_extent_raw(&mut raw);
+    store_inode_extents(inode, &raw);
+}
+
+fn init_extent_raw(raw: &mut [u8; INODE_BLOCK_LEN]) {
+    raw.fill(0);
+    write_extent_header(raw, 0, 0, EXTENT_INODE_CAPACITY as u16);
+}
+
+fn write_extent_header(buf: &mut [u8], entries: u16, depth: u16, max: u16) {
+    write_u16(buf, 0, EXTENT_HEADER_MAGIC);
+    write_u16(buf, 2, entries);
+    write_u16(buf, 4, max);
+    write_u16(buf, 6, depth);
+    write_u32(buf, 8, 0);
+}
+
+fn extent_capacity(block_size: usize) -> usize {
+    if block_size <= EXTENT_HEADER_SIZE {
+        return 0;
+    }
+    (block_size - EXTENT_HEADER_SIZE) / EXTENT_ENTRY_SIZE
+}
+
+fn extent_entry_offset(idx: usize) -> usize {
+    EXTENT_HEADER_SIZE + idx * EXTENT_ENTRY_SIZE
+}
+
+fn inode_extent_raw(inode: &Ext4Inode) -> [u8; INODE_BLOCK_LEN] {
+    let mut raw = [0u8; INODE_BLOCK_LEN];
+    for (idx, block) in inode.blocks.iter().enumerate() {
+        let offset = idx * 4;
+        raw[offset..offset + 4].copy_from_slice(&block.to_le_bytes());
+    }
+    raw
+}
+
+fn store_inode_extents(inode: &mut Ext4Inode, raw: &[u8; INODE_BLOCK_LEN]) {
+    for idx in 0..inode.blocks.len() {
+        let offset = idx * 4;
+        inode.blocks[idx] = read_u32(raw, offset);
+    }
+}
+
+fn read_extent_entry(buf: &[u8], idx: usize) -> ExtentEntry {
+    let offset = extent_entry_offset(idx);
+    let ee_block = read_u32(buf, offset);
+    let ee_len = read_u16(buf, offset + 4) & EXTENT_LEN_MAX;
+    let ee_start_hi = read_u16(buf, offset + 6) as u32;
+    let ee_start_lo = read_u32(buf, offset + 8);
+    let start = ((ee_start_hi as u64) << 32) | ee_start_lo as u64;
+    ExtentEntry {
+        block: ee_block,
+        len: ee_len,
+        start,
+    }
+}
+
+fn write_extent_entry(buf: &mut [u8], idx: usize, entry: ExtentEntry) {
+    let offset = extent_entry_offset(idx);
+    write_u32(buf, offset, entry.block);
+    write_u16(buf, offset + 4, entry.len);
+    write_u16(buf, offset + 6, (entry.start >> 32) as u16);
+    write_u32(buf, offset + 8, entry.start as u32);
+}
+
+fn read_extent_index(buf: &[u8], idx: usize) -> ExtentIndex {
+    let offset = extent_entry_offset(idx);
+    let block = read_u32(buf, offset);
+    let leaf_lo = read_u32(buf, offset + 4);
+    let leaf_hi = read_u16(buf, offset + 8) as u32;
+    let leaf = ((leaf_hi as u64) << 32) | leaf_lo as u64;
+    ExtentIndex { block, leaf }
+}
+
+fn write_extent_index(buf: &mut [u8], idx: usize, entry: ExtentIndex) {
+    let offset = extent_entry_offset(idx);
+    write_u32(buf, offset, entry.block);
+    write_u32(buf, offset + 4, entry.leaf as u32);
+    write_u16(buf, offset + 8, (entry.leaf >> 32) as u16);
+    write_u16(buf, offset + 10, 0);
+}
+
 fn map_extent_entries(buf: &[u8], entries: u16, logical: u32) -> VfsResult<Option<u64>> {
-    let mut offset = 12usize;
+    let mut offset = EXTENT_HEADER_SIZE;
     for _ in 0..entries {
-        if offset + 12 > buf.len() {
+        if offset + EXTENT_ENTRY_SIZE > buf.len() {
             break;
         }
         let ee_block = read_u32(buf, offset);
-        let ee_len = read_u16(buf, offset + 4) & 0x7fff;
+        let ee_len = read_u16(buf, offset + 4) & EXTENT_LEN_MAX;
         let ee_start_hi = read_u16(buf, offset + 6) as u32;
         let ee_start_lo = read_u32(buf, offset + 8);
         if logical >= ee_block && logical < ee_block + ee_len as u32 {
             let phys = ((ee_start_hi as u64) << 32) | ee_start_lo as u64;
             return Ok(Some(phys + (logical - ee_block) as u64));
         }
-        offset += 12;
+        offset += EXTENT_ENTRY_SIZE;
     }
     Ok(None)
 }
 
 fn find_extent_index(buf: &[u8], entries: u16, logical: u32) -> VfsResult<Option<u64>> {
-    let mut offset = 12usize;
+    let mut offset = EXTENT_HEADER_SIZE;
     let mut chosen: Option<u64> = None;
     for _ in 0..entries {
-        if offset + 12 > buf.len() {
+        if offset + EXTENT_ENTRY_SIZE > buf.len() {
             break;
         }
         let ei_block = read_u32(buf, offset);
@@ -918,7 +1615,7 @@ fn find_extent_index(buf: &[u8], entries: u16, logical: u32) -> VfsResult<Option
         } else {
             break;
         }
-        offset += 12;
+        offset += EXTENT_ENTRY_SIZE;
     }
     Ok(chosen)
 }
@@ -1181,6 +1878,115 @@ mod tests {
         let read = fs.read_at(inode, 0, &mut buf).unwrap();
         assert_eq!(read, 5);
         assert_eq!(&buf[..read], &payload[..read]);
+    }
+
+    #[test]
+    fn write_indirect_block() {
+        let mut data = vec![0u8; 128 * 1024];
+        build_ext4_for_write(&mut data);
+        let dev = FileBlockDevice {
+            block_size: 512,
+            data: RefCell::new(data),
+        };
+        let fs = Ext4Fs::new(&dev).unwrap();
+        let root = fs.root().unwrap();
+        let inode = fs.create(root, "big", FileType::File, 0o644).unwrap();
+        let block_size = fs.fs_block_size() as usize;
+        let offset = block_size * EXT4_DIRECT_BLOCKS;
+        let payload = b"indirect-write";
+        let written = fs.write_at(inode, offset as u64, payload).unwrap();
+        assert_eq!(written, payload.len());
+        let meta = fs.metadata(inode).unwrap();
+        assert_eq!(meta.size, (offset + payload.len()) as u64);
+        let mut buf = [0u8; 32];
+        let read = fs.read_at(inode, offset as u64, &mut buf).unwrap();
+        assert_eq!(read, payload.len());
+        assert_eq!(&buf[..read], payload);
+    }
+
+    #[test]
+    fn write_extent_sparse() {
+        let mut data = vec![0u8; 128 * 1024];
+        build_ext4_for_write(&mut data);
+        let dev = FileBlockDevice {
+            block_size: 512,
+            data: RefCell::new(data),
+        };
+        let fs = Ext4Fs::new(&dev).unwrap();
+        let root = fs.root().unwrap();
+        let inode = fs.create(root, "sparse", FileType::File, 0o644).unwrap();
+        let block_size = fs.fs_block_size() as usize;
+        let payload = b"tail";
+        let offset = block_size * 2;
+        let written = fs.write_at(inode, offset as u64, payload).unwrap();
+        assert_eq!(written, payload.len());
+        let mut buf = [0u8; 8];
+        let read = fs.read_at(inode, offset as u64, &mut buf).unwrap();
+        assert_eq!(&buf[..read], payload);
+        let mut hole = [1u8; 8];
+        let read = fs.read_at(inode, block_size as u64, &mut hole).unwrap();
+        assert_eq!(read, hole.len());
+        assert!(hole.iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn write_extent_depth1() {
+        let mut data = vec![0u8; 256 * 1024];
+        build_ext4_for_write(&mut data);
+        let dev = FileBlockDevice {
+            block_size: 512,
+            data: RefCell::new(data),
+        };
+        let fs = Ext4Fs::new(&dev).unwrap();
+        let root = fs.root().unwrap();
+        let inode = fs.create(root, "scatter", FileType::File, 0o644).unwrap();
+        let block_size = fs.fs_block_size() as usize;
+        let offsets = [0, 2, 4, 6, 8];
+        for (idx, blk) in offsets.iter().enumerate() {
+            let payload = [b'A' + idx as u8];
+            let off = (*blk * block_size) as u64;
+            let written = fs.write_at(inode, off, &payload).unwrap();
+            assert_eq!(written, payload.len());
+        }
+        for (idx, blk) in offsets.iter().enumerate() {
+            let mut buf = [0u8; 1];
+            let off = (*blk * block_size) as u64;
+            let read = fs.read_at(inode, off, &mut buf).unwrap();
+            assert_eq!(read, 1);
+            assert_eq!(buf[0], b'A' + idx as u8);
+        }
+    }
+
+    #[test]
+    fn write_extent_depth2() {
+        let mut data = vec![0u8; 1024 * 1024];
+        build_ext4_for_write(&mut data);
+        let dev = FileBlockDevice {
+            block_size: 512,
+            data: RefCell::new(data),
+        };
+        let fs = Ext4Fs::new(&dev).unwrap();
+        let root = fs.root().unwrap();
+        let inode = fs.create(root, "depth2", FileType::File, 0o644).unwrap();
+        let block_size = fs.fs_block_size() as usize;
+        let leaf_capacity = extent_capacity(block_size);
+        let total_entries = leaf_capacity * EXTENT_INODE_CAPACITY + 1;
+        for idx in 0..total_entries {
+            let block_index = idx * 2;
+            let offset = block_index * block_size;
+            let payload = [b'a' + (idx % 26) as u8];
+            let written = fs.write_at(inode, offset as u64, &payload).unwrap();
+            assert_eq!(written, payload.len());
+        }
+        let mut buf = [0u8; 1];
+        let read = fs.read_at(inode, 0, &mut buf).unwrap();
+        assert_eq!(read, 1);
+        assert_eq!(buf[0], b'a');
+        let last_idx = total_entries - 1;
+        let last_offset = (last_idx * 2 * block_size) as u64;
+        let read = fs.read_at(inode, last_offset, &mut buf).unwrap();
+        assert_eq!(read, 1);
+        assert_eq!(buf[0], b'a' + (last_idx % 26) as u8);
     }
 
     fn build_minimal_ext4(buf: &mut [u8], file_data: &[u8]) {

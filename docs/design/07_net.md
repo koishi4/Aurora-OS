@@ -11,12 +11,23 @@
 - `NetDevice` 负责提交/接收包缓冲，协议栈负责协议解析与重组。
 - 优先减少拷贝：驱动 DMA 缓冲与协议栈 PacketBuffer 复用。
 - 网络定时器与重传计时统一依赖 `time` 模块。
+- 先落地最小 `axnet` 抽象与 virtio-net RAW 帧读写，协议栈后续接入。
+- smoltcp 接入使用静态地址配置（QEMU user-net: 10.0.2.15/24, gw 10.0.2.2），轮询在空闲上下文触发。
+- 对本机 IPv4 目的地址的发送帧进行 loopback 注入，支持单机 TCP 自测。
+- `sockaddr_in` 解析严格按网络字节序处理，避免用户态传参导致目标地址反转。
+- 连接进行中保持 net poll，避免缺中断时 TCP 建连停滞。
+- 非阻塞 connect 返回 EINPROGRESS，重复 connect 返回 EALREADY，失败通过 SO_ERROR 读取映射错误码。
+- 启动后发送一次 ARP probe 探测网关，收到应答即认为 RX/IRQ 路径可用。
+- socket 就绪判定通过 `SocketTable` 的监听标记区分 `accept` 与 `recv` 语义，`poll/ppoll` 走统一判定入口。
+- TCP loopback 自测使用内核内置 loopback 设备，避免依赖外部网络环境。
 
 ## 关键数据结构
 - `NetDevice`：网卡设备抽象（send/recv/irq）。
 - `PacketBuffer`：包缓冲与引用计数。
 - `SocketTable`：socket 句柄管理与 fd 映射。
+- `SocketSlot`：记录 socket 句柄、端口与是否处于监听状态。
 - `NetConfig`：IP/网关/掩码等配置。
+- `VirtioNetQueue`：virtio-net 描述符/avail/used 队列。
 
 ## 关键流程图或伪代码
 ```text
@@ -24,6 +35,7 @@ rx_irq
   -> driver.rx()
   -> protocol_stack.poll()
   -> socket_ready()
+  -> wake(net_waiters)
 
 socket_read(fd)
   -> dequeue packet
@@ -38,4 +50,14 @@ socket_read(fd)
 ## 测试点
 - 基础连通性：ping/UDP echo。
 - TCP 建连与收发：iperf 基准。
+- TCP loopback：`NET=1 NET_LOOPBACK_TEST=1 make test-qemu-smoke` 观察 `net: tcp loopback ok`。
+- 用户态 TCP echo：`NET=1 TCP_ECHO_TEST=1 make test-qemu-smoke` 观察 `tcp-echo: ok`（覆盖 socket syscall 路径）。
+- 用户态 UDP echo：`NET=1 UDP_ECHO_TEST=1 make test-qemu-smoke` 观察 `udp-echo: ok`（覆盖 datagram syscall 路径）。
 - 应用层：git clone/push、redis 基本命令回归。
+- QEMU: `NET=1 EXPECT_NET=1 make test-qemu-smoke` 检查 virtio-net ready + ARP reply。
+
+## 基准计划
+- 连通性基线：在 QEMU user-net 下保持 ARP reply 与 UDP echo 通过，作为网卡 RX 健康指标。
+- TCP 基线：内核 loopback + 用户态 tcp_echo 覆盖 connect/accept/send/recv + iovec。
+- 性能基线：iperf3 (或简化吞吐脚本) 记录吞吐与 CPU 利用率，用于回归对比。
+- 用户态应用适配路线：见 `docs/design/11_userland_apps.md`，按 syscall 覆盖矩阵推进 iperf3/redis。

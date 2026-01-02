@@ -1,0 +1,7 @@
+[package]
+name = "axnet"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+smoltcp = { version = "0.10", default-features = false, features = ["medium-ethernet", "proto-ipv4", "socket-icmp", "socket-udp", "socket-tcp"] }

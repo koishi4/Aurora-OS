@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+//! User image construction and ELF loading helpers.
 
 use core::cmp::min;
 use core::mem::size_of;
@@ -7,23 +8,36 @@ use core::ptr;
 use crate::{config, mm};
 use crate::syscall::Errno;
 
+/// Prepared user execution context for spawning a task.
 pub struct UserContext {
+    /// Entry point address for the user image.
     pub entry: usize,
+    /// User stack pointer.
     pub user_sp: usize,
+    /// Root page table physical address.
     pub root_pa: usize,
+    /// SATP value for the page table.
     pub satp: usize,
+    /// Argument count.
     pub argc: usize,
+    /// Pointer to argv array in user space.
     pub argv: usize,
+    /// Pointer to envp array in user space.
     pub envp: usize,
+    /// Initial heap top (brk) value.
+    pub heap_top: usize,
 }
 
 const PAGE_SIZE: usize = 4096;
-const USER_STACK_PAGES: usize = 1;
+// 用户态测试程序需要更大的栈空间以容纳网络相关调用与缓冲区布局。
+const USER_STACK_PAGES: usize = 32;
 const USER_STACK_SIZE: usize = USER_STACK_PAGES * PAGE_SIZE;
 
 const USER_CODE_VA: usize = config::USER_TEST_BASE;
 const USER_DATA_VA: usize = config::USER_TEST_BASE + PAGE_SIZE;
-const USER_STACK_VA: usize = config::USER_TEST_BASE + PAGE_SIZE * 2;
+// 避开 UART MMIO 与 DRAM 恒等映射区。
+const USER_STACK_VA: usize = 0x6000_0000;
+const USER_MESSAGE_PAGE_VA: usize = USER_DATA_VA + PAGE_SIZE;
 const USER_IOVEC_VA: usize = USER_DATA_VA;
 const USER_PIPEFD_VA: usize = USER_DATA_VA + 0x40;
 const USER_POLLFD_VA: usize = USER_DATA_VA + 0x50;
@@ -56,9 +70,40 @@ const USER_MESSAGE_OFFSET: usize = USER_MESSAGE_VA - USER_DATA_VA;
 const USER_MESSAGE_SPLIT: usize = PAGE_SIZE - USER_MESSAGE_OFFSET;
 const USER_IOV_COUNT: usize = 2;
 const USER_POLLIN: i16 = 0x001;
+#[cfg(feature = "user-fs-smoke")]
+const USER_PATH: &[u8] = b"/fs_smoke\0";
+#[cfg(feature = "user-fs-smoke")]
+const USER_ARG0: &[u8] = b"fs_smoke\0";
+#[cfg(all(not(feature = "user-fs-smoke"), feature = "user-udp-echo"))]
+const USER_PATH: &[u8] = b"/udp_echo\0";
+#[cfg(all(not(feature = "user-fs-smoke"), feature = "user-udp-echo"))]
+const USER_ARG0: &[u8] = b"udp_echo\0";
+#[cfg(all(
+    not(feature = "user-fs-smoke"),
+    not(feature = "user-udp-echo"),
+    feature = "user-tcp-echo"
+))]
+const USER_PATH: &[u8] = b"/tcp_echo\0";
+#[cfg(all(
+    not(feature = "user-fs-smoke"),
+    not(feature = "user-udp-echo"),
+    feature = "user-tcp-echo"
+))]
+const USER_ARG0: &[u8] = b"tcp_echo\0";
+#[cfg(all(
+    not(feature = "user-fs-smoke"),
+    not(feature = "user-udp-echo"),
+    not(feature = "user-tcp-echo")
+))]
 const USER_PATH: &[u8] = b"/init\0";
+#[cfg(all(
+    not(feature = "user-fs-smoke"),
+    not(feature = "user-udp-echo"),
+    not(feature = "user-tcp-echo")
+))]
 const USER_ARG0: &[u8] = b"init\0";
 const USER_ENV0: &[u8] = b"TERM=vt100\0";
+const USER_PATH_STRIDE: usize = 16;
 const USER_COW_INIT: u32 = 0x1234_5678;
 const USER_COW_OK: &[u8] = b"cow: ok\n";
 const USER_COW_BAD: &[u8] = b"cow: bad\n";
@@ -202,6 +247,7 @@ const USER_CODE: [u8; 1052] = [
     0x93, 0x08, 0x90, 0x03, 0x73, 0x00, 0x00, 0x00, 0x6f, 0xf0, 0x1f, 0xeb,
 ];
 
+/// Prepare the built-in user test context when enabled.
 pub fn prepare_user_test() -> Option<UserContext> {
     let root_pa = mm::alloc_user_root()?;
     match load_user_image(root_pa) {
@@ -213,12 +259,33 @@ pub fn prepare_user_test() -> Option<UserContext> {
     }
 }
 
+/// Load the built-in user test image into an existing page table.
 pub fn load_user_image(root_pa: usize) -> Option<UserContext> {
     let code_pa = ensure_user_page(root_pa, USER_CODE_VA, mm::UserAccess::Read, mm::map_user_code)?;
     let data_pa = ensure_user_page(root_pa, USER_DATA_VA, mm::UserAccess::Write, mm::map_user_data)?;
-    let stack_pa = ensure_user_page(root_pa, USER_STACK_VA, mm::UserAccess::Write, mm::map_user_stack)?;
+    let message_pa =
+        ensure_user_page(root_pa, USER_MESSAGE_PAGE_VA, mm::UserAccess::Write, mm::map_user_data)?;
+    // SAFETY: identity-mapped frame; clear message page for deterministic writev test.
+    unsafe {
+        ptr::write_bytes(message_pa as *mut u8, 0, PAGE_SIZE);
+    }
+    let mut stack_pa = 0usize;
+    for idx in 0..USER_STACK_PAGES {
+        let va = USER_STACK_VA + idx * PAGE_SIZE;
+        let pa = ensure_user_page(root_pa, va, mm::UserAccess::Write, mm::map_user_stack)?;
+        if idx == 0 {
+            stack_pa = pa;
+        }
+        // SAFETY: identity-mapped frame; clear each stack page.
+        unsafe {
+            ptr::write_bytes(pa as *mut u8, 0, PAGE_SIZE);
+        }
+    }
+    if stack_pa == 0 {
+        return None;
+    }
 
-    init_user_image(code_pa, data_pa, stack_pa);
+    init_user_image(code_pa, data_pa, message_pa, stack_pa);
     mm::flush_icache();
     mm::flush_tlb();
 
@@ -230,9 +297,11 @@ pub fn load_user_image(root_pa: usize) -> Option<UserContext> {
         argc: 0,
         argv: 0,
         envp: 0,
+        heap_top: USER_MESSAGE_PAGE_VA + PAGE_SIZE,
     })
 }
 
+/// Load an ELF image into a fresh user address space.
 pub fn load_exec_elf(
     old_root_pa: usize,
     image: &[u8],
@@ -241,22 +310,28 @@ pub fn load_exec_elf(
 ) -> Result<UserContext, Errno> {
     let header = ElfHeader::parse(image)?;
     let root_pa = mm::alloc_user_root().ok_or(Errno::NoMem)?;
-    if let Err(err) = load_elf_segments(root_pa, image, &header) {
-        // execve 失败时释放新地址空间，避免泄漏页表页与用户页。
-        mm::release_user_root(root_pa);
-        return Err(err);
-    }
-
-    let stack_pa = match ensure_user_page(root_pa, USER_STACK_VA, mm::UserAccess::Write, mm::map_user_stack) {
-        Some(pa) => pa,
-        None => {
+    let heap_top = match load_elf_segments(root_pa, image, &header) {
+        Ok(max_vaddr) => max_vaddr,
+        Err(err) => {
+            // execve 失败时释放新地址空间，避免泄漏页表页与用户页。
             mm::release_user_root(root_pa);
-            return Err(Errno::Fault);
+            return Err(err);
         }
     };
-    // SAFETY: identity-mapped frame; zero stack page before writing.
-    unsafe {
-        ptr::write_bytes(stack_pa as *mut u8, 0, USER_STACK_SIZE);
+
+    for idx in 0..USER_STACK_PAGES {
+        let va = USER_STACK_VA + idx * PAGE_SIZE;
+        let pa = match ensure_user_page(root_pa, va, mm::UserAccess::Write, mm::map_user_stack) {
+            Some(pa) => pa,
+            None => {
+                mm::release_user_root(root_pa);
+                return Err(Errno::Fault);
+            }
+        };
+        // SAFETY: identity-mapped frame; clear each stack page.
+        unsafe {
+            ptr::write_bytes(pa as *mut u8, 0, PAGE_SIZE);
+        }
     }
 
     let (user_sp, argc, argv_ptr, envp_ptr) = match build_user_stack(old_root_pa, root_pa, argv, envp) {
@@ -278,6 +353,7 @@ pub fn load_exec_elf(
         argc,
         argv: argv_ptr,
         envp: envp_ptr,
+        heap_top,
     })
 }
 
@@ -401,7 +477,8 @@ fn read_user_byte(root_pa: usize, addr: usize) -> Result<u8, Errno> {
     Ok(unsafe { *(pa as *const u8) })
 }
 
-fn load_elf_segments(root_pa: usize, image: &[u8], header: &ElfHeader) -> Result<(), Errno> {
+fn load_elf_segments(root_pa: usize, image: &[u8], header: &ElfHeader) -> Result<usize, Errno> {
+    let mut max_end = 0usize;
     for idx in 0..header.phnum {
         let ph = header.program_header(image, idx)?;
         if ph.p_type != 1 {
@@ -412,6 +489,9 @@ fn load_elf_segments(root_pa: usize, image: &[u8], header: &ElfHeader) -> Result
         }
         let seg_start = align_down(ph.p_vaddr as usize, mm::PAGE_SIZE);
         let seg_end = align_up((ph.p_vaddr + ph.p_memsz) as usize, mm::PAGE_SIZE);
+        if seg_end > max_end {
+            max_end = seg_end;
+        }
         let flags = mm::UserMapFlags {
             read: (ph.p_flags & 0x4) != 0,
             write: (ph.p_flags & 0x2) != 0,
@@ -437,7 +517,7 @@ fn load_elf_segments(root_pa: usize, image: &[u8], header: &ElfHeader) -> Result
         let file_slice = &image[ph.p_offset as usize..file_end];
         write_user_bytes(root_pa, ph.p_vaddr as usize, file_slice)?;
     }
-    Ok(())
+    Ok(max_end)
 }
 
 #[derive(Clone, Copy)]
@@ -543,6 +623,7 @@ fn align_up(value: usize, align: usize) -> usize {
     (value + align - 1) & !(align - 1)
 }
 
+/// Return the embedded `/init` ELF image bytes.
 pub fn init_exec_elf_image() -> &'static [u8] {
     // SAFETY: early boot single-hart; buffer is initialized once.
     unsafe {
@@ -636,13 +717,13 @@ fn ensure_user_page(
     Some(pa)
 }
 
-fn init_user_image(code_pa: usize, data_pa: usize, stack_pa: usize) {
+fn init_user_image(code_pa: usize, data_pa: usize, message_pa: usize, stack_pa: usize) {
     // SAFETY: frames are identity-mapped; code/data fit in a single page each.
     unsafe {
         // Ensure deterministic user data layout before partial writes.
         ptr::write_bytes(data_pa as *mut u8, 0, mm::PAGE_SIZE);
         ptr::copy_nonoverlapping(USER_CODE.as_ptr(), code_pa as *mut u8, USER_CODE.len());
-        ptr::write_bytes(stack_pa as *mut u8, 0, USER_STACK_SIZE);
+        ptr::write_bytes(stack_pa as *mut u8, 0, PAGE_SIZE);
         // 将消息拆分写入 data+stack 跨页区域，验证用户态跨页访问。
         let first_len = min(USER_MESSAGE_LEN, USER_MESSAGE_SPLIT);
         ptr::copy_nonoverlapping(
@@ -652,11 +733,11 @@ fn init_user_image(code_pa: usize, data_pa: usize, stack_pa: usize) {
         );
         if first_len < USER_MESSAGE_LEN {
             let rest = USER_MESSAGE_LEN - first_len;
-            ptr::copy_nonoverlapping(
-                USER_MESSAGE.as_ptr().add(first_len),
-                stack_pa as *mut u8,
-                rest,
-            );
+        ptr::copy_nonoverlapping(
+            USER_MESSAGE.as_ptr().add(first_len),
+            message_pa as *mut u8,
+            rest,
+        );
         }
         // 布局 iovec 数组：第一个条目跨页读取，第二个条目为 0 长度占位。
         let iov_base = data_pa as *mut usize;
@@ -689,16 +770,16 @@ fn init_user_image(code_pa: usize, data_pa: usize, stack_pa: usize) {
         // execve 路径字符串与 argv/envp。
         let path_base = data_pa + (USER_PATH_VA - USER_DATA_VA);
         ptr::copy_nonoverlapping(USER_PATH.as_ptr(), path_base as *mut u8, USER_PATH.len());
-        let arg0_base = path_base + 8;
+        let arg0_base = path_base + USER_PATH_STRIDE;
         ptr::copy_nonoverlapping(USER_ARG0.as_ptr(), arg0_base as *mut u8, USER_ARG0.len());
-        let env0_base = arg0_base + 8;
+        let env0_base = arg0_base + USER_PATH_STRIDE;
         ptr::copy_nonoverlapping(USER_ENV0.as_ptr(), env0_base as *mut u8, USER_ENV0.len());
         let argv_base = (data_pa + (USER_ARGV_VA - USER_DATA_VA)) as *mut usize;
         argv_base.write(USER_PATH_VA);
-        argv_base.add(1).write(USER_PATH_VA + 8);
+        argv_base.add(1).write(USER_PATH_VA + USER_PATH_STRIDE);
         argv_base.add(2).write(0);
         let envp_base = (data_pa + (USER_ENVP_VA - USER_DATA_VA)) as *mut usize;
-        envp_base.write(USER_PATH_VA + 16);
+        envp_base.write(USER_PATH_VA + USER_PATH_STRIDE * 2);
         envp_base.add(1).write(0);
         let dirbuf_base = data_pa + (USER_DIRENT_BUF_VA - USER_DATA_VA);
         ptr::write_bytes(dirbuf_base as *mut u8, 0, USER_DIRENT_BUF_LEN);

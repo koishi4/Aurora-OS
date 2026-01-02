@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+//! System call dispatcher and per-syscall implementations.
 
 use core::cmp::min;
 use core::mem::{size_of, MaybeUninit};
@@ -14,6 +15,7 @@ use crate::trap::TrapFrame;
 
 #[repr(i32)]
 #[derive(Debug, Clone, Copy)]
+/// Linux-compatible errno values used by syscalls.
 pub enum Errno {
     NoEnt = 2,
     Exist = 17,
@@ -30,10 +32,17 @@ pub enum Errno {
     Again = 11,
     NoMem = 12,
     Child = 10,
+    NetUnreach = 101,
+    IsConn = 106,
+    NotConn = 107,
+    ConnRefused = 111,
     TimedOut = 110,
+    Already = 114,
+    InProgress = 115,
 }
 
 impl Errno {
+    /// Convert errno into the negative-isize return convention.
     pub fn to_ret(self) -> usize {
         (-(self as isize)) as usize
     }
@@ -60,6 +69,9 @@ static mut ROOTFS_FAT32: MaybeUninit<fat32::Fat32Fs<'static>> = MaybeUninit::uni
 static mut ROOTFS_MEMFS: MaybeUninit<memfs::MemFs<'static>> = MaybeUninit::uninit();
 static DEVFS: devfs::DevFs = devfs::DevFs::new();
 static PROCFS: procfs::ProcFs = procfs::ProcFs::new();
+static TCP_CONNECT_LOGGED: AtomicU8 = AtomicU8::new(0);
+static TCP_ACCEPT_LOGGED: AtomicU8 = AtomicU8::new(0);
+static TCP_RECV_LOGGED: AtomicU8 = AtomicU8::new(0);
 
 #[derive(Clone, Copy)]
 struct SyscallContext {
@@ -76,6 +88,7 @@ impl SyscallContext {
     }
 }
 
+/// Dispatch a system call based on the trap frame.
 pub fn handle_syscall(tf: &mut TrapFrame) {
     let ctx = SyscallContext::from_trap_frame(tf);
     let ret = dispatch(tf, ctx);
@@ -88,10 +101,51 @@ pub fn handle_syscall(tf: &mut TrapFrame) {
 
 fn dispatch(tf: &mut TrapFrame, ctx: SyscallContext) -> Result<usize, Errno> {
     match ctx.nr {
+        SYS_EVENTFD2 => sys_eventfd2(ctx.args[0], ctx.args[1]),
+        SYS_EPOLL_CREATE1 => sys_epoll_create1(ctx.args[0]),
+        SYS_EPOLL_CTL => sys_epoll_ctl(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_EPOLL_PWAIT => sys_epoll_pwait(
+            ctx.args[0],
+            ctx.args[1],
+            ctx.args[2],
+            ctx.args[3],
+            ctx.args[4],
+            ctx.args[5],
+        ),
+        SYS_EPOLL_PWAIT2 => sys_epoll_pwait2(
+            ctx.args[0],
+            ctx.args[1],
+            ctx.args[2],
+            ctx.args[3],
+            ctx.args[4],
+            ctx.args[5],
+        ),
+        SYS_TIMERFD_CREATE => sys_timerfd_create(ctx.args[0], ctx.args[1]),
+        SYS_TIMERFD_SETTIME => sys_timerfd_settime(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_TIMERFD_GETTIME => sys_timerfd_gettime(ctx.args[0], ctx.args[1]),
+        SYS_TIMERFD_SETTIME64 => sys_timerfd_settime(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_TIMERFD_GETTIME64 => sys_timerfd_gettime(ctx.args[0], ctx.args[1]),
         SYS_EXIT => sys_exit(ctx.args[0]),
         SYS_EXECVE => sys_execve(tf, ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_CLONE => sys_clone(tf, ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
+        SYS_BRK => sys_brk(ctx.args[0]),
+        SYS_MMAP => sys_mmap(
+            ctx.args[0],
+            ctx.args[1],
+            ctx.args[2],
+            ctx.args[3],
+            ctx.args[4],
+            ctx.args[5],
+        ),
+        SYS_MUNMAP => sys_munmap(ctx.args[0], ctx.args[1]),
+        SYS_MPROTECT => sys_mprotect(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_MADVISE => sys_madvise(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_RSEQ => sys_rseq(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_READ => sys_read(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_PREAD64 => sys_pread64(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_PWRITE64 => sys_pwrite64(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_PREADV => sys_preadv(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_PWRITEV => sys_pwritev(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_WRITE => sys_write(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_READV => sys_readv(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_WRITEV => sys_writev(ctx.args[0], ctx.args[1], ctx.args[2]),
@@ -109,9 +163,11 @@ fn dispatch(tf: &mut TrapFrame, ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_NEWFSTATAT => sys_newfstatat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_FACCESSAT => sys_faccessat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_STATX => sys_statx(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
+        SYS_READLINK => sys_readlink(ctx.args[0], ctx.args[1], ctx.args[2]),
         SYS_READLINKAT => sys_readlinkat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_STATFS => sys_statfs(ctx.args[0], ctx.args[1]),
         SYS_FSTATFS => sys_fstatfs(ctx.args[0], ctx.args[1]),
+        SYS_FTRUNCATE => sys_ftruncate(ctx.args[0], ctx.args[1]),
         SYS_FCHMODAT => sys_fchmodat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
         SYS_FCHOWNAT => sys_fchownat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
         SYS_UTIMENSAT => sys_utimensat(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
@@ -171,6 +227,24 @@ fn dispatch(tf: &mut TrapFrame, ctx: SyscallContext) -> Result<usize, Errno> {
         SYS_SETGROUPS => sys_setgroups(ctx.args[0], ctx.args[1]),
         SYS_GETCPU => sys_getcpu(ctx.args[0], ctx.args[1]),
         SYS_WAIT4 => sys_wait4(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_SOCKET => sys_socket(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_BIND => sys_bind(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_GETSOCKNAME => sys_getsockname(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_GETPEERNAME => sys_getpeername(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_CONNECT => sys_connect(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_SETSOCKOPT => sys_setsockopt(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
+        SYS_GETSOCKOPT => sys_getsockopt(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
+        SYS_SHUTDOWN => sys_shutdown(ctx.args[0], ctx.args[1]),
+        SYS_LISTEN => sys_listen(ctx.args[0], ctx.args[1]),
+        SYS_ACCEPT => sys_accept(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_ACCEPT4 => sys_accept4(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_SENDTO => sys_sendto(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4], ctx.args[5]),
+        SYS_RECVFROM => sys_recvfrom(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4], ctx.args[5]),
+        SYS_SYNC => sys_sync(),
+        SYS_SENDMSG => sys_sendmsg(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_RECVMSG => sys_recvmsg(ctx.args[0], ctx.args[1], ctx.args[2]),
+        SYS_SENDMMSG => sys_sendmmsg(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3]),
+        SYS_RECVMMSG => sys_recvmmsg(ctx.args[0], ctx.args[1], ctx.args[2], ctx.args[3], ctx.args[4]),
         _ => Err(Errno::NoSys),
     }
 }
@@ -179,7 +253,28 @@ const SYS_EXIT: usize = 93;
 const SYS_EXIT_GROUP: usize = 94;
 const SYS_CLONE: usize = 220;
 const SYS_EXECVE: usize = 221;
+const SYS_BRK: usize = 214;
+const SYS_MUNMAP: usize = 215;
+const SYS_MMAP: usize = 222;
+const SYS_MPROTECT: usize = 226;
+const SYS_MADVISE: usize = 233;
+const SYS_RSEQ: usize = 293;
+const SYS_EVENTFD2: usize = 19;
+const SYS_EPOLL_CREATE1: usize = 20;
+const SYS_EPOLL_CTL: usize = 21;
+const SYS_EPOLL_PWAIT: usize = 22;
+const SYS_TIMERFD_CREATE: usize = 85;
+const SYS_TIMERFD_SETTIME: usize = 86;
+const SYS_TIMERFD_GETTIME: usize = 87;
+const SYS_TIMERFD_GETTIME64: usize = 410;
+const SYS_TIMERFD_SETTIME64: usize = 411;
+const SYS_EPOLL_PWAIT2: usize = 441;
+const SYS_SYNC: usize = 162;
 const SYS_READ: usize = 63;
+const SYS_PREAD64: usize = 67;
+const SYS_PWRITE64: usize = 68;
+const SYS_PREADV: usize = 69;
+const SYS_PWRITEV: usize = 70;
 const SYS_WRITE: usize = 64;
 const SYS_READV: usize = 65;
 const SYS_WRITEV: usize = 66;
@@ -194,11 +289,13 @@ const SYS_LINKAT: usize = 37;
 const SYS_RENAMEAT: usize = 38;
 const SYS_GETDENTS64: usize = 61;
 const SYS_NEWFSTATAT: usize = 79;
+const SYS_READLINK: usize = 89;
 const SYS_READLINKAT: usize = 78;
 const SYS_FACCESSAT: usize = 48;
 const SYS_STATX: usize = 291;
 const SYS_STATFS: usize = 43;
 const SYS_FSTATFS: usize = 44;
+const SYS_FTRUNCATE: usize = 46;
 const SYS_FCHMODAT: usize = 53;
 const SYS_FCHOWNAT: usize = 54;
 const SYS_UTIMENSAT: usize = 88;
@@ -225,6 +322,23 @@ const SYS_RT_SIGPROCMASK: usize = 135;
 const SYS_FCNTL: usize = 25;
 const SYS_UMASK: usize = 166;
 const SYS_PRCTL: usize = 167;
+const SYS_SOCKET: usize = 198;
+const SYS_BIND: usize = 200;
+const SYS_GETSOCKNAME: usize = 204;
+const SYS_GETPEERNAME: usize = 205;
+const SYS_LISTEN: usize = 201;
+const SYS_ACCEPT: usize = 202;
+const SYS_ACCEPT4: usize = 242;
+const SYS_CONNECT: usize = 203;
+const SYS_SETSOCKOPT: usize = 208;
+const SYS_GETSOCKOPT: usize = 209;
+const SYS_SHUTDOWN: usize = 210;
+const SYS_SENDTO: usize = 206;
+const SYS_RECVFROM: usize = 207;
+const SYS_SENDMSG: usize = 211;
+const SYS_RECVMSG: usize = 212;
+const SYS_SENDMMSG: usize = 269;
+const SYS_RECVMMSG: usize = 243;
 const SYS_LSEEK: usize = 62;
 const SYS_SCHED_SETAFFINITY: usize = 122;
 const SYS_SCHED_GETAFFINITY: usize = 123;
@@ -276,18 +390,36 @@ const CLOCK_MONOTONIC_COARSE: usize = 6;
 const CLOCK_MONOTONIC_RAW: usize = 4;
 const CLOCK_BOOTTIME: usize = 7;
 const IOV_MAX: usize = 1024;
+
+const PROT_READ: usize = 0x1;
+const PROT_WRITE: usize = 0x2;
+const PROT_EXEC: usize = 0x4;
+const MAP_SHARED: usize = 0x01;
+const MAP_PRIVATE: usize = 0x02;
+const MAP_FIXED: usize = 0x10;
+const MAP_ANON: usize = 0x20;
 const S_IFCHR: u32 = 0o020000;
 const S_IFBLK: u32 = 0o060000;
 const S_IFDIR: u32 = 0o040000;
 const S_IFREG: u32 = 0o100000;
 const O_CLOEXEC: usize = 0x80000;
-const O_NONBLOCK: usize = 0x4000;
+const O_NONBLOCK: usize = 0x800;
 const O_CREAT: usize = 0x40;
 const O_EXCL: usize = 0x80;
+const O_TRUNC: usize = 0x200;
+const O_APPEND: usize = 0x400;
 const O_RDONLY: usize = 0;
 const O_WRONLY: usize = 1;
 const O_RDWR: usize = 2;
 const O_ACCMODE: usize = 3;
+const SOL_SOCKET: usize = 1;
+const SO_REUSEADDR: usize = 2;
+const SO_ERROR: usize = 4;
+const SO_RCVTIMEO: usize = 20;
+const SO_SNDTIMEO: usize = 21;
+const SHUT_RD: usize = 0;
+const SHUT_WR: usize = 1;
+const SHUT_RDWR: usize = 2;
 const AT_FDCWD: isize = -100;
 const AT_SYMLINK_NOFOLLOW: usize = 0x100;
 const AT_SYMLINK_FOLLOW: usize = 0x400;
@@ -297,6 +429,10 @@ const FD_TABLE_SLOTS: usize = 16;
 const MAX_PROCS: usize = crate::config::MAX_TASKS;
 const PIPE_SLOTS: usize = 8;
 const PIPE_BUFFER_SIZE: usize = 512;
+const EVENTFD_SLOTS: usize = 16;
+const TIMERFD_SLOTS: usize = 16;
+const EPOLL_SLOTS: usize = 16;
+const EPOLL_ITEM_SLOTS: usize = 64;
 const MAX_PATH_LEN: usize = 128;
 const VFS_MOUNT_COUNT: usize = 3;
 const SIG_BLOCK: usize = 0;
@@ -304,14 +440,33 @@ const SIG_UNBLOCK: usize = 1;
 const SIG_SETMASK: usize = 2;
 const F_GETFD: usize = 1;
 const F_SETFD: usize = 2;
+const FD_CLOEXEC: usize = 1;
 const F_GETFL: usize = 3;
 const F_SETFL: usize = 4;
+const SEEK_SET: usize = 0;
+const SEEK_CUR: usize = 1;
+const SEEK_END: usize = 2;
+const EPOLL_CTL_ADD: usize = 1;
+const EPOLL_CTL_DEL: usize = 2;
+const EPOLL_CTL_MOD: usize = 3;
+const EPOLLIN: u32 = 0x001;
+const EPOLLOUT: u32 = 0x004;
+const EPOLLERR: u32 = 0x008;
+const EPOLLHUP: u32 = 0x010;
+const EPOLL_CLOEXEC: usize = 0x80000;
+const EFD_SEMAPHORE: usize = 0x1;
+const EFD_NONBLOCK: usize = 0x800;
+const EFD_CLOEXEC: usize = 0x80000;
+const TFD_NONBLOCK: usize = 0x800;
+const TFD_CLOEXEC: usize = 0x80000;
+const TFD_TIMER_ABSTIME: usize = 0x1;
 const POLLIN: u16 = 0x001;
 const POLLOUT: u16 = 0x004;
 const POLLERR: u16 = 0x008;
 const POLLHUP: u16 = 0x010;
 const POLLNVAL: u16 = 0x020;
 const PPOLL_RETRY_SLEEP_MS: u64 = 10;
+const EPOLL_RETRY_SLEEP_MS: u64 = 10;
 const PR_SET_NAME: usize = 15;
 const PR_GET_NAME: usize = 16;
 const GRND_NONBLOCK: usize = 0x1;
@@ -334,6 +489,13 @@ struct Timespec {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
+struct Itimerspec {
+    it_interval: Timespec,
+    it_value: Timespec,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
 struct Timeval {
     tv_sec: i64,
     tv_usec: i64,
@@ -351,6 +513,28 @@ struct TimeZone {
 struct Iovec {
     iov_base: usize,
     iov_len: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct MsgHdr {
+    msg_name: usize,
+    msg_namelen: u32,
+    msg_namelen_pad: u32,
+    msg_iov: usize,
+    msg_iovlen: usize,
+    msg_control: usize,
+    msg_controllen: usize,
+    msg_flags: i32,
+    msg_flags_pad: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct MMsgHdr {
+    msg_hdr: MsgHdr,
+    msg_len: u32,
+    msg_len_pad: u32,
 }
 
 #[repr(C)]
@@ -477,7 +661,7 @@ struct VfsHandle {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum FdKind {
+enum FdObject {
     Empty,
     Stdin,
     Stdout,
@@ -485,13 +669,19 @@ enum FdKind {
     Vfs(VfsHandle),
     PipeRead(usize),
     PipeWrite(usize),
+    Socket(axnet::SocketId),
+    Eventfd(usize),
+    Timerfd(usize),
+    Epoll(usize),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct FdEntry {
-    kind: FdKind,
+    object: FdObject,
     flags: usize,
     offset: usize,
+    recv_timeout_ms: u64,
+    send_timeout_ms: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -505,6 +695,39 @@ struct Pipe {
     buf: [u8; PIPE_BUFFER_SIZE],
 }
 
+#[derive(Clone, Copy)]
+struct EventFd {
+    used: bool,
+    refs: usize,
+    counter: u64,
+    flags: usize,
+}
+
+#[derive(Clone, Copy)]
+struct TimerFd {
+    used: bool,
+    refs: usize,
+    next_ns: u64,
+    interval_ns: u64,
+    flags: usize,
+}
+
+#[derive(Clone, Copy)]
+struct EpollItem {
+    used: bool,
+    fd: i32,
+    events: u32,
+    data: u64,
+}
+
+#[derive(Clone, Copy)]
+struct EpollInstance {
+    used: bool,
+    refs: usize,
+    flags: usize,
+    items: [EpollItem; EPOLL_ITEM_SLOTS],
+}
+
 const EMPTY_PIPE: Pipe = Pipe {
     used: false,
     readers: 0,
@@ -515,10 +738,41 @@ const EMPTY_PIPE: Pipe = Pipe {
     buf: [0; PIPE_BUFFER_SIZE],
 };
 
+const EMPTY_EVENTFD: EventFd = EventFd {
+    used: false,
+    refs: 0,
+    counter: 0,
+    flags: 0,
+};
+
+const EMPTY_TIMERFD: TimerFd = TimerFd {
+    used: false,
+    refs: 0,
+    next_ns: 0,
+    interval_ns: 0,
+    flags: 0,
+};
+
+const EMPTY_EPOLL_ITEM: EpollItem = EpollItem {
+    used: false,
+    fd: -1,
+    events: 0,
+    data: 0,
+};
+
+const EMPTY_EPOLL: EpollInstance = EpollInstance {
+    used: false,
+    refs: 0,
+    flags: 0,
+    items: [EMPTY_EPOLL_ITEM; EPOLL_ITEM_SLOTS],
+};
+
 const EMPTY_FD_ENTRY: FdEntry = FdEntry {
-    kind: FdKind::Empty,
+    object: FdObject::Empty,
     flags: 0,
     offset: 0,
+    recv_timeout_ms: 0,
+    send_timeout_ms: 0,
 };
 
 // SAFETY: 单核早期阶段，fd 表按进程索引串行访问。
@@ -537,8 +791,52 @@ static mut PROC_UMASK: [u16; MAX_PROCS] = [0; MAX_PROCS];
 static mut CONSOLE_STASH: i16 = -1;
 // SAFETY: pipe 表在早期阶段串行访问。
 static mut PIPES: [Pipe; PIPE_SLOTS] = [EMPTY_PIPE; PIPE_SLOTS];
+// SAFETY: eventfd 表在早期阶段串行访问。
+static mut EVENTFDS: [EventFd; EVENTFD_SLOTS] = [EMPTY_EVENTFD; EVENTFD_SLOTS];
+// SAFETY: timerfd 表在早期阶段串行访问。
+static mut TIMERFDS: [TimerFd; TIMERFD_SLOTS] = [EMPTY_TIMERFD; TIMERFD_SLOTS];
+// SAFETY: epoll 表在早期阶段串行访问。
+static mut EPOLLS: [EpollInstance; EPOLL_SLOTS] = [EMPTY_EPOLL; EPOLL_SLOTS];
 // SAFETY: pipe 等待队列只在单核早期阶段访问。
 static PIPE_READ_WAITERS: [crate::task_wait_queue::TaskWaitQueue; PIPE_SLOTS] = [
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+];
+// SAFETY: eventfd 等待队列只在单核早期阶段访问。
+static EVENTFD_WAITERS: [crate::task_wait_queue::TaskWaitQueue; EVENTFD_SLOTS] = [
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+];
+// SAFETY: timerfd 等待队列只在单核早期阶段访问。
+static TIMERFD_WAITERS: [crate::task_wait_queue::TaskWaitQueue; TIMERFD_SLOTS] = [
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
+    crate::task_wait_queue::TaskWaitQueue::new(),
     crate::task_wait_queue::TaskWaitQueue::new(),
     crate::task_wait_queue::TaskWaitQueue::new(),
     crate::task_wait_queue::TaskWaitQueue::new(),
@@ -591,6 +889,29 @@ struct PollFd {
     revents: i16,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct EpollEvent {
+    events: u32,
+    data: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct SockAddrIn {
+    sin_family: u16,
+    sin_port: u16,
+    sin_addr: u32,
+    sin_zero: [u8; 8],
+}
+
+const AF_INET: u16 = 2;
+const SOCK_STREAM: usize = 1;
+const SOCK_DGRAM: usize = 2;
+const SOCK_NONBLOCK: usize = 0x800;
+const SOCK_CLOEXEC: usize = 0x80000;
+const MSG_DONTWAIT: usize = 0x40;
+
 fn sys_exit(_code: usize) -> Result<usize, Errno> {
     let pid = crate::process::current_pid().unwrap_or(1);
     if pid == 1 {
@@ -614,6 +935,13 @@ fn sys_execve(tf: &mut TrapFrame, pathname: usize, argv: usize, envp: usize) -> 
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
+    if cfg!(feature = "user-tcp-echo") {
+        let mut buf = [0u8; 128];
+        match read_user_path_str(root_pa, pathname, &mut buf) {
+            Ok(path) => crate::println!("sys_execve: trying {}", path),
+            Err(_) => crate::println!("sys_execve: trying <invalid path>"),
+        }
+    }
     validate_user_path(root_pa, pathname)?;
     validate_user_ptr_list(root_pa, argv)?;
     validate_user_ptr_list(root_pa, envp)?;
@@ -621,33 +949,454 @@ fn sys_execve(tf: &mut TrapFrame, pathname: usize, argv: usize, envp: usize) -> 
     let image = match execve_vfs_image(root_pa, pathname) {
         Ok(image) => image,
         Err(err) => {
+            if cfg!(feature = "user-tcp-echo") {
+                crate::println!("sys_execve: read image failed ({:?})", err);
+            }
             return Err(err);
         }
     };
     let ctx = match crate::user::load_exec_elf(root_pa, image, argv, envp) {
         Ok(ctx) => ctx,
         Err(err) => {
+            if cfg!(feature = "user-tcp-echo") {
+                crate::println!("sys_execve: load elf failed ({:?})", err);
+            }
             return Err(err);
         }
     };
+    if cfg!(feature = "user-tcp-echo") {
+        crate::println!("sys_execve: success entry={:#x} sp={:#x}", ctx.entry, ctx.user_sp);
+    }
     // execve 成功后不返回，更新入口与用户栈并清理参数寄存器。
     tf.sepc = ctx.entry.wrapping_sub(4);
     tf.a0 = ctx.argc;
     tf.a1 = ctx.argv;
     tf.a2 = ctx.envp;
     mm::switch_root(ctx.root_pa);
-    crate::trap::set_user_stack(ctx.user_sp);
+    tf.user_sp = ctx.user_sp;
     if let Some(task_id) = crate::runtime::current_task_id() {
         let _ = crate::task::set_user_context(task_id, ctx.root_pa, ctx.entry, ctx.user_sp);
+        let _ = crate::task::set_heap_top(task_id, ctx.heap_top);
     }
     let _ = crate::process::update_current_root(ctx.root_pa);
+    close_cloexec_fds();
     if ctx.root_pa != root_pa {
         crate::mm::release_user_root(root_pa);
+    }
+    Ok(ctx.argc)
+}
+
+fn sys_brk(addr: usize) -> Result<usize, Errno> {
+    let task_id = crate::runtime::current_task_id().ok_or(Errno::Fault)?;
+    let old_brk = crate::task::heap_top(task_id).ok_or(Errno::Fault)?;
+    if addr == 0 {
+        return Ok(old_brk);
+    }
+    if addr <= old_brk {
+        return Ok(old_brk);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let new_brk = align_up(addr, mm::PAGE_SIZE);
+    let start = align_up(old_brk, mm::PAGE_SIZE);
+    if start < new_brk {
+        let flags = mm::UserMapFlags {
+            read: true,
+            write: true,
+            exec: false,
+        };
+        for va in (start..new_brk).step_by(mm::PAGE_SIZE) {
+            let frame = mm::alloc_frame().ok_or(Errno::NoMem)?;
+            let pa = frame.addr().as_usize();
+            // SAFETY: fresh frame; zero before mapping into user space.
+            unsafe {
+                core::ptr::write_bytes(pa as *mut u8, 0, mm::PAGE_SIZE);
+            }
+            if !mm::map_user_page(root_pa, va, pa, flags) {
+                return Err(Errno::NoMem);
+            }
+        }
+    }
+    crate::task::set_heap_top(task_id, new_brk);
+    Ok(new_brk)
+}
+
+fn sys_mmap(
+    addr: usize,
+    len: usize,
+    prot: usize,
+    flags: usize,
+    fd: usize,
+    offset: usize,
+) -> Result<usize, Errno> {
+    if len == 0 {
+        return Err(Errno::Inval);
+    }
+    if (flags & MAP_ANON) == 0 || (flags & MAP_PRIVATE) == 0 || (flags & MAP_SHARED) != 0 {
+        return Err(Errno::Inval);
+    }
+    if fd != usize::MAX || offset != 0 {
+        return Err(Errno::Inval);
+    }
+    let task_id = crate::runtime::current_task_id().ok_or(Errno::Fault)?;
+    let heap_top = crate::task::heap_top(task_id).ok_or(Errno::Fault)?;
+    let fixed = (flags & MAP_FIXED) != 0;
+    if fixed {
+        if addr == 0 || (addr & (mm::PAGE_SIZE - 1)) != 0 {
+            return Err(Errno::Inval);
+        }
+    }
+    let start = if addr != 0 {
+        align_up(addr, mm::PAGE_SIZE)
+    } else {
+        align_up(heap_top, mm::PAGE_SIZE)
+    };
+    let map_len = align_up(len, mm::PAGE_SIZE);
+    if map_len == 0 {
+        return Err(Errno::Inval);
+    }
+    let end = start.checked_add(map_len).ok_or(Errno::Inval)?;
+    let flags_map = mm::UserMapFlags {
+        read: (prot & PROT_READ) != 0,
+        write: (prot & PROT_WRITE) != 0,
+        exec: (prot & PROT_EXEC) != 0,
+    };
+    let mut flags_map = flags_map;
+    if !flags_map.read && !flags_map.write && !flags_map.exec {
+        return Err(Errno::Inval);
+    }
+    if flags_map.exec && !flags_map.read {
+        flags_map.read = true;
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    if fixed {
+        let mut va = start;
+        while va < end {
+            let _ = mm::unmap_user_page(root_pa, va);
+            va = va.wrapping_add(mm::PAGE_SIZE);
+        }
+    }
+
+    let mut va = start;
+    while va < end {
+        if mm::user_page_mapped(root_pa, va) {
+            return Err(Errno::Inval);
+        }
+        let frame = mm::alloc_frame().ok_or(Errno::NoMem)?;
+        let pa = frame.addr().as_usize();
+        // SAFETY: freshly allocated frame is exclusively owned by this mapping.
+        unsafe {
+            core::ptr::write_bytes(pa as *mut u8, 0, mm::PAGE_SIZE);
+        }
+        if !mm::map_user_page(root_pa, va, pa, flags_map) {
+            return Err(Errno::NoMem);
+        }
+        va = va.wrapping_add(mm::PAGE_SIZE);
+    }
+    if !fixed && end > heap_top {
+        let _ = crate::task::set_heap_top(task_id, end);
+    }
+    Ok(start)
+}
+
+fn sys_munmap(addr: usize, len: usize) -> Result<usize, Errno> {
+    if len == 0 || (addr & (mm::PAGE_SIZE - 1)) != 0 {
+        return Err(Errno::Inval);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let end = addr.checked_add(align_up(len, mm::PAGE_SIZE)).ok_or(Errno::Inval)?;
+    let mut va = addr;
+    while va < end {
+        let _ = mm::unmap_user_page(root_pa, va);
+        va = va.wrapping_add(mm::PAGE_SIZE);
+    }
+    mm::flush_tlb();
+    Ok(0)
+}
+
+fn sys_mprotect(addr: usize, len: usize, prot: usize) -> Result<usize, Errno> {
+    if len == 0 || (addr & (mm::PAGE_SIZE - 1)) != 0 {
+        return Err(Errno::Inval);
+    }
+    if (prot & (PROT_READ | PROT_WRITE | PROT_EXEC)) == 0 {
+        return Err(Errno::Inval);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let mut flags_map = mm::UserMapFlags {
+        read: (prot & PROT_READ) != 0,
+        write: (prot & PROT_WRITE) != 0,
+        exec: (prot & PROT_EXEC) != 0,
+    };
+    if flags_map.exec && !flags_map.read {
+        flags_map.read = true;
+    }
+    let end = addr.checked_add(align_up(len, mm::PAGE_SIZE)).ok_or(Errno::Inval)?;
+    let mut va = addr;
+    while va < end {
+        let _ = mm::protect_user_page(root_pa, va, flags_map);
+        va = va.wrapping_add(mm::PAGE_SIZE);
+    }
+    mm::flush_tlb();
+    Ok(0)
+}
+
+fn sys_madvise(_addr: usize, len: usize, _advice: usize) -> Result<usize, Errno> {
+    if len == 0 {
+        return Err(Errno::Inval);
+    }
+    if mm::current_root_pa() == 0 {
+        return Err(Errno::Fault);
     }
     Ok(0)
 }
 
-const EXECVE_IMAGE_MAX: usize = 0x2000;
+fn sys_rseq(_rseq: usize, _rseq_len: usize, _flags: usize, _sig: usize) -> Result<usize, Errno> {
+    Err(Errno::NoSys)
+}
+
+fn sys_eventfd2(initval: usize, flags: usize) -> Result<usize, Errno> {
+    if flags & !(EFD_SEMAPHORE | EFD_NONBLOCK | EFD_CLOEXEC) != 0 {
+        return Err(Errno::Inval);
+    }
+    let initval = initval as u64;
+    let event_id = alloc_eventfd(initval, flags).ok_or(Errno::MFile)?;
+    let mut status_flags = 0;
+    if (flags & EFD_NONBLOCK) != 0 {
+        status_flags |= O_NONBLOCK;
+    }
+    if (flags & EFD_CLOEXEC) != 0 {
+        status_flags |= O_CLOEXEC;
+    }
+    let entry = FdEntry {
+        object: FdObject::Eventfd(event_id),
+        flags: status_flags,
+        offset: 0,
+        recv_timeout_ms: 0,
+        send_timeout_ms: 0,
+    };
+    let fd = alloc_fd(entry).ok_or(Errno::MFile)?;
+    Ok(fd)
+}
+
+fn sys_epoll_create1(flags: usize) -> Result<usize, Errno> {
+    if flags & !EPOLL_CLOEXEC != 0 {
+        return Err(Errno::Inval);
+    }
+    let epoll_id = alloc_epoll(flags).ok_or(Errno::MFile)?;
+    let status_flags = if (flags & EPOLL_CLOEXEC) != 0 { O_CLOEXEC } else { 0 };
+    let entry = FdEntry {
+        object: FdObject::Epoll(epoll_id),
+        flags: status_flags,
+        offset: 0,
+        recv_timeout_ms: 0,
+        send_timeout_ms: 0,
+    };
+    let fd = alloc_fd(entry).ok_or(Errno::MFile)?;
+    Ok(fd)
+}
+
+fn sys_epoll_ctl(epfd: usize, op: usize, fd: usize, event_ptr: usize) -> Result<usize, Errno> {
+    let entry = resolve_fd(epfd).ok_or(Errno::Badf)?;
+    let epoll_id = match entry.object {
+        FdObject::Epoll(id) => id,
+        _ => return Err(Errno::Badf),
+    };
+    if resolve_fd(fd).is_none() {
+        return Err(Errno::Badf);
+    }
+    let mut event = EpollEvent { events: 0, data: 0 };
+    if matches!(op, EPOLL_CTL_ADD | EPOLL_CTL_MOD) {
+        if event_ptr == 0 {
+            return Err(Errno::Fault);
+        }
+        let root_pa = mm::current_root_pa();
+        if root_pa == 0 {
+            return Err(Errno::Fault);
+        }
+        event = UserPtr::<EpollEvent>::new(event_ptr)
+            .read(root_pa)
+            .ok_or(Errno::Fault)?;
+    }
+    // SAFETY: 单核早期阶段，epoll 表串行更新。
+    unsafe {
+        let epoll = EPOLLS.get_mut(epoll_id).ok_or(Errno::Badf)?;
+        if !epoll.used {
+            return Err(Errno::Badf);
+        }
+        match op {
+            EPOLL_CTL_ADD => {
+                for item in epoll.items.iter() {
+                    if item.used && item.fd == fd as i32 {
+                        return Err(Errno::Exist);
+                    }
+                }
+                if let Some(slot) = epoll.items.iter_mut().find(|item| !item.used) {
+                    *slot = EpollItem {
+                        used: true,
+                        fd: fd as i32,
+                        events: event.events,
+                        data: event.data,
+                    };
+                    return Ok(0);
+                }
+                Err(Errno::MFile)
+            }
+            EPOLL_CTL_MOD => {
+                for item in epoll.items.iter_mut() {
+                    if item.used && item.fd == fd as i32 {
+                        item.events = event.events;
+                        item.data = event.data;
+                        return Ok(0);
+                    }
+                }
+                Err(Errno::NoEnt)
+            }
+            EPOLL_CTL_DEL => {
+                for item in epoll.items.iter_mut() {
+                    if item.used && item.fd == fd as i32 {
+                        *item = EMPTY_EPOLL_ITEM;
+                        return Ok(0);
+                    }
+                }
+                Err(Errno::NoEnt)
+            }
+            _ => Err(Errno::Inval),
+        }
+    }
+}
+
+fn sys_epoll_pwait(
+    epfd: usize,
+    events_ptr: usize,
+    maxevents: usize,
+    timeout: usize,
+    _sigmask: usize,
+    _sigsetsize: usize,
+) -> Result<usize, Errno> {
+    let timeout = timeout as isize;
+    let timeout_ms = if timeout < 0 { None } else { Some(timeout as u64) };
+    epoll_wait(epfd, events_ptr, maxevents, timeout_ms)
+}
+
+fn sys_epoll_pwait2(
+    epfd: usize,
+    events_ptr: usize,
+    maxevents: usize,
+    timeout: usize,
+    _sigmask: usize,
+    _sigsetsize: usize,
+) -> Result<usize, Errno> {
+    let timeout_ms = epoll_timeout_ms(timeout)?;
+    epoll_wait(epfd, events_ptr, maxevents, timeout_ms)
+}
+
+fn sys_timerfd_create(clockid: usize, flags: usize) -> Result<usize, Errno> {
+    if clockid != CLOCK_MONOTONIC && clockid != CLOCK_BOOTTIME {
+        return Err(Errno::Inval);
+    }
+    if flags & !(TFD_NONBLOCK | TFD_CLOEXEC) != 0 {
+        return Err(Errno::Inval);
+    }
+    let timer_id = alloc_timerfd(flags).ok_or(Errno::MFile)?;
+    let mut status_flags = 0;
+    if (flags & TFD_NONBLOCK) != 0 {
+        status_flags |= O_NONBLOCK;
+    }
+    if (flags & TFD_CLOEXEC) != 0 {
+        status_flags |= O_CLOEXEC;
+    }
+    let entry = FdEntry {
+        object: FdObject::Timerfd(timer_id),
+        flags: status_flags,
+        offset: 0,
+        recv_timeout_ms: 0,
+        send_timeout_ms: 0,
+    };
+    let fd = alloc_fd(entry).ok_or(Errno::MFile)?;
+    Ok(fd)
+}
+
+fn sys_timerfd_settime(fd: usize, flags: usize, new_ptr: usize, old_ptr: usize) -> Result<usize, Errno> {
+    if flags & !TFD_TIMER_ABSTIME != 0 {
+        return Err(Errno::Inval);
+    }
+    if new_ptr == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    let timer_id = match entry.object {
+        FdObject::Timerfd(id) => id,
+        _ => return Err(Errno::Badf),
+    };
+    let new_value = UserPtr::<Itimerspec>::new(new_ptr)
+        .read(root_pa)
+        .ok_or(Errno::Fault)?;
+    if old_ptr != 0 {
+        let old = timerfd_current_spec(timer_id)?;
+        UserPtr::new(old_ptr).write(root_pa, old).ok_or(Errno::Fault)?;
+    }
+    let value_ns = timespec_to_ns(new_value.it_value)?;
+    let interval_ns = timespec_to_ns(new_value.it_interval)?;
+    let now = time::monotonic_ns();
+    let next_ns = if value_ns == 0 {
+        0
+    } else if (flags & TFD_TIMER_ABSTIME) != 0 {
+        value_ns
+    } else {
+        now.saturating_add(value_ns)
+    };
+    // SAFETY: 单核早期阶段串行更新 timerfd。
+    unsafe {
+        if let Some(timer) = TIMERFDS.get_mut(timer_id) {
+            if !timer.used {
+                return Err(Errno::Badf);
+            }
+            timer.next_ns = next_ns;
+            timer.interval_ns = interval_ns;
+        } else {
+            return Err(Errno::Badf);
+        }
+    }
+    let _ = crate::runtime::wake_all(timerfd_queue(timer_id));
+    Ok(0)
+}
+
+fn sys_timerfd_gettime(fd: usize, curr_ptr: usize) -> Result<usize, Errno> {
+    if curr_ptr == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    let timer_id = match entry.object {
+        FdObject::Timerfd(id) => id,
+        _ => return Err(Errno::Badf),
+    };
+    let current = timerfd_current_spec(timer_id)?;
+    UserPtr::new(curr_ptr)
+        .write(root_pa, current)
+        .ok_or(Errno::Fault)?;
+    Ok(0)
+}
+
+const EXECVE_IMAGE_MAX: usize = 0x100000;
 // SAFETY: 单核 execve 过程复用该缓冲区读取 ELF 镜像。
 static mut EXECVE_IMAGE: [u8; EXECVE_IMAGE_MAX] = [0; EXECVE_IMAGE_MAX];
 
@@ -759,6 +1508,165 @@ fn sys_read(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     read_from_entry(fd, entry, root_pa, buf, len)
 }
 
+fn sys_pread64(fd: usize, buf: usize, len: usize, offset: usize) -> Result<usize, Errno> {
+    if len == 0 {
+        return Ok(0);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    match entry.object {
+        FdObject::Vfs(handle) => {
+            if handle.file_type == FileType::Dir {
+                return Err(Errno::IsDir);
+            }
+            with_mounts(|mounts| {
+                let fs = mounts.fs_for(handle.mount).ok_or(Errno::NoEnt)?;
+                read_vfs_at(root_pa, fs, handle.inode, offset, buf, len)
+            })
+        }
+        FdObject::Stdin
+        | FdObject::Stdout
+        | FdObject::Stderr
+        | FdObject::PipeRead(_)
+        | FdObject::PipeWrite(_)
+        | FdObject::Socket(_)
+        | FdObject::Eventfd(_)
+        | FdObject::Timerfd(_)
+        | FdObject::Epoll(_) => Err(Errno::Pipe),
+        FdObject::Empty => Err(Errno::Badf),
+    }
+}
+
+fn sys_pwrite64(fd: usize, buf: usize, len: usize, offset: usize) -> Result<usize, Errno> {
+    if len == 0 {
+        return Ok(0);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    match entry.object {
+        FdObject::Vfs(handle) => {
+            if handle.file_type == FileType::Dir {
+                return Err(Errno::IsDir);
+            }
+            with_mounts(|mounts| {
+                let fs = mounts.fs_for(handle.mount).ok_or(Errno::NoEnt)?;
+                write_vfs_at(root_pa, fs, handle.inode, offset, buf, len)
+            })
+        }
+        FdObject::Stdin
+        | FdObject::Stdout
+        | FdObject::Stderr
+        | FdObject::PipeRead(_)
+        | FdObject::PipeWrite(_)
+        | FdObject::Socket(_)
+        | FdObject::Eventfd(_)
+        | FdObject::Timerfd(_)
+        | FdObject::Epoll(_) => Err(Errno::Pipe),
+        FdObject::Empty => Err(Errno::Badf),
+    }
+}
+
+fn sys_preadv(fd: usize, iov_ptr: usize, iovcnt: usize, offset: usize) -> Result<usize, Errno> {
+    if iovcnt == 0 {
+        return Ok(0);
+    }
+    if iovcnt > IOV_MAX {
+        return Err(Errno::Inval);
+    }
+    if iov_ptr == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    match entry.object {
+        FdObject::Vfs(handle) => {
+            if handle.file_type == FileType::Dir {
+                return Err(Errno::IsDir);
+            }
+            with_mounts(|mounts| {
+                let fs = mounts.fs_for(handle.mount).ok_or(Errno::NoEnt)?;
+                let mut total = 0usize;
+                for index in 0..iovcnt {
+                    let iov = load_iovec(root_pa, iov_ptr, index)?;
+                    if iov.iov_len == 0 {
+                        continue;
+                    }
+                    let read =
+                        read_vfs_at(root_pa, fs, handle.inode, offset + total, iov.iov_base, iov.iov_len)?;
+                    if read == 0 {
+                        return Ok(total);
+                    }
+                    total += read;
+                    if read < iov.iov_len {
+                        return Ok(total);
+                    }
+                }
+                Ok(total)
+            })
+        }
+        FdObject::Empty => Err(Errno::Badf),
+        _ => Err(Errno::Pipe),
+    }
+}
+
+fn sys_pwritev(fd: usize, iov_ptr: usize, iovcnt: usize, offset: usize) -> Result<usize, Errno> {
+    if iovcnt == 0 {
+        return Ok(0);
+    }
+    if iovcnt > IOV_MAX {
+        return Err(Errno::Inval);
+    }
+    if iov_ptr == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    match entry.object {
+        FdObject::Vfs(handle) => {
+            if handle.file_type == FileType::Dir {
+                return Err(Errno::IsDir);
+            }
+            with_mounts(|mounts| {
+                let fs = mounts.fs_for(handle.mount).ok_or(Errno::NoEnt)?;
+                let mut total = 0usize;
+                for index in 0..iovcnt {
+                    let iov = load_iovec(root_pa, iov_ptr, index)?;
+                    if iov.iov_len == 0 {
+                        continue;
+                    }
+                    let written = write_vfs_at(
+                        root_pa,
+                        fs,
+                        handle.inode,
+                        offset + total,
+                        iov.iov_base,
+                        iov.iov_len,
+                    )?;
+                    total += written;
+                    if written < iov.iov_len {
+                        return Ok(total);
+                    }
+                }
+                Ok(total)
+            })
+        }
+        FdObject::Empty => Err(Errno::Badf),
+        _ => Err(Errno::Pipe),
+    }
+}
+
 fn sys_write(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     if len == 0 {
         return Ok(0);
@@ -852,6 +1760,10 @@ fn sys_writev(fd: usize, iov_ptr: usize, iovcnt: usize) -> Result<usize, Errno> 
     Ok(total)
 }
 
+fn sys_access(pathname: usize, mode: usize) -> Result<usize, Errno> {
+    sys_faccessat(AT_FDCWD as usize, pathname, mode, 0)
+}
+
 fn sys_open(pathname: usize, flags: usize, mode: usize) -> Result<usize, Errno> {
     sys_openat(usize::MAX, pathname, flags, mode)
 }
@@ -869,11 +1781,13 @@ fn sys_pipe2(pipefd: usize, flags: usize) -> Result<usize, Errno> {
     }
     // 占位 pipe：固定缓冲区，空/满时阻塞或返回 EAGAIN。
     let pipe_id = alloc_pipe().ok_or(Errno::MFile)?;
-    let status_flags = if (flags & O_NONBLOCK) != 0 { O_NONBLOCK } else { 0 };
+    let status_flags = flags & (O_NONBLOCK | O_CLOEXEC);
     let read_fd = match alloc_fd(FdEntry {
-        kind: FdKind::PipeRead(pipe_id),
+        object: FdObject::PipeRead(pipe_id),
         flags: status_flags,
         offset: 0,
+        recv_timeout_ms: 0,
+        send_timeout_ms: 0,
     }) {
         Some(fd) => fd,
         None => {
@@ -882,9 +1796,11 @@ fn sys_pipe2(pipefd: usize, flags: usize) -> Result<usize, Errno> {
         }
     };
     let write_fd = match alloc_fd(FdEntry {
-        kind: FdKind::PipeWrite(pipe_id),
+        object: FdObject::PipeWrite(pipe_id),
         flags: status_flags,
         offset: 0,
+        recv_timeout_ms: 0,
+        send_timeout_ms: 0,
     }) {
         Some(fd) => fd,
         None => {
@@ -901,6 +1817,726 @@ fn sys_pipe2(pipefd: usize, flags: usize) -> Result<usize, Errno> {
     Ok(0)
 }
 
+fn sys_socket(domain: usize, sock_type: usize, protocol: usize) -> Result<usize, Errno> {
+    let sock_type_base = sock_type & 0xf;
+    let socket_id = axnet::socket_create(domain as i32, sock_type_base as i32, protocol as i32)
+        .map_err(map_net_err)?;
+    let mut flags = 0;
+    if (sock_type & SOCK_NONBLOCK) != 0 {
+        flags |= O_NONBLOCK;
+    }
+    if (sock_type & SOCK_CLOEXEC) != 0 {
+        flags |= O_CLOEXEC;
+    }
+    let entry = FdEntry {
+        object: FdObject::Socket(socket_id),
+        flags,
+        offset: 0,
+        recv_timeout_ms: 0,
+        send_timeout_ms: 0,
+    };
+    alloc_fd(entry).ok_or(Errno::MFile)
+}
+
+fn sys_bind(fd: usize, addr: usize, len: usize) -> Result<usize, Errno> {
+    let root_pa = mm::current_root_pa();
+    let socket_id = resolve_socket_fd(fd)?;
+    let (ip, port) = parse_sockaddr_in(root_pa, addr, len)?;
+    axnet::socket_bind(socket_id, ip, port).map_err(map_net_err)?;
+    Ok(0)
+}
+
+fn sys_getsockname(fd: usize, addr: usize, addrlen: usize) -> Result<usize, Errno> {
+    let root_pa = mm::current_root_pa();
+    let socket_id = resolve_socket_fd(fd)?;
+    let (ip, port) = axnet::socket_local_endpoint(socket_id).map_err(map_net_err)?;
+    write_sockaddr_in(root_pa, addr, addrlen, Some((ip, port)))?;
+    Ok(0)
+}
+
+fn sys_getpeername(fd: usize, addr: usize, addrlen: usize) -> Result<usize, Errno> {
+    let root_pa = mm::current_root_pa();
+    let socket_id = resolve_socket_fd(fd)?;
+    let endpoint = axnet::socket_remote_endpoint(socket_id).map_err(map_net_err)?;
+    let Some((ip, port)) = endpoint else {
+        return Err(Errno::NotConn);
+    };
+    write_sockaddr_in(root_pa, addr, addrlen, Some((ip, port)))?;
+    Ok(0)
+}
+
+fn sys_sync() -> Result<usize, Errno> {
+    with_mounts(|mounts| mounts.flush_all().map_err(map_vfs_err))?;
+    Ok(0)
+}
+
+fn sys_connect(fd: usize, addr: usize, len: usize) -> Result<usize, Errno> {
+    let root_pa = mm::current_root_pa();
+    let (socket_id, entry) = resolve_socket_entry(fd)?;
+    let nonblock = (entry.flags & O_NONBLOCK) != 0;
+    let timeout_ms = entry.send_timeout_ms;
+    let was_connecting = axnet::socket_connecting(socket_id).map_err(map_net_err)?;
+    if cfg!(feature = "user-tcp-echo") && TCP_CONNECT_LOGGED.swap(1, Ordering::Relaxed) == 0 {
+        crate::println!("sys_connect: fd={} nonblock={}", fd, nonblock);
+    }
+    let (ip, port) = parse_sockaddr_in(root_pa, addr, len)?;
+    match axnet::socket_connect(socket_id, ip, port) {
+        Ok(()) => {}
+        Err(axnet::NetError::InProgress) => {
+            if nonblock || !can_block_current() {
+                if was_connecting {
+                    return Err(Errno::Already);
+                }
+                return Err(Errno::InProgress);
+            }
+        }
+        Err(axnet::NetError::IsConnected) => return Err(Errno::IsConn),
+        Err(err) => return Err(map_net_err(err)),
+    }
+
+    if nonblock {
+        let revents = axnet::socket_poll(socket_id, POLLOUT | POLLHUP).map_err(map_net_err)?;
+        if (revents & POLLOUT) != 0 {
+            return Ok(0);
+        }
+        if (revents & POLLHUP) != 0 {
+            return Err(connect_hup_error(socket_id));
+        }
+        return Err(Errno::InProgress);
+    }
+
+    loop {
+        let revents = axnet::socket_poll(socket_id, POLLOUT | POLLHUP).map_err(map_net_err)?;
+        if (revents & POLLOUT) != 0 {
+            return Ok(0);
+        }
+        if (revents & POLLHUP) != 0 {
+            return Err(connect_hup_error(socket_id));
+        }
+        if !can_block_current() {
+            return Err(Errno::Again);
+        }
+        if cfg!(feature = "user-tcp-echo") && TCP_CONNECT_LOGGED.swap(2, Ordering::Relaxed) == 1 {
+            crate::println!("sys_connect: blocking");
+        }
+        if timeout_ms == 0 {
+            crate::runtime::block_current(crate::runtime::net_wait_queue());
+        } else if crate::runtime::wait_timeout_ms(crate::runtime::net_wait_queue(), timeout_ms)
+            == crate::wait::WaitResult::Timeout
+        {
+            return Err(Errno::TimedOut);
+        }
+    }
+}
+
+fn connect_hup_error(socket_id: axnet::SocketId) -> Errno {
+    match axnet::socket_take_error(socket_id) {
+        Ok(Some(err)) => map_net_err(err),
+        _ => Errno::ConnRefused,
+    }
+}
+
+fn read_timeval_ms(root_pa: usize, ptr: usize, len: usize) -> Result<u64, Errno> {
+    if ptr == 0 || len < size_of::<Timeval>() {
+        return Err(Errno::Inval);
+    }
+    let tv = UserPtr::<Timeval>::new(ptr)
+        .read(root_pa)
+        .ok_or(Errno::Fault)?;
+    if tv.tv_sec < 0 || tv.tv_usec < 0 || tv.tv_usec >= 1_000_000 {
+        return Err(Errno::Inval);
+    }
+    let ms = (tv.tv_sec as u64)
+        .saturating_mul(1000)
+        .saturating_add((tv.tv_usec as u64 + 999) / 1000);
+    Ok(ms)
+}
+
+fn write_timeval_ms(root_pa: usize, ptr: usize, len_ptr: usize, ms: u64) -> Result<(), Errno> {
+    if ptr == 0 || len_ptr == 0 {
+        return Err(Errno::Fault);
+    }
+    let mut len = UserPtr::<u32>::new(len_ptr)
+        .read(root_pa)
+        .ok_or(Errno::Fault)? as usize;
+    if len < size_of::<Timeval>() {
+        return Err(Errno::Inval);
+    }
+    let tv = Timeval {
+        tv_sec: (ms / 1000) as i64,
+        tv_usec: ((ms % 1000) * 1000) as i64,
+    };
+    UserPtr::new(ptr).write(root_pa, tv).ok_or(Errno::Fault)?;
+    len = size_of::<Timeval>();
+    UserPtr::new(len_ptr)
+        .write(root_pa, len as u32)
+        .ok_or(Errno::Fault)?;
+    Ok(())
+}
+
+fn sys_setsockopt(
+    fd: usize,
+    level: usize,
+    optname: usize,
+    optval: usize,
+    optlen: usize,
+) -> Result<usize, Errno> {
+    let root_pa = mm::current_root_pa();
+    let _socket_id = resolve_socket_fd(fd)?;
+    if level != SOL_SOCKET {
+        return Err(Errno::Inval);
+    }
+    match optname {
+        SO_REUSEADDR => {
+            if optlen < size_of::<u32>() || optval == 0 {
+                return Err(Errno::Inval);
+            }
+            UserPtr::<u32>::new(optval)
+                .read(root_pa)
+                .ok_or(Errno::Fault)?;
+            Ok(0)
+        }
+        SO_RCVTIMEO => {
+            let timeout_ms = read_timeval_ms(root_pa, optval, optlen)?;
+            set_socket_timeout(fd, Some(timeout_ms), None)
+        }
+        SO_SNDTIMEO => {
+            let timeout_ms = read_timeval_ms(root_pa, optval, optlen)?;
+            set_socket_timeout(fd, None, Some(timeout_ms))
+        }
+        _ => Err(Errno::Inval),
+    }
+}
+
+fn sys_getsockopt(
+    fd: usize,
+    level: usize,
+    optname: usize,
+    optval: usize,
+    optlen: usize,
+) -> Result<usize, Errno> {
+    let root_pa = mm::current_root_pa();
+    let socket_id = resolve_socket_fd(fd)?;
+    if level != SOL_SOCKET {
+        return Err(Errno::Inval);
+    }
+    if optlen == 0 {
+        return Err(Errno::Fault);
+    }
+    match optname {
+        SO_ERROR => {
+            let len = UserPtr::<u32>::new(optlen)
+                .read(root_pa)
+                .ok_or(Errno::Fault)? as usize;
+            if len < size_of::<u32>() || optval == 0 {
+                return Err(Errno::Inval);
+            }
+            let value = if let Some(err) = axnet::socket_take_error(socket_id).map_err(map_net_err)? {
+                map_net_err(err) as i32
+            } else if axnet::socket_connecting(socket_id).map_err(map_net_err)? {
+                Errno::InProgress as i32
+            } else {
+                0
+            };
+            UserPtr::new(optval)
+                .write(root_pa, value as u32)
+                .ok_or(Errno::Fault)?;
+            UserPtr::new(optlen)
+                .write(root_pa, size_of::<u32>() as u32)
+                .ok_or(Errno::Fault)?;
+            Ok(0)
+        }
+        SO_REUSEADDR => {
+            let len = UserPtr::<u32>::new(optlen)
+                .read(root_pa)
+                .ok_or(Errno::Fault)? as usize;
+            if len < size_of::<u32>() || optval == 0 {
+                return Err(Errno::Inval);
+            }
+            UserPtr::new(optval)
+                .write(root_pa, 0u32)
+                .ok_or(Errno::Fault)?;
+            UserPtr::new(optlen)
+                .write(root_pa, size_of::<u32>() as u32)
+                .ok_or(Errno::Fault)?;
+            Ok(0)
+        }
+        SO_RCVTIMEO => {
+            let (recv_ms, _) = socket_timeouts(fd)?;
+            write_timeval_ms(root_pa, optval, optlen, recv_ms)?;
+            Ok(0)
+        }
+        SO_SNDTIMEO => {
+            let (_, send_ms) = socket_timeouts(fd)?;
+            write_timeval_ms(root_pa, optval, optlen, send_ms)?;
+            Ok(0)
+        }
+        _ => Err(Errno::Inval),
+    }
+}
+
+fn sys_shutdown(fd: usize, how: usize) -> Result<usize, Errno> {
+    let socket_id = resolve_socket_fd(fd)?;
+    if how != SHUT_RD && how != SHUT_WR && how != SHUT_RDWR {
+        return Err(Errno::Inval);
+    }
+    axnet::socket_shutdown(socket_id, how).map_err(map_net_err)?;
+    Ok(0)
+}
+
+fn sys_listen(fd: usize, backlog: usize) -> Result<usize, Errno> {
+    let socket_id = resolve_socket_fd(fd)?;
+    axnet::socket_listen(socket_id, backlog).map_err(map_net_err)?;
+    Ok(0)
+}
+
+fn sys_accept(fd: usize, addr: usize, addrlen: usize) -> Result<usize, Errno> {
+    let (socket_id, entry) = resolve_socket_entry(fd)?;
+    let nonblock = (entry.flags & O_NONBLOCK) != 0;
+    let timeout_ms = entry.recv_timeout_ms;
+    if cfg!(feature = "user-tcp-echo") && TCP_ACCEPT_LOGGED.swap(1, Ordering::Relaxed) == 0 {
+        crate::println!("sys_accept: fd={} nonblock={}", fd, nonblock);
+    }
+    loop {
+        match axnet::socket_accept(socket_id) {
+            Ok((accepted_id, listener_id, remote)) => {
+                replace_socket_fd(fd, listener_id)?;
+                let entry = FdEntry {
+                    object: FdObject::Socket(accepted_id),
+                    flags: entry.flags & O_NONBLOCK,
+                    offset: 0,
+                    recv_timeout_ms: entry.recv_timeout_ms,
+                    send_timeout_ms: entry.send_timeout_ms,
+                };
+                let newfd = alloc_fd(entry).ok_or(Errno::MFile)?;
+                write_sockaddr_in(mm::current_root_pa(), addr, addrlen, remote)?;
+                return Ok(newfd);
+            }
+            Err(axnet::NetError::WouldBlock) => {
+                if nonblock || !can_block_current() {
+                    return Err(Errno::Again);
+                }
+                if cfg!(feature = "user-tcp-echo") && TCP_ACCEPT_LOGGED.swap(2, Ordering::Relaxed) == 1 {
+                    crate::println!("sys_accept: blocking");
+                }
+                if timeout_ms == 0 {
+                    crate::runtime::block_current(crate::runtime::net_wait_queue());
+                } else if crate::runtime::wait_timeout_ms(crate::runtime::net_wait_queue(), timeout_ms)
+                    == crate::wait::WaitResult::Timeout
+                {
+                    return Err(Errno::TimedOut);
+                }
+            }
+            Err(err) => return Err(map_net_err(err)),
+        }
+    }
+}
+
+fn sys_accept4(fd: usize, addr: usize, addrlen: usize, flags: usize) -> Result<usize, Errno> {
+    if flags & !(SOCK_NONBLOCK | SOCK_CLOEXEC) != 0 {
+        return Err(Errno::Inval);
+    }
+    let newfd = sys_accept(fd, addr, addrlen)?;
+    if (flags & SOCK_NONBLOCK) != 0 {
+        set_fd_flags(newfd, O_NONBLOCK)?;
+    }
+    if (flags & SOCK_CLOEXEC) != 0 {
+        set_fd_cloexec(newfd, true)?;
+    }
+    Ok(newfd)
+}
+
+fn sys_sendto(
+    fd: usize,
+    buf: usize,
+    len: usize,
+    flags: usize,
+    addr: usize,
+    addrlen: usize,
+) -> Result<usize, Errno> {
+    let root_pa = mm::current_root_pa();
+    let (socket_id, entry) = resolve_socket_entry(fd)?;
+    let nonblock = (entry.flags & O_NONBLOCK) != 0 || (flags & MSG_DONTWAIT) != 0;
+    let timeout_ms = entry.send_timeout_ms;
+    let endpoint = if addr != 0 {
+        let (ip, port) = parse_sockaddr_in(root_pa, addr, addrlen)?;
+        Some((ip, port))
+    } else {
+        None
+    };
+    if len == 0 {
+        return Ok(0);
+    }
+    let mut total = 0usize;
+    let mut remaining = len;
+    let mut scratch = [0u8; 512];
+    while remaining > 0 {
+        let chunk = core::cmp::min(remaining, scratch.len());
+        let src = buf.checked_add(total).ok_or(Errno::Fault)?;
+        UserSlice::new(src, chunk)
+            .copy_to_slice(root_pa, &mut scratch[..chunk])
+            .ok_or(Errno::Fault)?;
+        let sent = match axnet::socket_send(socket_id, &scratch[..chunk], endpoint) {
+            Ok(sent) => sent,
+            Err(axnet::NetError::WouldBlock) => {
+                if total > 0 {
+                    break;
+                }
+                if nonblock || !can_block_current() {
+                    return Err(Errno::Again);
+                }
+                if timeout_ms == 0 {
+                    crate::runtime::block_current(crate::runtime::net_wait_queue());
+                } else if crate::runtime::wait_timeout_ms(crate::runtime::net_wait_queue(), timeout_ms)
+                    == crate::wait::WaitResult::Timeout
+                {
+                    return Err(Errno::TimedOut);
+                }
+                continue;
+            }
+            Err(err) => return Err(map_net_err(err)),
+        };
+        total += sent;
+        if sent < chunk {
+            break;
+        }
+        remaining = remaining.saturating_sub(sent);
+    }
+    Ok(total)
+}
+
+fn sys_recvfrom(
+    fd: usize,
+    buf: usize,
+    len: usize,
+    flags: usize,
+    addr: usize,
+    addrlen: usize,
+) -> Result<usize, Errno> {
+    let root_pa = mm::current_root_pa();
+    let (socket_id, entry) = resolve_socket_entry(fd)?;
+    let nonblock = (entry.flags & O_NONBLOCK) != 0 || (flags & MSG_DONTWAIT) != 0;
+    let timeout_ms = entry.recv_timeout_ms;
+    if cfg!(feature = "user-tcp-echo") && TCP_RECV_LOGGED.swap(1, Ordering::Relaxed) == 0 {
+        crate::println!("sys_recv: fd={} nonblock={}", fd, nonblock);
+    }
+    if len == 0 {
+        return Ok(0);
+    }
+    let mut total = 0usize;
+    let mut remaining = len;
+    let mut scratch = [0u8; 512];
+    let mut last_endpoint = None;
+    while remaining > 0 {
+        let chunk = core::cmp::min(remaining, scratch.len());
+        log_tcp_window_event(socket_id, "pre");
+        let (read, endpoint) = match axnet::socket_recv(socket_id, &mut scratch[..chunk]) {
+            Ok(result) => result,
+            Err(axnet::NetError::WouldBlock) => {
+                if total > 0 {
+                    break;
+                }
+                if nonblock || !can_block_current() {
+                    return Err(Errno::Again);
+                }
+                if cfg!(feature = "user-tcp-echo") && TCP_RECV_LOGGED.swap(2, Ordering::Relaxed) == 1 {
+                    crate::println!("sys_recv: blocking");
+                }
+                if timeout_ms == 0 {
+                    crate::runtime::block_current(crate::runtime::net_wait_queue());
+                } else if crate::runtime::wait_timeout_ms(crate::runtime::net_wait_queue(), timeout_ms)
+                    == crate::wait::WaitResult::Timeout
+                {
+                    return Err(Errno::TimedOut);
+                }
+                continue;
+            }
+            Err(err) => return Err(map_net_err(err)),
+        };
+        log_tcp_window_event(socket_id, "post");
+        let dst = buf.checked_add(total).ok_or(Errno::Fault)?;
+        UserSlice::new(dst, read)
+            .copy_from_slice(root_pa, &scratch[..read])
+            .ok_or(Errno::Fault)?;
+        total += read;
+        last_endpoint = endpoint;
+        if last_endpoint.is_none() {
+            let _ = axnet::poll(crate::time::uptime_ms());
+        }
+        if read < chunk {
+            break;
+        }
+        remaining = remaining.saturating_sub(read);
+    }
+    write_sockaddr_in(root_pa, addr, addrlen, last_endpoint)?;
+    Ok(total)
+}
+
+fn log_tcp_window_event(socket_id: axnet::SocketId, tag: &str) {
+    let Ok(Some(event)) = axnet::socket_recv_window_event(socket_id) else {
+        return;
+    };
+    let port = axnet::socket_local_endpoint(socket_id)
+        .map(|(_, port)| port)
+        .unwrap_or(0);
+    crate::println!(
+        "tcp: recv_win {} id={} port={} win={} cap={} queued={}",
+        tag,
+        socket_id,
+        port,
+        event.window,
+        event.capacity,
+        event.queued
+    );
+}
+
+fn sendmsg_inner(fd: usize, msg: usize, flags: usize) -> Result<usize, Errno> {
+    if msg == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    let (socket_id, entry) = resolve_socket_entry(fd)?;
+    let nonblock = (entry.flags & O_NONBLOCK) != 0 || (flags & MSG_DONTWAIT) != 0;
+    let timeout_ms = entry.send_timeout_ms;
+    let hdr = UserPtr::<MsgHdr>::new(msg)
+        .read(root_pa)
+        .ok_or(Errno::Fault)?;
+    if hdr.msg_iovlen > IOV_MAX {
+        return Err(Errno::Inval);
+    }
+    if hdr.msg_control != 0 || hdr.msg_controllen != 0 {
+        return Err(Errno::Inval);
+    }
+    if hdr.msg_iovlen == 0 {
+        return Ok(0);
+    }
+    let endpoint = if hdr.msg_name != 0 {
+        let namelen = hdr.msg_namelen as usize;
+        let (ip, port) = parse_sockaddr_in(root_pa, hdr.msg_name, namelen)?;
+        Some((ip, port))
+    } else {
+        None
+    };
+    let mut total = 0usize;
+    let mut scratch = [0u8; 512];
+    for idx in 0..hdr.msg_iovlen {
+        let iov = load_iovec(root_pa, hdr.msg_iov, idx)?;
+        if iov.iov_len == 0 {
+            continue;
+        }
+        let mut remaining = iov.iov_len;
+        while remaining > 0 {
+            let chunk = core::cmp::min(remaining, scratch.len());
+            let src = iov.iov_base.checked_add(iov.iov_len - remaining).ok_or(Errno::Fault)?;
+            UserSlice::new(src, chunk)
+                .copy_to_slice(root_pa, &mut scratch[..chunk])
+                .ok_or(Errno::Fault)?;
+            let sent = match axnet::socket_send(socket_id, &scratch[..chunk], endpoint) {
+                Ok(sent) => sent,
+                Err(axnet::NetError::WouldBlock) => {
+                    if total > 0 {
+                        return Ok(total);
+                    }
+                    if nonblock || !can_block_current() {
+                        return Err(Errno::Again);
+                    }
+                    if timeout_ms == 0 {
+                        crate::runtime::block_current(crate::runtime::net_wait_queue());
+                    } else if crate::runtime::wait_timeout_ms(crate::runtime::net_wait_queue(), timeout_ms)
+                        == crate::wait::WaitResult::Timeout
+                    {
+                        return Err(Errno::TimedOut);
+                    }
+                    continue;
+                }
+                Err(err) => return Err(map_net_err(err)),
+            };
+            total += sent;
+            if sent < chunk {
+                return Ok(total);
+            }
+            remaining = remaining.saturating_sub(sent);
+        }
+    }
+    Ok(total)
+}
+
+fn recvmsg_inner(fd: usize, msg: usize, flags: usize) -> Result<usize, Errno> {
+    if msg == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    let (socket_id, entry) = resolve_socket_entry(fd)?;
+    let nonblock = (entry.flags & O_NONBLOCK) != 0 || (flags & MSG_DONTWAIT) != 0;
+    let timeout_ms = entry.recv_timeout_ms;
+    let mut hdr = UserPtr::<MsgHdr>::new(msg)
+        .read(root_pa)
+        .ok_or(Errno::Fault)?;
+    if hdr.msg_iovlen > IOV_MAX {
+        return Err(Errno::Inval);
+    }
+    if hdr.msg_control != 0 || hdr.msg_controllen != 0 {
+        return Err(Errno::Inval);
+    }
+    if hdr.msg_iovlen == 0 {
+        return Ok(0);
+    }
+    let mut total = 0usize;
+    let mut scratch = [0u8; 512];
+    let mut last_endpoint = None;
+    for idx in 0..hdr.msg_iovlen {
+        let iov = load_iovec(root_pa, hdr.msg_iov, idx)?;
+        if iov.iov_len == 0 {
+            continue;
+        }
+        let mut remaining = iov.iov_len;
+        while remaining > 0 {
+            let chunk = core::cmp::min(remaining, scratch.len());
+            let (read, endpoint) = match axnet::socket_recv(socket_id, &mut scratch[..chunk]) {
+                Ok(result) => result,
+                Err(axnet::NetError::WouldBlock) => {
+                    if total > 0 {
+                        return Ok(total);
+                    }
+                    if nonblock || !can_block_current() {
+                        return Err(Errno::Again);
+                    }
+                    if timeout_ms == 0 {
+                        crate::runtime::block_current(crate::runtime::net_wait_queue());
+                    } else if crate::runtime::wait_timeout_ms(crate::runtime::net_wait_queue(), timeout_ms)
+                        == crate::wait::WaitResult::Timeout
+                    {
+                        return Err(Errno::TimedOut);
+                    }
+                    continue;
+                }
+                Err(err) => return Err(map_net_err(err)),
+            };
+            let dst = iov
+                .iov_base
+                .checked_add(iov.iov_len - remaining)
+                .ok_or(Errno::Fault)?;
+            UserSlice::new(dst, read)
+                .copy_from_slice(root_pa, &scratch[..read])
+                .ok_or(Errno::Fault)?;
+            total += read;
+            last_endpoint = endpoint;
+            if read < chunk {
+                break;
+            }
+            remaining = remaining.saturating_sub(read);
+        }
+    }
+    if hdr.msg_name != 0 {
+        let Some((ip, port)) = last_endpoint else {
+            return Ok(total);
+        };
+        let namelen = hdr.msg_namelen as usize;
+        if namelen < size_of::<SockAddrIn>() {
+            return Err(Errno::Inval);
+        }
+        let sock = SockAddrIn {
+            sin_family: AF_INET,
+            sin_port: port.to_be(),
+            sin_addr: match ip {
+                axnet::IpAddress::Ipv4(addr) => {
+                    let bytes = addr.as_bytes();
+                    u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+                }
+            },
+            sin_zero: [0; 8],
+        };
+        UserPtr::new(hdr.msg_name)
+            .write(root_pa, sock)
+            .ok_or(Errno::Fault)?;
+        hdr.msg_namelen = size_of::<SockAddrIn>() as u32;
+        hdr.msg_flags = 0;
+        UserPtr::new(msg).write(root_pa, hdr).ok_or(Errno::Fault)?;
+    }
+    Ok(total)
+}
+
+fn sys_sendmsg(fd: usize, msg: usize, flags: usize) -> Result<usize, Errno> {
+    sendmsg_inner(fd, msg, flags)
+}
+
+fn sys_recvmsg(fd: usize, msg: usize, flags: usize) -> Result<usize, Errno> {
+    recvmsg_inner(fd, msg, flags)
+}
+
+fn sys_sendmmsg(fd: usize, msgvec: usize, vlen: usize, flags: usize) -> Result<usize, Errno> {
+    if msgvec == 0 {
+        return Err(Errno::Fault);
+    }
+    if vlen == 0 {
+        return Ok(0);
+    }
+    let root_pa = mm::current_root_pa();
+    let count = core::cmp::min(vlen, IOV_MAX);
+    let mut sent = 0usize;
+    for idx in 0..count {
+        let offset = idx
+            .checked_mul(size_of::<MMsgHdr>())
+            .ok_or(Errno::Fault)?;
+        let addr = msgvec.checked_add(offset).ok_or(Errno::Fault)?;
+        let mut mmsg = UserPtr::<MMsgHdr>::new(addr)
+            .read(root_pa)
+            .ok_or(Errno::Fault)?;
+        let hdr_addr = addr;
+        let n = match sendmsg_inner(fd, hdr_addr, flags) {
+            Ok(n) => n,
+            Err(Errno::Again) if sent > 0 => break,
+            Err(err) => return Err(err),
+        };
+        mmsg.msg_len = n as u32;
+        UserPtr::new(addr).write(root_pa, mmsg).ok_or(Errno::Fault)?;
+        sent += 1;
+    }
+    Ok(sent)
+}
+
+fn sys_recvmmsg(
+    fd: usize,
+    msgvec: usize,
+    vlen: usize,
+    flags: usize,
+    timeout: usize,
+) -> Result<usize, Errno> {
+    if msgvec == 0 {
+        return Err(Errno::Fault);
+    }
+    if vlen == 0 {
+        return Ok(0);
+    }
+    if timeout != 0 {
+        let root_pa = mm::current_root_pa();
+        UserPtr::<Timespec>::new(timeout)
+            .read(root_pa)
+            .ok_or(Errno::Fault)?;
+    }
+    let root_pa = mm::current_root_pa();
+    let count = core::cmp::min(vlen, IOV_MAX);
+    let mut recvd = 0usize;
+    for idx in 0..count {
+        let offset = idx
+            .checked_mul(size_of::<MMsgHdr>())
+            .ok_or(Errno::Fault)?;
+        let addr = msgvec.checked_add(offset).ok_or(Errno::Fault)?;
+        let mut mmsg = UserPtr::<MMsgHdr>::new(addr)
+            .read(root_pa)
+            .ok_or(Errno::Fault)?;
+        let n = match recvmsg_inner(fd, addr, flags) {
+            Ok(n) => n,
+            Err(Errno::Again) if recvd > 0 => break,
+            Err(err) => return Err(err),
+        };
+        mmsg.msg_len = n as u32;
+        UserPtr::new(addr).write(root_pa, mmsg).ok_or(Errno::Fault)?;
+        recvd += 1;
+    }
+    Ok(recvd)
+}
+
 fn sys_openat(_dirfd: usize, pathname: usize, flags: usize, _mode: usize) -> Result<usize, Errno> {
     if pathname == 0 {
         return Err(Errno::Fault);
@@ -910,7 +2546,7 @@ fn sys_openat(_dirfd: usize, pathname: usize, flags: usize, _mode: usize) -> Res
         return Err(Errno::Fault);
     }
     maybe_ext4_write_smoke();
-    let status_flags = flags & (O_ACCMODE | O_NONBLOCK | O_CLOEXEC);
+    let status_flags = flags & (O_ACCMODE | O_NONBLOCK | O_CLOEXEC | O_APPEND);
     let accmode = flags & O_ACCMODE;
     let create_mode = (_mode as u16) & !current_umask();
     with_mounts(|mounts| {
@@ -956,15 +2592,27 @@ fn sys_openat(_dirfd: usize, pathname: usize, flags: usize, _mode: usize) -> Res
                 }
             }
         }
+        if (flags & O_TRUNC) != 0 {
+            if accmode == O_RDONLY {
+                return Err(Errno::Inval);
+            }
+            match meta.file_type {
+                FileType::Dir => return Err(Errno::IsDir),
+                FileType::File => fs.truncate(inode, 0).map_err(map_vfs_err)?,
+                _ => return Err(Errno::Inval),
+            }
+        }
         let handle = VfsHandle {
             mount,
             inode,
             file_type: meta.file_type,
         };
         alloc_fd(FdEntry {
-            kind: FdKind::Vfs(handle),
+            object: FdObject::Vfs(handle),
             flags: status_flags,
             offset: 0,
+            recv_timeout_ms: 0,
+            send_timeout_ms: 0,
         })
         .ok_or(Errno::MFile)
     })
@@ -1115,8 +2763,8 @@ fn sys_getdents64(fd: usize, buf: usize, len: usize) -> Result<usize, Errno> {
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
     let index = fd_offset(fd).ok_or(Errno::Badf)?;
     with_mounts(|mounts| {
-        let handle = match entry.kind {
-            FdKind::Vfs(handle) if handle.file_type == FileType::Dir => handle,
+        let handle = match entry.object {
+            FdObject::Vfs(handle) if handle.file_type == FileType::Dir => handle,
             _ => return Err(Errno::NotDir),
         };
         let mount_id = handle.mount;
@@ -1276,6 +2924,10 @@ fn sys_readlinkat(_dirfd: usize, pathname: usize, buf: usize, len: usize) -> Res
     })
 }
 
+fn sys_readlink(pathname: usize, buf: usize, len: usize) -> Result<usize, Errno> {
+    sys_readlinkat(AT_FDCWD as usize, pathname, buf, len)
+}
+
 fn sys_statfs(pathname: usize, buf: usize) -> Result<usize, Errno> {
     if pathname == 0 || buf == 0 {
         return Err(Errno::Fault);
@@ -1309,6 +2961,26 @@ fn sys_fstatfs(fd: usize, buf: usize) -> Result<usize, Errno> {
         .write(root_pa, default_statfs())
         .ok_or(Errno::Fault)?;
     Ok(0)
+}
+
+fn sys_ftruncate(fd: usize, len: usize) -> Result<usize, Errno> {
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    let handle = match entry.object {
+        FdObject::Vfs(handle) => handle,
+        _ => return Err(Errno::Inval),
+    };
+    if handle.file_type != FileType::File {
+        return Err(Errno::Inval);
+    }
+    with_mounts(|mounts| {
+        let fs = mounts.fs_for(handle.mount).ok_or(Errno::NoEnt)?;
+        fs.truncate(handle.inode, len as u64).map_err(map_vfs_err)?;
+        Ok(0)
+    })
 }
 
 fn sys_fchmodat(dirfd: usize, pathname: usize, _mode: usize, flags: usize) -> Result<usize, Errno> {
@@ -1723,8 +3395,8 @@ fn sys_chdir(pathname: usize) -> Result<usize, Errno> {
 
 fn sys_fchdir(fd: usize) -> Result<usize, Errno> {
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    match entry.kind {
-        FdKind::Vfs(handle) if handle.file_type == FileType::Dir => {
+    match entry.object {
+        FdObject::Vfs(handle) if handle.file_type == FileType::Dir => {
             let mut updated = false;
             if handle.mount == MountId::Dev && handle.inode == devfs::ROOT_ID {
                 set_current_cwd("/dev")?;
@@ -1791,7 +3463,7 @@ fn sys_prlimit64(_pid: usize, _resource: usize, new_rlim: usize, old_rlim: usize
 
 fn sys_ioctl(fd: usize, cmd: usize, arg: usize) -> Result<usize, Errno> {
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
-    if matches!(entry.kind, FdKind::PipeRead(_) | FdKind::PipeWrite(_)) {
+    if matches!(entry.object, FdObject::PipeRead(_) | FdObject::PipeWrite(_)) {
         return Err(Errno::Inval);
     }
     match cmd {
@@ -1971,9 +3643,9 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
     if root_pa == 0 {
         return Err(Errno::Fault);
     }
-    let (mode, size) = match entry.kind {
-        FdKind::PipeRead(_) | FdKind::PipeWrite(_) => (S_IFIFO | 0o600, 0),
-        FdKind::Vfs(handle) => with_mounts(|mounts| {
+    let (mode, size) = match entry.object {
+        FdObject::PipeRead(_) | FdObject::PipeWrite(_) => (S_IFIFO | 0o600, 0),
+        FdObject::Vfs(handle) => with_mounts(|mounts| {
             let fs = mounts.fs_for(handle.mount).ok_or(Errno::NoEnt)?;
             vfs_meta_for(fs, handle.inode)
         })?,
@@ -1987,7 +3659,8 @@ fn sys_fstat(fd: usize, stat_ptr: usize) -> Result<usize, Errno> {
 }
 
 fn sys_dup(oldfd: usize) -> Result<usize, Errno> {
-    let entry = resolve_fd(oldfd).ok_or(Errno::Badf)?;
+    let mut entry = resolve_fd(oldfd).ok_or(Errno::Badf)?;
+    entry.flags &= !O_CLOEXEC;
     let newfd = alloc_fd(entry).ok_or(Errno::MFile)?;
     if let Some(offset) = fd_offset(oldfd) {
         set_fd_offset(newfd, offset);
@@ -1996,12 +3669,16 @@ fn sys_dup(oldfd: usize) -> Result<usize, Errno> {
 }
 
 fn sys_dup3(oldfd: usize, newfd: usize, flags: usize) -> Result<usize, Errno> {
-    let entry = resolve_fd(oldfd).ok_or(Errno::Badf)?;
+    let mut entry = resolve_fd(oldfd).ok_or(Errno::Badf)?;
     if flags != 0 && flags != O_CLOEXEC {
         return Err(Errno::Inval);
     }
     if oldfd == newfd {
         return if flags == 0 { Ok(newfd) } else { Err(Errno::Inval) };
+    }
+    entry.flags &= !O_CLOEXEC;
+    if flags == O_CLOEXEC {
+        entry.flags |= O_CLOEXEC;
     }
     let newfd = dup_to_fd(newfd, entry)?;
     if let Some(offset) = fd_offset(oldfd) {
@@ -2010,11 +3687,32 @@ fn sys_dup3(oldfd: usize, newfd: usize, flags: usize) -> Result<usize, Errno> {
     Ok(newfd)
 }
 
-fn sys_lseek(fd: usize, _offset: usize, _whence: usize) -> Result<usize, Errno> {
-    if resolve_fd(fd).is_some() {
-        return Err(Errno::Pipe);
+fn sys_lseek(fd: usize, offset: usize, whence: usize) -> Result<usize, Errno> {
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    match entry.object {
+        FdObject::Vfs(handle) => {
+            let base = match whence {
+                SEEK_SET => 0isize,
+                SEEK_CUR => fd_offset(fd).ok_or(Errno::Badf)? as isize,
+                SEEK_END => with_mounts(|mounts| {
+                    let fs = mounts.fs_for(handle.mount).ok_or(Errno::NoEnt)?;
+                    let (_, size) = vfs_meta_for(fs, handle.inode)?;
+                    Ok(size as isize)
+                })?,
+                _ => return Err(Errno::Inval),
+            };
+            let offset = offset as isize;
+            let new_offset = base.checked_add(offset).ok_or(Errno::Inval)?;
+            if new_offset < 0 {
+                return Err(Errno::Inval);
+            }
+            let new_offset = new_offset as usize;
+            set_fd_offset(fd, new_offset);
+            Ok(new_offset)
+        }
+        FdObject::Empty => Err(Errno::Badf),
+        _ => Err(Errno::Pipe),
     }
-    Err(Errno::Badf)
 }
 
 fn sys_set_robust_list(_head: usize, _len: usize) -> Result<usize, Errno> {
@@ -2095,16 +3793,28 @@ fn sys_rt_sigprocmask(how: usize, set: usize, oldset: usize, sigsetsize: usize) 
 fn sys_fcntl(fd: usize, cmd: usize, arg: usize) -> Result<usize, Errno> {
     let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
     match cmd {
-        F_GETFD => Ok(0),
-        F_SETFD => Ok(0),
+        F_GETFD => {
+            if (entry.flags & O_CLOEXEC) != 0 {
+                Ok(FD_CLOEXEC)
+            } else {
+                Ok(0)
+            }
+        }
+        F_SETFD => {
+            if arg & !FD_CLOEXEC != 0 {
+                return Err(Errno::Inval);
+            }
+            set_fd_cloexec(fd, (arg & FD_CLOEXEC) != 0)?;
+            Ok(0)
+        }
         F_GETFL => {
-            let mode = match entry.kind {
-                FdKind::Stdin | FdKind::PipeRead(_) => O_RDONLY,
-                FdKind::Stdout | FdKind::Stderr | FdKind::PipeWrite(_) => O_WRONLY,
-                FdKind::Vfs(_) => entry.flags & O_ACCMODE,
+            let mode = match entry.object {
+                FdObject::Stdin | FdObject::PipeRead(_) => O_RDONLY,
+                FdObject::Stdout | FdObject::Stderr | FdObject::PipeWrite(_) => O_WRONLY,
+                FdObject::Vfs(_) => entry.flags & O_ACCMODE,
                 _ => O_RDWR,
             };
-            Ok(mode | (entry.flags & O_NONBLOCK))
+            Ok(mode | (entry.flags & (O_NONBLOCK | O_APPEND)))
         }
         F_SETFL => {
             set_fd_flags(fd, arg)?;
@@ -2482,9 +4192,18 @@ fn rootfs_kind() -> u8 {
 
 fn rootfs_ref(kind: u8) -> &'static dyn VfsOps {
     match kind {
-        ROOTFS_KIND_EXT4 => unsafe { &*ROOTFS_EXT4.as_ptr() },
-        ROOTFS_KIND_FAT32 => unsafe { &*ROOTFS_FAT32.as_ptr() },
-        _ => unsafe { &*ROOTFS_MEMFS.as_ptr() },
+        ROOTFS_KIND_EXT4 => {
+            // SAFETY: instance is initialized before ROOTFS_KIND is published.
+            unsafe { &*ROOTFS_EXT4.as_ptr() }
+        }
+        ROOTFS_KIND_FAT32 => {
+            // SAFETY: instance is initialized before ROOTFS_KIND is published.
+            unsafe { &*ROOTFS_FAT32.as_ptr() }
+        }
+        _ => {
+            // SAFETY: instance is initialized before ROOTFS_KIND is published.
+            unsafe { &*ROOTFS_MEMFS.as_ptr() }
+        }
     }
 }
 
@@ -2504,6 +4223,7 @@ fn with_mounts<R>(f: impl FnOnce(&MountTable<'_, VFS_MOUNT_COUNT>) -> R) -> R {
     f(&mounts)
 }
 
+/// Trigger the ext4 write smoke test when enabled.
 pub fn ext4_write_smoke() {
     if rootfs_kind() != ROOTFS_KIND_EXT4 {
         crate::println!("ext4: write skip (rootfs not ext4)");
@@ -2574,6 +4294,20 @@ fn map_vfs_err(err: VfsError) -> Errno {
     }
 }
 
+fn map_net_err(err: axnet::NetError) -> Errno {
+    match err {
+        axnet::NetError::NotReady | axnet::NetError::WouldBlock => Errno::Again,
+        axnet::NetError::BufferTooSmall => Errno::Range,
+        axnet::NetError::Unsupported => Errno::NoSys,
+        axnet::NetError::Invalid => Errno::Inval,
+        axnet::NetError::NoMem => Errno::NoMem,
+        axnet::NetError::InProgress => Errno::InProgress,
+        axnet::NetError::IsConnected => Errno::IsConn,
+        axnet::NetError::Unreachable => Errno::NetUnreach,
+        axnet::NetError::ConnRefused => Errno::ConnRefused,
+    }
+}
+
 fn validate_user_ptr_list(root_pa: usize, ptr: usize) -> Result<(), Errno> {
     if ptr == 0 {
         return Ok(());
@@ -2595,6 +4329,7 @@ fn map_futex_err(err: futex::FutexError) -> Errno {
     }
 }
 
+/// Return true if the current context may block.
 pub fn can_block_current() -> bool {
     crate::runtime::current_task_id().is_some()
 }
@@ -2656,6 +4391,7 @@ fn set_current_umask(mask: u16) -> Result<u16, Errno> {
     };
     // SAFETY: 单核阶段顺序访问 umask。
     let old = unsafe { PROC_UMASK[idx] };
+    // SAFETY: 单核阶段顺序访问 umask。
     unsafe {
         PROC_UMASK[idx] = mask;
     }
@@ -2704,6 +4440,7 @@ fn current_cwd_str() -> &'static str {
     if len == 0 || len > MAX_PATH_LEN {
         return "/";
     }
+    // SAFETY: cwd length is validated and bounded by MAX_PATH_LEN.
     let bytes = unsafe { &PROC_CWD[idx][..len] };
     core::str::from_utf8(bytes).unwrap_or("/")
 }
@@ -2800,17 +4537,17 @@ fn read_user_path_abs<'a>(root_pa: usize, path: usize, buf: &'a mut [u8]) -> Res
     normalize_path(base, raw, buf)
 }
 
-fn stdio_kind(fd: usize) -> Option<FdKind> {
+fn stdio_object(fd: usize) -> Option<FdObject> {
     match fd {
-        0 => Some(FdKind::Stdin),
-        1 => Some(FdKind::Stdout),
-        2 => Some(FdKind::Stderr),
+        0 => Some(FdObject::Stdin),
+        1 => Some(FdObject::Stdout),
+        2 => Some(FdObject::Stderr),
         _ => None,
     }
 }
 
 fn stdio_entry(fd: usize) -> Option<FdEntry> {
-    let kind = stdio_kind(fd)?;
+    let object = stdio_object(fd)?;
     let proc_idx = current_proc_index()?;
     // SAFETY: 单核早期阶段访问重定向表/标志。
     unsafe {
@@ -2818,9 +4555,11 @@ fn stdio_entry(fd: usize) -> Option<FdEntry> {
             Some(entry)
         } else {
             Some(FdEntry {
-                kind,
+                object,
                 flags: STDIO_FLAGS[proc_idx][fd],
                 offset: 0,
+                recv_timeout_ms: 0,
+                send_timeout_ms: 0,
             })
         }
     }
@@ -2834,7 +4573,7 @@ fn resolve_fd(fd: usize) -> Option<FdEntry> {
     let idx = fd_table_index(fd)?;
     // SAFETY: 单核早期阶段，fd 表无并发访问。
     let entry = unsafe { FD_TABLES[proc_idx][idx] };
-    if entry.kind == FdKind::Empty {
+    if entry.object == FdObject::Empty {
         None
     } else {
         Some(entry)
@@ -2854,7 +4593,7 @@ fn fd_table_index(fd: usize) -> Option<usize> {
 }
 
 fn fd_offset(fd: usize) -> Option<usize> {
-    if stdio_kind(fd).is_some() {
+    if stdio_object(fd).is_some() {
         let proc_idx = current_proc_index()?;
         // SAFETY: 单核早期阶段访问重定向表。
         unsafe {
@@ -2868,7 +4607,7 @@ fn fd_offset(fd: usize) -> Option<usize> {
     let idx = fd_table_index(fd)?;
     // SAFETY: 单核早期阶段，fd 表无并发访问。
     let entry = unsafe { FD_TABLES[proc_idx][idx] };
-    if entry.kind == FdKind::Empty {
+    if entry.object == FdObject::Empty {
         None
     } else {
         Some(entry.offset)
@@ -2879,7 +4618,7 @@ fn set_fd_offset(fd: usize, offset: usize) {
     let Some(proc_idx) = current_proc_index() else {
         return;
     };
-    if stdio_kind(fd).is_some() {
+    if stdio_object(fd).is_some() {
         // SAFETY: 单核早期阶段访问重定向表。
         unsafe {
             if let Some(mut entry) = STDIO_REDIRECT[proc_idx][fd] {
@@ -2894,7 +4633,7 @@ fn set_fd_offset(fd: usize, offset: usize) {
     };
     // SAFETY: 单核早期阶段，偏移顺序访问。
     unsafe {
-        if FD_TABLES[proc_idx][idx].kind == FdKind::Empty {
+        if FD_TABLES[proc_idx][idx].object == FdObject::Empty {
             return;
         }
         FD_TABLES[proc_idx][idx].offset = offset;
@@ -2902,16 +4641,16 @@ fn set_fd_offset(fd: usize, offset: usize) {
 }
 
 fn alloc_fd(entry: FdEntry) -> Option<usize> {
-    if entry.kind == FdKind::Empty {
+    if entry.object == FdObject::Empty {
         return None;
     }
     let proc_idx = current_proc_index()?;
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
         for (idx, slot) in FD_TABLES[proc_idx].iter_mut().enumerate() {
-            if slot.kind == FdKind::Empty {
+            if slot.object == FdObject::Empty {
                 *slot = entry;
-                pipe_acquire(entry.kind);
+                pipe_acquire(entry.object);
                 return Some(FD_TABLE_BASE + idx);
             }
         }
@@ -2920,7 +4659,7 @@ fn alloc_fd(entry: FdEntry) -> Option<usize> {
 }
 
 fn dup_to_fd(newfd: usize, entry: FdEntry) -> Result<usize, Errno> {
-    if stdio_kind(newfd).is_some() {
+    if stdio_object(newfd).is_some() {
         return set_stdio_redirect(newfd, entry);
     }
     let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
@@ -2928,22 +4667,40 @@ fn dup_to_fd(newfd: usize, entry: FdEntry) -> Result<usize, Errno> {
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
         let old = FD_TABLES[proc_idx][idx];
-        if old.kind != FdKind::Empty {
-            pipe_release(old.kind);
+        if old.object != FdObject::Empty {
+            pipe_release(old.object);
         }
         FD_TABLES[proc_idx][idx] = entry;
     }
-    pipe_acquire(entry.kind);
+    pipe_acquire(entry.object);
     Ok(newfd)
+}
+
+fn replace_socket_fd(fd: usize, socket_id: axnet::SocketId) -> Result<(), Errno> {
+    if stdio_object(fd).is_some() {
+        return Err(Errno::Badf);
+    }
+    let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
+    let idx = fd_table_index(fd).ok_or(Errno::Badf)?;
+    // SAFETY: 单核早期阶段，fd 表串行更新。
+    unsafe {
+        let entry = &mut FD_TABLES[proc_idx][idx];
+        if !matches!(entry.object, FdObject::Socket(_)) {
+            return Err(Errno::Badf);
+        }
+        entry.object = FdObject::Socket(socket_id);
+        entry.offset = 0;
+    }
+    Ok(())
 }
 
 fn close_fd(fd: usize) -> Result<usize, Errno> {
     let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
-    if stdio_kind(fd).is_some() {
+    if stdio_object(fd).is_some() {
         // SAFETY: 单核早期阶段访问重定向表。
         unsafe {
             if let Some(old) = STDIO_REDIRECT[proc_idx][fd] {
-                pipe_release(old.kind);
+                pipe_release(old.object);
                 STDIO_REDIRECT[proc_idx][fd] = None;
             }
         }
@@ -2953,42 +4710,81 @@ fn close_fd(fd: usize) -> Result<usize, Errno> {
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
         let old = FD_TABLES[proc_idx][idx];
-        if old.kind == FdKind::Empty {
+        if old.object == FdObject::Empty {
             return Err(Errno::Badf);
         }
         FD_TABLES[proc_idx][idx] = EMPTY_FD_ENTRY;
-        pipe_release(old.kind);
+        if let FdObject::Socket(socket_id) = old.object {
+            let _ = axnet::socket_close(socket_id);
+        }
+        pipe_release(old.object);
     }
     Ok(0)
 }
 
+fn close_cloexec_fds() {
+    let Some(proc_idx) = current_proc_index() else {
+        return;
+    };
+    // SAFETY: 单核早期阶段，fd 表按进程顺序访问。
+    unsafe {
+        for (idx, entry) in FD_TABLES[proc_idx].iter_mut().enumerate() {
+            if entry.object == FdObject::Empty || (entry.flags & O_CLOEXEC) == 0 {
+                continue;
+            }
+            if let FdObject::Socket(socket_id) = entry.object {
+                let _ = axnet::socket_close(socket_id);
+            }
+            pipe_release(entry.object);
+            FD_TABLES[proc_idx][idx] = EMPTY_FD_ENTRY;
+        }
+        for fd in 0..STDIO_REDIRECT[proc_idx].len() {
+            if let Some(entry) = STDIO_REDIRECT[proc_idx][fd] {
+                if (entry.flags & O_CLOEXEC) != 0 {
+                    if let FdObject::Socket(socket_id) = entry.object {
+                        let _ = axnet::socket_close(socket_id);
+                    }
+                    pipe_release(entry.object);
+                    STDIO_REDIRECT[proc_idx][fd] = None;
+                }
+            } else if (STDIO_FLAGS[proc_idx][fd] & O_CLOEXEC) != 0 {
+                STDIO_FLAGS[proc_idx][fd] &= !O_CLOEXEC;
+            }
+        }
+    }
+}
+
 fn set_stdio_redirect(fd: usize, entry: FdEntry) -> Result<usize, Errno> {
-    if stdio_kind(fd).is_none() {
+    if stdio_object(fd).is_none() {
         return Err(Errno::Badf);
     }
     let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
     // SAFETY: 单核早期阶段访问重定向表。
     unsafe {
         if let Some(old) = STDIO_REDIRECT[proc_idx][fd] {
-            pipe_release(old.kind);
+            if let FdObject::Socket(socket_id) = old.object {
+                let _ = axnet::socket_close(socket_id);
+            }
+            pipe_release(old.object);
         }
         STDIO_REDIRECT[proc_idx][fd] = Some(entry);
     }
-    pipe_acquire(entry.kind);
+    pipe_acquire(entry.object);
     Ok(fd)
 }
 
 fn set_fd_flags(fd: usize, flags: usize) -> Result<(), Errno> {
-    let flags = flags & O_NONBLOCK;
+    let flags = flags & (O_NONBLOCK | O_APPEND);
     let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
-    if stdio_kind(fd).is_some() {
+    if stdio_object(fd).is_some() {
         // SAFETY: 单核早期阶段访问重定向表/标志。
         unsafe {
             if let Some(mut entry) = STDIO_REDIRECT[proc_idx][fd] {
-                entry.flags = (entry.flags & O_ACCMODE) | flags;
+                entry.flags = (entry.flags & (O_ACCMODE | O_CLOEXEC)) | flags;
                 STDIO_REDIRECT[proc_idx][fd] = Some(entry);
             } else {
-                STDIO_FLAGS[proc_idx][fd] = (STDIO_FLAGS[proc_idx][fd] & O_ACCMODE) | flags;
+                STDIO_FLAGS[proc_idx][fd] =
+                    (STDIO_FLAGS[proc_idx][fd] & (O_ACCMODE | O_CLOEXEC)) | flags;
             }
         }
         return Ok(());
@@ -2996,10 +4792,46 @@ fn set_fd_flags(fd: usize, flags: usize) -> Result<(), Errno> {
     let idx = fd_table_index(fd).ok_or(Errno::Badf)?;
     // SAFETY: 单核早期阶段，fd 表串行更新。
     unsafe {
-        if FD_TABLES[proc_idx][idx].kind == FdKind::Empty {
+        if FD_TABLES[proc_idx][idx].object == FdObject::Empty {
             return Err(Errno::Badf);
         }
-        FD_TABLES[proc_idx][idx].flags = (FD_TABLES[proc_idx][idx].flags & O_ACCMODE) | flags;
+        FD_TABLES[proc_idx][idx].flags =
+            (FD_TABLES[proc_idx][idx].flags & (O_ACCMODE | O_CLOEXEC)) | flags;
+    }
+    Ok(())
+}
+
+fn set_fd_cloexec(fd: usize, cloexec: bool) -> Result<(), Errno> {
+    let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
+    if stdio_object(fd).is_some() {
+        // SAFETY: 单核早期阶段访问重定向表/标志。
+        unsafe {
+            if let Some(mut entry) = STDIO_REDIRECT[proc_idx][fd] {
+                if cloexec {
+                    entry.flags |= O_CLOEXEC;
+                } else {
+                    entry.flags &= !O_CLOEXEC;
+                }
+                STDIO_REDIRECT[proc_idx][fd] = Some(entry);
+            } else if cloexec {
+                STDIO_FLAGS[proc_idx][fd] |= O_CLOEXEC;
+            } else {
+                STDIO_FLAGS[proc_idx][fd] &= !O_CLOEXEC;
+            }
+        }
+        return Ok(());
+    }
+    let idx = fd_table_index(fd).ok_or(Errno::Badf)?;
+    // SAFETY: 单核早期阶段，fd 表串行更新。
+    unsafe {
+        if FD_TABLES[proc_idx][idx].object == FdObject::Empty {
+            return Err(Errno::Badf);
+        }
+        if cloexec {
+            FD_TABLES[proc_idx][idx].flags |= O_CLOEXEC;
+        } else {
+            FD_TABLES[proc_idx][idx].flags &= !O_CLOEXEC;
+        }
     }
     Ok(())
 }
@@ -3011,14 +4843,14 @@ fn clear_fd_table(idx: usize) {
     // SAFETY: 单核早期阶段按进程顺序清理 fd 表。
     unsafe {
         for entry in FD_TABLES[idx].iter_mut() {
-            if entry.kind != FdKind::Empty {
-                pipe_release(entry.kind);
+            if entry.object != FdObject::Empty {
+                pipe_release(entry.object);
                 *entry = EMPTY_FD_ENTRY;
             }
         }
         for slot in STDIO_REDIRECT[idx].iter_mut() {
             if let Some(entry) = *slot {
-                pipe_release(entry.kind);
+                pipe_release(entry.object);
             }
             *slot = None;
         }
@@ -3028,6 +4860,7 @@ fn clear_fd_table(idx: usize) {
     }
 }
 
+/// Initialize the file descriptor table for a task.
 pub fn init_fd_table(task_id: TaskId) {
     clear_fd_table(task_id);
     init_proc_cwd(task_id);
@@ -3039,6 +4872,7 @@ pub fn init_fd_table(task_id: TaskId) {
     }
 }
 
+/// Clone file descriptors from a parent task into a child task.
 pub fn clone_fd_table(parent: TaskId, child: TaskId) {
     if parent >= MAX_PROCS || child >= MAX_PROCS {
         return;
@@ -3050,11 +4884,11 @@ pub fn clone_fd_table(parent: TaskId, child: TaskId) {
         STDIO_REDIRECT[child] = STDIO_REDIRECT[parent];
         STDIO_FLAGS[child] = STDIO_FLAGS[parent];
         for entry in FD_TABLES[child].iter() {
-            pipe_acquire(entry.kind);
+            pipe_acquire(entry.object);
         }
         for slot in STDIO_REDIRECT[child].iter() {
             if let Some(entry) = *slot {
-                pipe_acquire(entry.kind);
+                pipe_acquire(entry.object);
             }
         }
     }
@@ -3065,6 +4899,7 @@ pub fn clone_fd_table(parent: TaskId, child: TaskId) {
     }
 }
 
+/// Release all file descriptors owned by a task.
 pub fn release_fd_table(task_id: TaskId) {
     clear_fd_table(task_id);
     clear_proc_cwd(task_id);
@@ -3107,10 +4942,106 @@ fn free_pipe(pipe_id: usize) {
     }
 }
 
-fn pipe_acquire(kind: FdKind) {
-    let (pipe_id, is_read) = match kind {
-        FdKind::PipeRead(id) => (id, true),
-        FdKind::PipeWrite(id) => (id, false),
+fn eventfd_queue(event_id: usize) -> &'static crate::task_wait_queue::TaskWaitQueue {
+    &EVENTFD_WAITERS[event_id]
+}
+
+fn timerfd_queue(timer_id: usize) -> &'static crate::task_wait_queue::TaskWaitQueue {
+    &TIMERFD_WAITERS[timer_id]
+}
+
+fn alloc_eventfd(initval: u64, flags: usize) -> Option<usize> {
+    // SAFETY: 单核早期阶段串行更新 eventfd 表。
+    unsafe {
+        for (idx, slot) in EVENTFDS.iter_mut().enumerate() {
+            if !slot.used {
+                *slot = EventFd {
+                    used: true,
+                    refs: 1,
+                    counter: initval,
+                    flags,
+                };
+                return Some(idx);
+            }
+        }
+    }
+    None
+}
+
+fn alloc_timerfd(flags: usize) -> Option<usize> {
+    // SAFETY: 单核早期阶段串行更新 timerfd 表。
+    unsafe {
+        for (idx, slot) in TIMERFDS.iter_mut().enumerate() {
+            if !slot.used {
+                *slot = TimerFd {
+                    used: true,
+                    refs: 1,
+                    next_ns: 0,
+                    interval_ns: 0,
+                    flags,
+                };
+                return Some(idx);
+            }
+        }
+    }
+    None
+}
+
+fn alloc_epoll(flags: usize) -> Option<usize> {
+    // SAFETY: 单核早期阶段串行更新 epoll 表。
+    unsafe {
+        for (idx, slot) in EPOLLS.iter_mut().enumerate() {
+            if !slot.used {
+                *slot = EpollInstance {
+                    used: true,
+                    refs: 1,
+                    flags,
+                    items: [EMPTY_EPOLL_ITEM; EPOLL_ITEM_SLOTS],
+                };
+                return Some(idx);
+            }
+        }
+    }
+    None
+}
+
+fn pipe_acquire(object: FdObject) {
+    let (pipe_id, is_read) = match object {
+        FdObject::PipeRead(id) => (id, true),
+        FdObject::PipeWrite(id) => (id, false),
+        FdObject::Eventfd(id) => {
+            if id < EVENTFD_SLOTS {
+                // SAFETY: eventfd table is updated sequentially at early boot.
+                unsafe {
+                    if EVENTFDS[id].used {
+                        EVENTFDS[id].refs += 1;
+                    }
+                }
+            }
+            return;
+        }
+        FdObject::Timerfd(id) => {
+            if id < TIMERFD_SLOTS {
+                // SAFETY: timerfd table is updated sequentially at early boot.
+                unsafe {
+                    if TIMERFDS[id].used {
+                        TIMERFDS[id].refs += 1;
+                    }
+                }
+            }
+            return;
+        }
+        FdObject::Epoll(id) => {
+            if id < EPOLL_SLOTS {
+                // SAFETY: epoll table is updated sequentially at early boot.
+                unsafe {
+                    if EPOLLS[id].used {
+                        EPOLLS[id].refs += 1;
+                    }
+                }
+            }
+            return;
+        }
         _ => return,
     };
     if pipe_id >= PIPE_SLOTS {
@@ -3129,10 +5060,52 @@ fn pipe_acquire(kind: FdKind) {
     }
 }
 
-fn pipe_release(kind: FdKind) {
-    let (pipe_id, is_read) = match kind {
-        FdKind::PipeRead(id) => (id, true),
-        FdKind::PipeWrite(id) => (id, false),
+fn pipe_release(object: FdObject) {
+    let (pipe_id, is_read) = match object {
+        FdObject::PipeRead(id) => (id, true),
+        FdObject::PipeWrite(id) => (id, false),
+        FdObject::Eventfd(id) => {
+            if id < EVENTFD_SLOTS {
+                // SAFETY: eventfd table is updated sequentially at early boot.
+                unsafe {
+                    if EVENTFDS[id].used && EVENTFDS[id].refs > 0 {
+                        EVENTFDS[id].refs -= 1;
+                        if EVENTFDS[id].refs == 0 {
+                            EVENTFDS[id] = EMPTY_EVENTFD;
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        FdObject::Timerfd(id) => {
+            if id < TIMERFD_SLOTS {
+                // SAFETY: timerfd table is updated sequentially at early boot.
+                unsafe {
+                    if TIMERFDS[id].used && TIMERFDS[id].refs > 0 {
+                        TIMERFDS[id].refs -= 1;
+                        if TIMERFDS[id].refs == 0 {
+                            TIMERFDS[id] = EMPTY_TIMERFD;
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        FdObject::Epoll(id) => {
+            if id < EPOLL_SLOTS {
+                // SAFETY: epoll table is updated sequentially at early boot.
+                unsafe {
+                    if EPOLLS[id].used && EPOLLS[id].refs > 0 {
+                        EPOLLS[id].refs -= 1;
+                        if EPOLLS[id].refs == 0 {
+                            EPOLLS[id] = EMPTY_EPOLL;
+                        }
+                    }
+                }
+            }
+            return;
+        }
         _ => return,
     };
     if pipe_id >= PIPE_SLOTS {
@@ -3151,15 +5124,19 @@ fn pipe_release(kind: FdKind) {
             PIPES[pipe_id].writers -= 1;
         }
     }
+// SAFETY: unsafe access is guarded by checks above.
     if unsafe { PIPES[pipe_id].writers == 0 } {
         let _ = crate::runtime::wake_all(pipe_read_queue(pipe_id));
     }
+    // SAFETY: pipe_id bounds checked and pipe table is serialized.
     if unsafe { PIPES[pipe_id].readers == 0 } {
         let _ = crate::runtime::wake_all(pipe_write_queue(pipe_id));
     }
     // fd 关闭可能触发 HUP/ERR，唤醒 poll/ppoll 等待者。
     let _ = crate::runtime::wake_all(ppoll_wait_queue());
+    // SAFETY: pipe_id bounds checked and pipe table is serialized.
     if unsafe { PIPES[pipe_id].readers == 0 && PIPES[pipe_id].writers == 0 } {
+        // SAFETY: pipe_id bounds checked and pipe table is serialized.
         unsafe {
             PIPES[pipe_id] = EMPTY_PIPE;
         }
@@ -3174,6 +5151,7 @@ fn pipe_read(pipe_id: usize, root_pa: usize, buf: usize, len: usize, nonblock: b
         return Ok(0);
     }
     loop {
+        // SAFETY: pipe_id bounds checked; pipe table is read under serialized access.
         let (used, available, writers) = unsafe {
             let pipe = &PIPES[pipe_id];
             (pipe.used, pipe.len, pipe.writers)
@@ -3223,6 +5201,7 @@ fn pipe_write(pipe_id: usize, root_pa: usize, buf: usize, len: usize, nonblock: 
         return Ok(0);
     }
     loop {
+        // SAFETY: pipe_id bounds checked; pipe table is read under serialized access.
         let (used, readers, used_len) = unsafe {
             let pipe = &PIPES[pipe_id];
             (pipe.used, pipe.readers, pipe.len)
@@ -3287,15 +5266,15 @@ fn poll_revents_for_fd(fd: i32, events: u16) -> u16 {
         Some(entry) => entry,
         None => return POLLNVAL,
     };
-    match entry.kind {
-        FdKind::Stdin => {
+    match entry.object {
+        FdObject::Stdin => {
             let mut revents = 0u16;
             if (events & POLLIN) != 0 && console_peek() {
                 revents |= POLLIN;
             }
             revents
         }
-        FdKind::PipeRead(pipe_id) => {
+        FdObject::PipeRead(pipe_id) => {
             let (len, _readers, writers) = match pipe_snapshot(pipe_id) {
                 Some(state) => state,
                 None => return POLLNVAL,
@@ -3312,7 +5291,7 @@ fn poll_revents_for_fd(fd: i32, events: u16) -> u16 {
             }
             revents
         }
-        FdKind::PipeWrite(pipe_id) => {
+        FdObject::PipeWrite(pipe_id) => {
             let (len, readers, _writers) = match pipe_snapshot(pipe_id) {
                 Some(state) => state,
                 None => return POLLNVAL,
@@ -3328,14 +5307,56 @@ fn poll_revents_for_fd(fd: i32, events: u16) -> u16 {
             }
             revents
         }
-        FdKind::Stdout | FdKind::Stderr => {
+        FdObject::Eventfd(event_id) => {
+            if event_id >= EVENTFD_SLOTS {
+                return POLLNVAL;
+            }
+            let mut revents = 0u16;
+            // SAFETY: event_id bounds checked and table is serialized.
+            let event = unsafe { &EVENTFDS[event_id] };
+            if !event.used {
+                return POLLNVAL;
+            }
+            let counter = event.counter;
+            if (events & POLLIN) != 0 && counter > 0 {
+                revents |= POLLIN;
+            }
+            if (events & POLLOUT) != 0 && counter < u64::MAX - 1 {
+                revents |= POLLOUT;
+            }
+            revents
+        }
+        FdObject::Timerfd(timer_id) => {
+            if timer_id >= TIMERFD_SLOTS {
+                return POLLNVAL;
+            }
+            let mut revents = 0u16;
+            // SAFETY: timer_id bounds checked and table is serialized.
+            let timer = unsafe { &TIMERFDS[timer_id] };
+            if !timer.used {
+                return POLLNVAL;
+            }
+            let next_ns = timer.next_ns;
+            if (events & POLLIN) != 0 && next_ns != 0 && time::monotonic_ns() >= next_ns {
+                revents |= POLLIN;
+            }
+            revents
+        }
+        FdObject::Stdout | FdObject::Stderr => {
             if (events & POLLOUT) != 0 {
                 POLLOUT
             } else {
                 0
             }
         }
-        FdKind::Vfs(handle) => {
+        FdObject::Epoll(epoll_id) => {
+            let mut revents = 0u16;
+            if (events & POLLIN) != 0 && epoll_has_ready(epoll_id) {
+                revents |= POLLIN;
+            }
+            revents
+        }
+        FdObject::Vfs(handle) => {
             let mut revents = 0u16;
             if (events & POLLIN) != 0 {
                 revents |= POLLIN;
@@ -3344,6 +5365,13 @@ fn poll_revents_for_fd(fd: i32, events: u16) -> u16 {
                 revents |= POLLOUT;
             }
             revents
+        }
+        FdObject::Socket(socket_id) => {
+            match axnet::socket_poll(socket_id, events) {
+                Ok(revents) => revents,
+                Err(axnet::NetError::Invalid | axnet::NetError::NotReady) => POLLNVAL,
+                Err(_) => 0,
+            }
         }
         _ => 0,
     }
@@ -3445,6 +5473,57 @@ fn ppoll_sleep_ms(sleep_ms: u64) {
     }
 }
 
+fn epoll_wait(
+    epfd: usize,
+    events_ptr: usize,
+    maxevents: usize,
+    timeout_ms: Option<u64>,
+) -> Result<usize, Errno> {
+    if maxevents == 0 || maxevents > EPOLL_ITEM_SLOTS {
+        return Err(Errno::Inval);
+    }
+    if events_ptr == 0 {
+        return Err(Errno::Fault);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let total = maxevents
+        .checked_mul(size_of::<EpollEvent>())
+        .ok_or(Errno::Fault)?;
+    validate_user_write(root_pa, events_ptr, total)?;
+    let ready = epoll_scan(epfd, root_pa, events_ptr, maxevents)?;
+    if ready > 0 || !can_block_current() {
+        return Ok(ready);
+    }
+    if let Some(0) = timeout_ms {
+        return Ok(0);
+    }
+    let mut remaining_ms = timeout_ms;
+    loop {
+        let sleep_ms = match remaining_ms {
+            Some(0) => return Ok(0),
+            Some(ms) => core::cmp::min(ms, EPOLL_RETRY_SLEEP_MS),
+            None => EPOLL_RETRY_SLEEP_MS,
+        };
+        if sleep_ms == 0 {
+            return Ok(0);
+        }
+        ppoll_sleep_ms(sleep_ms);
+        if let Some(ms) = remaining_ms {
+            remaining_ms = Some(ms.saturating_sub(sleep_ms));
+        }
+        let ready_retry = epoll_scan(epfd, root_pa, events_ptr, maxevents)?;
+        if ready_retry > 0 {
+            return Ok(ready_retry);
+        }
+        if !can_block_current() {
+            return Ok(0);
+        }
+    }
+}
+
 fn ppoll_scan(root_pa: usize, fds: usize, nfds: usize) -> Result<(usize, Option<(i32, u16)>), Errno> {
     let stride = size_of::<PollFd>();
     let mut ready = 0usize;
@@ -3474,6 +5553,66 @@ fn ppoll_scan(root_pa: usize, fds: usize, nfds: usize) -> Result<(usize, Option<
     Ok((ready, single))
 }
 
+fn epoll_scan(epfd: usize, root_pa: usize, events_ptr: usize, maxevents: usize) -> Result<usize, Errno> {
+    let entry = resolve_fd(epfd).ok_or(Errno::Badf)?;
+    let epoll_id = match entry.object {
+        FdObject::Epoll(id) => id,
+        _ => return Err(Errno::Badf),
+    };
+    let mut ready = 0usize;
+    // SAFETY: 单核早期阶段串行读取 epoll 表。
+    unsafe {
+        let epoll = EPOLLS.get(epoll_id).ok_or(Errno::Badf)?;
+        if !epoll.used {
+            return Err(Errno::Badf);
+        }
+        for item in epoll.items.iter() {
+            if !item.used {
+                continue;
+            }
+            let revents = poll_revents_for_fd(item.fd, item.events as u16);
+            if revents == 0 {
+                continue;
+            }
+            if ready >= maxevents {
+                break;
+            }
+            let out = EpollEvent {
+                events: revents as u32,
+                data: item.data,
+            };
+            let base = events_ptr
+                .checked_add(ready * size_of::<EpollEvent>())
+                .ok_or(Errno::Fault)?;
+            UserPtr::new(base).write(root_pa, out).ok_or(Errno::Fault)?;
+            ready += 1;
+        }
+    }
+    Ok(ready)
+}
+
+fn epoll_has_ready(epoll_id: usize) -> bool {
+    // SAFETY: 单核早期阶段串行读取 epoll 表。
+    unsafe {
+        let Some(epoll) = EPOLLS.get(epoll_id) else {
+            return false;
+        };
+        if !epoll.used {
+            return false;
+        }
+        for item in epoll.items.iter() {
+            if !item.used {
+                continue;
+            }
+            let revents = poll_revents_for_fd(item.fd, item.events as u16);
+            if revents != 0 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn ppoll_timeout_ms(root_pa: usize, tmo: usize) -> Result<Option<u64>, Errno> {
     if tmo == 0 {
         return Ok(None);
@@ -3491,36 +5630,372 @@ fn ppoll_timeout_ms(root_pa: usize, tmo: usize) -> Result<Option<u64>, Errno> {
     Ok(Some(timeout_ms))
 }
 
+fn epoll_timeout_ms(tmo: usize) -> Result<Option<u64>, Errno> {
+    if tmo == 0 {
+        return Ok(None);
+    }
+    let root_pa = mm::current_root_pa();
+    if root_pa == 0 {
+        return Err(Errno::Fault);
+    }
+    let ts = UserPtr::<Timespec>::new(tmo)
+        .read(root_pa)
+        .ok_or(Errno::Fault)?;
+    if ts.tv_sec < 0 || ts.tv_nsec < 0 || ts.tv_nsec >= 1_000_000_000 {
+        return Err(Errno::Inval);
+    }
+    let total_ns = (ts.tv_sec as u64)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(ts.tv_nsec as u64);
+    let timeout_ms = total_ns.saturating_add(999_999) / 1_000_000;
+    Ok(Some(timeout_ms))
+}
+
+fn timespec_to_ns(ts: Timespec) -> Result<u64, Errno> {
+    if ts.tv_sec < 0 || ts.tv_nsec < 0 || ts.tv_nsec >= 1_000_000_000 {
+        return Err(Errno::Inval);
+    }
+    Ok((ts.tv_sec as u64)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(ts.tv_nsec as u64))
+}
+
+fn ns_to_timespec(ns: u64) -> Timespec {
+    let sec = ns / 1_000_000_000;
+    let nsec = ns % 1_000_000_000;
+    Timespec {
+        tv_sec: sec as i64,
+        tv_nsec: nsec as i64,
+    }
+}
+
 fn ppoll_single_waiter_queue(fd: i32, events: u16) -> Option<&'static crate::task_wait_queue::TaskWaitQueue> {
     if fd < 0 {
         return None;
     }
     let entry = resolve_fd(fd as usize)?;
-    match entry.kind {
-        FdKind::PipeRead(pipe_id) if (events & POLLIN) != 0 => Some(pipe_read_queue(pipe_id)),
-        FdKind::PipeWrite(pipe_id) if (events & POLLOUT) != 0 => Some(pipe_write_queue(pipe_id)),
+    match entry.object {
+        FdObject::PipeRead(pipe_id) if (events & POLLIN) != 0 => Some(pipe_read_queue(pipe_id)),
+        FdObject::PipeWrite(pipe_id) if (events & POLLOUT) != 0 => Some(pipe_write_queue(pipe_id)),
+        FdObject::Eventfd(event_id) if (events & POLLIN) != 0 => Some(eventfd_queue(event_id)),
+        FdObject::Timerfd(timer_id) if (events & POLLIN) != 0 => Some(timerfd_queue(timer_id)),
+        FdObject::Socket(_) if (events & (POLLIN | POLLOUT)) != 0 => Some(crate::runtime::net_wait_queue()),
         _ => None,
     }
 }
 
+fn resolve_socket_fd(fd: usize) -> Result<axnet::SocketId, Errno> {
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    match entry.object {
+        FdObject::Socket(id) => Ok(id),
+        _ => Err(Errno::Badf),
+    }
+}
+
+fn resolve_socket_entry(fd: usize) -> Result<(axnet::SocketId, FdEntry), Errno> {
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    match entry.object {
+        FdObject::Socket(id) => Ok((id, entry)),
+        _ => Err(Errno::Badf),
+    }
+}
+
+fn socket_timeouts(fd: usize) -> Result<(u64, u64), Errno> {
+    let entry = resolve_fd(fd).ok_or(Errno::Badf)?;
+    if !matches!(entry.object, FdObject::Socket(_)) {
+        return Err(Errno::Badf);
+    }
+    Ok((entry.recv_timeout_ms, entry.send_timeout_ms))
+}
+
+fn set_socket_timeout(
+    fd: usize,
+    recv_timeout_ms: Option<u64>,
+    send_timeout_ms: Option<u64>,
+) -> Result<usize, Errno> {
+    let proc_idx = current_proc_index().ok_or(Errno::Badf)?;
+    if stdio_object(fd).is_some() {
+        // SAFETY: 单核早期阶段访问重定向表。
+        unsafe {
+            if let Some(mut entry) = STDIO_REDIRECT[proc_idx][fd] {
+                if !matches!(entry.object, FdObject::Socket(_)) {
+                    return Err(Errno::Badf);
+                }
+                if let Some(value) = recv_timeout_ms {
+                    entry.recv_timeout_ms = value;
+                }
+                if let Some(value) = send_timeout_ms {
+                    entry.send_timeout_ms = value;
+                }
+                STDIO_REDIRECT[proc_idx][fd] = Some(entry);
+                return Ok(0);
+            }
+        }
+        return Err(Errno::Badf);
+    }
+    let idx = fd_table_index(fd).ok_or(Errno::Badf)?;
+    // SAFETY: 单核早期阶段，fd 表串行更新。
+    unsafe {
+        let entry = &mut FD_TABLES[proc_idx][idx];
+        if entry.object == FdObject::Empty || !matches!(entry.object, FdObject::Socket(_)) {
+            return Err(Errno::Badf);
+        }
+        if let Some(value) = recv_timeout_ms {
+            entry.recv_timeout_ms = value;
+        }
+        if let Some(value) = send_timeout_ms {
+            entry.send_timeout_ms = value;
+        }
+    }
+    Ok(0)
+}
+
+fn parse_sockaddr_in(root_pa: usize, addr: usize, len: usize) -> Result<(axnet::IpAddress, u16), Errno> {
+    if addr == 0 || len < size_of::<SockAddrIn>() {
+        return Err(Errno::Inval);
+    }
+    let sock = UserPtr::<SockAddrIn>::new(addr)
+        .read(root_pa)
+        .ok_or(Errno::Fault)?;
+    if sock.sin_family != AF_INET {
+        return Err(Errno::Inval);
+    }
+    let port = u16::from_be(sock.sin_port);
+    let ip_bytes = sock.sin_addr.to_be_bytes();
+    let ip = axnet::Ipv4Address::new(ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3]);
+    Ok((axnet::IpAddress::Ipv4(ip), port))
+}
+
+fn write_sockaddr_in(
+    root_pa: usize,
+    addr: usize,
+    addrlen: usize,
+    endpoint: Option<(axnet::IpAddress, u16)>,
+) -> Result<(), Errno> {
+    if addr == 0 || addrlen == 0 {
+        return Ok(());
+    }
+    let Some((ip, port)) = endpoint else {
+        return Ok(());
+    };
+    let mut len = UserPtr::<u32>::new(addrlen)
+        .read(root_pa)
+        .ok_or(Errno::Fault)? as usize;
+    let expected = size_of::<SockAddrIn>();
+    if len < expected {
+        return Err(Errno::Inval);
+    }
+    let ip = match ip {
+        axnet::IpAddress::Ipv4(addr) => addr,
+    };
+    let bytes = ip.as_bytes();
+    let sock = SockAddrIn {
+        sin_family: AF_INET,
+        sin_port: port.to_be(),
+        sin_addr: u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
+        sin_zero: [0; 8],
+    };
+    UserPtr::new(addr).write(root_pa, sock).ok_or(Errno::Fault)?;
+    len = expected;
+    UserPtr::new(addrlen)
+        .write(root_pa, len as u32)
+        .ok_or(Errno::Fault)?;
+    Ok(())
+}
+
+fn eventfd_read(event_id: usize, root_pa: usize, buf: usize, len: usize, nonblock: bool) -> Result<usize, Errno> {
+    if event_id >= EVENTFD_SLOTS {
+        return Err(Errno::Badf);
+    }
+    if len < size_of::<u64>() {
+        return Err(Errno::Inval);
+    }
+    loop {
+        // SAFETY: event_id bounds checked and table is serialized.
+        let (used, counter, flags) = unsafe {
+            let event = &EVENTFDS[event_id];
+            (event.used, event.counter, event.flags)
+        };
+        if !used {
+            return Err(Errno::Badf);
+        }
+        if counter == 0 {
+            if nonblock || !can_block_current() {
+                return Err(Errno::Again);
+            }
+            crate::runtime::block_current(eventfd_queue(event_id));
+            continue;
+        }
+        let value = if (flags & EFD_SEMAPHORE) != 0 { 1 } else { counter };
+        // SAFETY: 单核早期阶段串行更新 eventfd。
+        unsafe {
+            let event = &mut EVENTFDS[event_id];
+            if (flags & EFD_SEMAPHORE) != 0 {
+                event.counter = event.counter.saturating_sub(1);
+            } else {
+                event.counter = 0;
+            }
+        }
+        UserPtr::new(buf)
+            .write(root_pa, value)
+            .ok_or(Errno::Fault)?;
+        return Ok(size_of::<u64>());
+    }
+}
+
+fn eventfd_write(event_id: usize, root_pa: usize, buf: usize, len: usize, nonblock: bool) -> Result<usize, Errno> {
+    if event_id >= EVENTFD_SLOTS {
+        return Err(Errno::Badf);
+    }
+    if len < size_of::<u64>() {
+        return Err(Errno::Inval);
+    }
+    let value = UserPtr::<u64>::new(buf)
+        .read(root_pa)
+        .ok_or(Errno::Fault)?;
+    if value == 0 || value == u64::MAX {
+        return Err(Errno::Inval);
+    }
+    loop {
+        // SAFETY: event_id bounds checked and table is serialized.
+        let (used, counter) = unsafe {
+            let event = &EVENTFDS[event_id];
+            (event.used, event.counter)
+        };
+        if !used {
+            return Err(Errno::Badf);
+        }
+        if counter > u64::MAX - value {
+            if nonblock || !can_block_current() {
+                return Err(Errno::Again);
+            }
+            crate::runtime::block_current(eventfd_queue(event_id));
+            continue;
+        }
+        // SAFETY: event_id bounds checked and table is serialized.
+        unsafe {
+            let event = &mut EVENTFDS[event_id];
+            event.counter = event.counter.saturating_add(value);
+        }
+        let _ = crate::runtime::wake_all(eventfd_queue(event_id));
+        return Ok(size_of::<u64>());
+    }
+}
+
+fn timerfd_current_spec(timer_id: usize) -> Result<Itimerspec, Errno> {
+    if timer_id >= TIMERFD_SLOTS {
+        return Err(Errno::Badf);
+    }
+    let now = time::monotonic_ns();
+    // SAFETY: 单核早期阶段串行读取 timerfd。
+    unsafe {
+        let timer = TIMERFDS.get(timer_id).ok_or(Errno::Badf)?;
+        if !timer.used {
+            return Err(Errno::Badf);
+        }
+        let remaining = if timer.next_ns == 0 || now >= timer.next_ns {
+            0
+        } else {
+            timer.next_ns - now
+        };
+        Ok(Itimerspec {
+            it_interval: ns_to_timespec(timer.interval_ns),
+            it_value: ns_to_timespec(remaining),
+        })
+    }
+}
+
+fn timerfd_read(timer_id: usize, root_pa: usize, buf: usize, len: usize, nonblock: bool) -> Result<usize, Errno> {
+    if timer_id >= TIMERFD_SLOTS {
+        return Err(Errno::Badf);
+    }
+    if len < size_of::<u64>() {
+        return Err(Errno::Inval);
+    }
+    loop {
+        // SAFETY: timer_id bounds checked and table is serialized.
+        let (used, next_ns, interval_ns) = unsafe {
+            let timer = &TIMERFDS[timer_id];
+            (timer.used, timer.next_ns, timer.interval_ns)
+        };
+        if !used {
+            return Err(Errno::Badf);
+        }
+        if next_ns == 0 {
+            if nonblock || !can_block_current() {
+                return Err(Errno::Again);
+            }
+            crate::runtime::block_current(timerfd_queue(timer_id));
+            continue;
+        }
+        let now = time::monotonic_ns();
+        if now < next_ns {
+            if nonblock || !can_block_current() {
+                return Err(Errno::Again);
+            }
+            let delta_ns = next_ns - now;
+            let mut sleep_ms = delta_ns / 1_000_000;
+            if sleep_ms == 0 {
+                sleep_ms = 1;
+            }
+            let _ = crate::runtime::wait_timeout_ms(timerfd_queue(timer_id), sleep_ms);
+            continue;
+        }
+        let mut expirations = 1u64;
+        let mut new_next = 0u64;
+        if interval_ns != 0 {
+            let missed = (now - next_ns) / interval_ns;
+            expirations = expirations.saturating_add(missed);
+            new_next = next_ns.saturating_add(expirations.saturating_mul(interval_ns));
+        }
+        // SAFETY: 单核早期阶段串行更新 timerfd。
+        unsafe {
+            if let Some(timer) = TIMERFDS.get_mut(timer_id) {
+                if interval_ns == 0 {
+                    timer.next_ns = 0;
+                } else {
+                    timer.next_ns = new_next;
+                }
+            }
+        }
+        UserPtr::new(buf)
+            .write(root_pa, expirations)
+            .ok_or(Errno::Fault)?;
+        return Ok(size_of::<u64>());
+    }
+}
+
 fn read_from_entry(fd: usize, entry: FdEntry, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
-    match entry.kind {
-        FdKind::Stdin => {
+    match entry.object {
+        FdObject::Stdin => {
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             read_console_into(root_pa, buf, len, nonblock)
         }
-        FdKind::Vfs(handle) => {
+        FdObject::Vfs(handle) => {
             if handle.file_type == FileType::Dir {
                 return Err(Errno::IsDir);
             }
             read_vfs_fd(fd, root_pa, handle.mount, handle.inode, buf, len)
         }
-        FdKind::PipeRead(pipe_id) => {
+        FdObject::PipeRead(pipe_id) => {
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             pipe_read(pipe_id, root_pa, buf, len, nonblock)
         }
-        FdKind::Stdout | FdKind::Stderr | FdKind::PipeWrite(_) => Err(Errno::Badf),
-        FdKind::Empty => Err(Errno::Badf),
+        FdObject::Socket(socket_id) => {
+            let nonblock = (entry.flags & O_NONBLOCK) != 0;
+            read_socket(root_pa, socket_id, buf, len, nonblock)
+        }
+        FdObject::Eventfd(event_id) => {
+            let nonblock = (entry.flags & O_NONBLOCK) != 0;
+            eventfd_read(event_id, root_pa, buf, len, nonblock)
+        }
+        FdObject::Timerfd(timer_id) => {
+            let nonblock = (entry.flags & O_NONBLOCK) != 0;
+            timerfd_read(timer_id, root_pa, buf, len, nonblock)
+        }
+        FdObject::Stdout | FdObject::Stderr | FdObject::PipeWrite(_) => Err(Errno::Badf),
+        FdObject::Epoll(_) => Err(Errno::Inval),
+        FdObject::Empty => Err(Errno::Badf),
     }
 }
 
@@ -3626,21 +6101,124 @@ fn write_vfs_at(
 }
 
 fn write_to_entry(fd: usize, entry: FdEntry, root_pa: usize, buf: usize, len: usize) -> Result<usize, Errno> {
-    match entry.kind {
-        FdKind::Stdout | FdKind::Stderr => write_console_from(root_pa, buf, len),
-        FdKind::Vfs(handle) => {
+    match entry.object {
+        FdObject::Stdout | FdObject::Stderr => write_console_from(root_pa, buf, len),
+        FdObject::Vfs(handle) => {
             if handle.file_type == FileType::Dir {
                 return Err(Errno::IsDir);
             }
+            if (entry.flags & O_APPEND) != 0 {
+                return with_mounts(|mounts| {
+                    let fs = mounts.fs_for(handle.mount).ok_or(Errno::NoEnt)?;
+                    let (_, size) = vfs_meta_for(fs, handle.inode)?;
+                    let written = write_vfs_at(root_pa, fs, handle.inode, size, buf, len)?;
+                    let new_offset = size.checked_add(written).ok_or(Errno::Inval)?;
+                    set_fd_offset(fd, new_offset);
+                    Ok(written)
+                });
+            }
             write_vfs_fd(fd, root_pa, handle.mount, handle.inode, buf, len)
         }
-        FdKind::PipeWrite(pipe_id) => {
+        FdObject::PipeWrite(pipe_id) => {
             let nonblock = (entry.flags & O_NONBLOCK) != 0;
             pipe_write(pipe_id, root_pa, buf, len, nonblock)
         }
-        FdKind::Stdin | FdKind::PipeRead(_) => Err(Errno::Badf),
-        FdKind::Empty => Err(Errno::Badf),
+        FdObject::Socket(socket_id) => {
+            let nonblock = (entry.flags & O_NONBLOCK) != 0;
+            write_socket(root_pa, socket_id, buf, len, nonblock)
+        }
+        FdObject::Eventfd(event_id) => {
+            let nonblock = (entry.flags & O_NONBLOCK) != 0;
+            eventfd_write(event_id, root_pa, buf, len, nonblock)
+        }
+        FdObject::Timerfd(_) | FdObject::Epoll(_) => Err(Errno::Inval),
+        FdObject::Stdin | FdObject::PipeRead(_) => Err(Errno::Badf),
+        FdObject::Empty => Err(Errno::Badf),
     }
+}
+
+fn read_socket(
+    root_pa: usize,
+    socket_id: axnet::SocketId,
+    buf: usize,
+    len: usize,
+    nonblock: bool,
+) -> Result<usize, Errno> {
+    if len == 0 {
+        return Ok(0);
+    }
+    let mut total = 0usize;
+    let mut remaining = len;
+    let mut scratch = [0u8; 512];
+    while remaining > 0 {
+        let chunk = core::cmp::min(remaining, scratch.len());
+        let (read, _) = match axnet::socket_recv(socket_id, &mut scratch[..chunk]) {
+            Ok(result) => result,
+            Err(axnet::NetError::WouldBlock) => {
+                if total > 0 {
+                    break;
+                }
+                if nonblock || !can_block_current() {
+                    return Err(Errno::Again);
+                }
+                crate::runtime::block_current(crate::runtime::net_wait_queue());
+                continue;
+            }
+            Err(err) => return Err(map_net_err(err)),
+        };
+        let dst = buf.checked_add(total).ok_or(Errno::Fault)?;
+        UserSlice::new(dst, read)
+            .copy_from_slice(root_pa, &scratch[..read])
+            .ok_or(Errno::Fault)?;
+        total += read;
+        if read < chunk {
+            break;
+        }
+        remaining = remaining.saturating_sub(read);
+    }
+    Ok(total)
+}
+
+fn write_socket(
+    root_pa: usize,
+    socket_id: axnet::SocketId,
+    buf: usize,
+    len: usize,
+    nonblock: bool,
+) -> Result<usize, Errno> {
+    if len == 0 {
+        return Ok(0);
+    }
+    let mut total = 0usize;
+    let mut remaining = len;
+    let mut scratch = [0u8; 512];
+    while remaining > 0 {
+        let chunk = core::cmp::min(remaining, scratch.len());
+        let src = buf.checked_add(total).ok_or(Errno::Fault)?;
+        UserSlice::new(src, chunk)
+            .copy_to_slice(root_pa, &mut scratch[..chunk])
+            .ok_or(Errno::Fault)?;
+        let sent = match axnet::socket_send(socket_id, &scratch[..chunk], None) {
+            Ok(sent) => sent,
+            Err(axnet::NetError::WouldBlock) => {
+                if total > 0 {
+                    break;
+                }
+                if nonblock || !can_block_current() {
+                    return Err(Errno::Again);
+                }
+                crate::runtime::block_current(crate::runtime::net_wait_queue());
+                continue;
+            }
+            Err(err) => return Err(map_net_err(err)),
+        };
+        total += sent;
+        if sent < chunk {
+            break;
+        }
+        remaining = remaining.saturating_sub(sent);
+    }
+    Ok(total)
 }
 
 fn read_user_byte(root_pa: usize, addr: usize) -> Result<u8, Errno> {

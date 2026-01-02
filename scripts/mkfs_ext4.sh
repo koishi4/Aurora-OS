@@ -6,17 +6,57 @@ OUT=${OUT:-"${ROOT}/build/rootfs.ext4"}
 SIZE=${SIZE:-16M}
 WORKDIR=${WORKDIR:-"${ROOT}/build/rootfs"}
 INIT_ELF=${INIT_ELF:-"${ROOT}/build/init.elf"}
+TCP_ECHO_ELF=${TCP_ECHO_ELF:-}
+UDP_ECHO_ELF=${UDP_ECHO_ELF:-}
+FS_SMOKE_ELF=${FS_SMOKE_ELF:-}
+EXTRA_ROOTFS_DIR=${EXTRA_ROOTFS_DIR:-}
+INIT_ELF_SKIP_BUILD=${INIT_ELF_SKIP_BUILD:-0}
 
 if ! command -v mke2fs >/dev/null 2>&1; then
   echo "mke2fs not found; please install e2fsprogs." >&2
   exit 1
 fi
 
-python3 "${ROOT}/tools/build_init_elf.py" --out "${INIT_ELF}"
+if [[ "${INIT_ELF_SKIP_BUILD}" != "1" ]]; then
+  python3 "${ROOT}/tools/build_init_elf.py" --out "${INIT_ELF}"
+else
+  if [[ ! -f "${INIT_ELF}" ]]; then
+    echo "INIT_ELF not found: ${INIT_ELF}" >&2
+    exit 1
+  fi
+fi
 
 rm -rf "${WORKDIR}"
 mkdir -p "${WORKDIR}"
 cp "${INIT_ELF}" "${WORKDIR}/init"
+if [[ -n "${TCP_ECHO_ELF}" ]]; then
+  if [[ ! -f "${TCP_ECHO_ELF}" ]]; then
+    echo "TCP_ECHO_ELF not found: ${TCP_ECHO_ELF}" >&2
+    exit 1
+  fi
+  cp "${TCP_ECHO_ELF}" "${WORKDIR}/tcp_echo"
+fi
+if [[ -n "${UDP_ECHO_ELF}" ]]; then
+  if [[ ! -f "${UDP_ECHO_ELF}" ]]; then
+    echo "UDP_ECHO_ELF not found: ${UDP_ECHO_ELF}" >&2
+    exit 1
+  fi
+  cp "${UDP_ECHO_ELF}" "${WORKDIR}/udp_echo"
+fi
+if [[ -n "${FS_SMOKE_ELF}" ]]; then
+  if [[ ! -f "${FS_SMOKE_ELF}" ]]; then
+    echo "FS_SMOKE_ELF not found: ${FS_SMOKE_ELF}" >&2
+    exit 1
+  fi
+  cp "${FS_SMOKE_ELF}" "${WORKDIR}/fs_smoke"
+fi
+if [[ -n "${EXTRA_ROOTFS_DIR}" ]]; then
+  if [[ ! -d "${EXTRA_ROOTFS_DIR}" ]]; then
+    echo "EXTRA_ROOTFS_DIR not found: ${EXTRA_ROOTFS_DIR}" >&2
+    exit 1
+  fi
+  cp -a "${EXTRA_ROOTFS_DIR}/." "${WORKDIR}/"
+fi
 mkdir -p "${WORKDIR}/etc"
 printf "Aurora ext4 test\n" > "${WORKDIR}/etc/issue"
 WORKDIR="${WORKDIR}" python3 - <<'PY'

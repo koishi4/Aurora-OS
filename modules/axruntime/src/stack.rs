@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+//! Kernel stack allocation helpers.
 
 use core::mem::MaybeUninit;
 
@@ -8,12 +9,14 @@ const STACK_PAGES: usize = 4;
 const PAGE_SIZE: usize = 4096;
 
 #[repr(C)]
+/// Kernel stack with a guard page below the usable range.
 pub struct KernelStack {
     base: usize,
     size: usize,
 }
 
 impl KernelStack {
+    /// Allocate a new kernel stack with a guard page.
     pub fn new() -> Option<Self> {
         let alloc_pages = STACK_PAGES + 1;
         let start = alloc_contiguous_frames(alloc_pages)?;
@@ -21,13 +24,14 @@ impl KernelStack {
         // Guard page sits below the usable stack range.
         let base = start_pa + PAGE_SIZE;
         let size = STACK_PAGES * PAGE_SIZE;
-        // Keep guard page zeroed to detect unexpected writes in debug dumps.
+        // SAFETY: guard page belongs to this stack allocation.
         unsafe {
             core::ptr::write_bytes(start_pa as *mut u8, 0, mm::PAGE_SIZE);
         }
         Some(Self { base, size })
     }
 
+    /// Return the top (stack pointer) address.
     pub fn top(&self) -> usize {
         self.base + self.size
     }
@@ -40,8 +44,9 @@ static mut TASK_STACKS: [MaybeUninit<KernelStack>; TASK_STACK_SLOTS] =
     [UNINIT_STACK; TASK_STACK_SLOTS];
 static mut TASK_STACKS_USED: usize = 0;
 
+/// Initialize the dedicated idle stack.
 pub fn init_idle_stack() -> Option<&'static KernelStack> {
-    // Safety: single init during early boot.
+    // SAFETY: single init during early boot.
     unsafe {
         let stack = KernelStack::new()?;
         IDLE_STACK.write(stack);
@@ -49,8 +54,9 @@ pub fn init_idle_stack() -> Option<&'static KernelStack> {
     }
 }
 
+/// Allocate a kernel stack for a new task.
 pub fn alloc_task_stack() -> Option<&'static KernelStack> {
-    // Safety: single-hart early boot; pool index advances monotonically.
+    // SAFETY: single-hart early boot; pool index advances monotonically.
     unsafe {
         if TASK_STACKS_USED >= TASK_STACK_SLOTS {
             return None;

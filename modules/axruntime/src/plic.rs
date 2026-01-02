@@ -1,3 +1,5 @@
+//! PLIC (platform-level interrupt controller) helpers.
+
 use core::ptr;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
@@ -12,11 +14,12 @@ const PLIC_CONTEXT_S: usize = 1;
 
 static PLIC_BASE: AtomicUsize = AtomicUsize::new(0);
 
+/// Initialize the PLIC mapping from the device tree.
 pub fn init(region: Option<MemoryRegion>) {
     if let Some(region) = region {
         let base = region.base as usize;
         PLIC_BASE.store(base, Ordering::Release);
-        // Safety: mapped device MMIO registers, single-hart early init.
+        // SAFETY: mapped device MMIO registers, single-hart early init.
         unsafe {
             ptr::write_volatile(
                 (base + PLIC_CONTEXT_BASE + PLIC_CONTEXT_S * PLIC_CONTEXT_STRIDE) as *mut u32,
@@ -26,6 +29,7 @@ pub fn init(region: Option<MemoryRegion>) {
     }
 }
 
+/// Enable a specific IRQ in the PLIC.
 pub fn enable(irq: u32) {
     let base = PLIC_BASE.load(Ordering::Acquire);
     if base == 0 || irq == 0 {
@@ -38,6 +42,7 @@ pub fn enable(irq: u32) {
         + PLIC_CONTEXT_S * PLIC_ENABLE_STRIDE
         + (irq / 32) * 4;
     let enable_bit = 1u32 << (irq % 32);
+    // SAFETY: MMIO registers are mapped and we only touch this IRQ's bits.
     unsafe {
         ptr::write_volatile(priority_addr as *mut u32, 1);
         let current = ptr::read_volatile(enable_addr as *const u32);
@@ -45,12 +50,14 @@ pub fn enable(irq: u32) {
     }
 }
 
+/// Claim the next pending IRQ.
 pub fn claim() -> Option<u32> {
     let base = PLIC_BASE.load(Ordering::Acquire);
     if base == 0 {
         return None;
     }
     let claim_addr = base + PLIC_CONTEXT_BASE + PLIC_CONTEXT_S * PLIC_CONTEXT_STRIDE + 4;
+    // SAFETY: MMIO claim register is mapped and aligned.
     let irq = unsafe { ptr::read_volatile(claim_addr as *const u32) };
     if irq == 0 {
         None
@@ -59,12 +66,14 @@ pub fn claim() -> Option<u32> {
     }
 }
 
+/// Complete handling of a claimed IRQ.
 pub fn complete(irq: u32) {
     let base = PLIC_BASE.load(Ordering::Acquire);
     if base == 0 || irq == 0 {
         return;
     }
     let claim_addr = base + PLIC_CONTEXT_BASE + PLIC_CONTEXT_S * PLIC_CONTEXT_STRIDE + 4;
+    // SAFETY: MMIO claim register is mapped and aligned.
     unsafe {
         ptr::write_volatile(claim_addr as *mut u32, irq);
     }

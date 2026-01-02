@@ -1,11 +1,12 @@
 # phase_3_process_syscall.md
 
 ## 目标
-- TODO: 进程/线程与系统调用覆盖。
+- 完成进程/线程基础模型与核心系统调用覆盖（clone/execve/wait/futex/ppoll 等）。
 
 ## 进展
 - 引入调度请求标志（need_resched），中断仅设置标志，空闲上下文执行切换。
 - 早期 RunQueue + dummy task 持续验证上下文切换入口。
+- 增加最小 async 执行器（静态任务槽 + 就绪队列 + RawWaker），idle_loop 周期性驱动任务推进。
 - 增加协作式 `yield_now`，用于验证任务与空闲上下文往返切换。
 - 增加 RunQueue 轮转指针与第二个 dummy task，验证 RR 顺序。
 - 任务栈改为固定大小栈池分配，便于扩展任务数量。
@@ -50,6 +51,15 @@
 - stdin 读取加入控制台缓存与睡眠重试，poll 增加 stdin 就绪判断；USER_TEST 覆盖 getdents64(/,/dev)、/dev/null write、pipe poll 就绪、ppoll 多 fd sleep-retry 超时与 futex cleartid 唤醒/timeout/EAGAIN 路径。
 - 增加 execve `/init` VFS 链路：从 VFS 读取 ELF，解析 PT_LOAD 段并映射，构建 argv/envp 栈布局后切换入口。
 - execve 失败路径补充地址空间释放，避免页表与用户页泄漏。
+- execve 记录初始 heap_top 并增加 brk：按页映射堆区并清零，满足 Rust 运行时初始化路径。
+- TaskWaitQueue 操作加入关中断保护，避免中断重入破坏等待队列状态。
+- trap 入口区分内核/用户态来源，内核态嵌套中断不再错误切换到用户栈，减少 RunQueue 被栈破坏风险。
+- execve/clone 通过 trapframe.user_sp 传递用户栈，内核态不再写 sscratch。
+- trap 入口记录 user_sp 时改用 trapframe 字段，避免依赖 sscratch。
+- 外部中断处理切换到内核页表访问 PLIC，避免用户页表缺少 MMIO 映射导致 trap。
+- 定时器中断仅在用户态陷入时进行抢占，避免内核态路径被切换导致上下文破坏。
+- context_switch 清零 sscratch，确保内核态切换后仍符合 trap 入口契约。
+- illegal instruction trap 增加一次性日志打印 sepc/sp/sscratch 用于定位。
 - 增加最小进程表（state/ppid/exit_code），以 TaskId+1 作为早期 PID 占位。
 - 增加 wait4/waitpid：父进程阻塞等待队列、WNOHANG 支持、Zombie 回收与 exit_code 回写。
 - waitpid 等待改为循环阻塞重试，避免递归栈增长。
@@ -87,8 +97,10 @@
 - fstat 时间戳改为基于 timebase 的单调时间，避免 tick 精度影响。
 - 增加 dup/dup3，占位支持标准输入输出重定向。
 - 增加 pipe2，占位内存管道缓冲区，支持阻塞唤醒与 EPIPE/EOF/EAGAIN。
-- fcntl/F_SETFL 支持 O_NONBLOCK，pipe 读写在设置后返回 EAGAIN。
-- 增加 lseek，占位返回 ESPIPE 避免误判可寻址。
+- fcntl/F_SETFL 支持 O_NONBLOCK/O_APPEND，pipe 读写在设置后返回 EAGAIN。
+- fcntl/F_GETFD/F_SETFD 支持 FD_CLOEXEC，execve 成功后关闭 CLOEXEC fd。
+- lseek 支持 VFS 句柄的 SEEK_SET/SEEK_CUR/SEEK_END，非可寻址句柄返回 ESPIPE。
+- 增加 pread64/pwrite64/preadv/pwritev，支持指定偏移读写且不影响 fd 读写偏移。
 - 增加 set_robust_list/get_robust_list，占位返回空链表。
 - 增加 rt_sigaction/rt_sigprocmask，占位支持信号配置。
 - 增加 fcntl，占位支持标准输入输出标志并返回基础读写模式。
@@ -99,6 +111,8 @@
 - 增加 getrusage，占位返回基础 user 时间与零资源统计。
 - 增加 setpgid/getpgid/getsid/setsid/getpgrp/setpgrp，占位返回 TaskId+1 作为进程组信息。
 - 增加 getgroups/setgroups，占位返回空组列表。
+- 增加 socket/bind/connect/listen/sendto/recvfrom 系统调用骨架，fd 表支持 socket 句柄。
+- sockaddr_in 解析按网络字节序处理，修正本机 TCP connect 目标地址解析错误。
 
 ## 问题与定位
 - 调度仍为单核占位阶段，未覆盖完整的多核与复杂优先级策略。

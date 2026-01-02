@@ -7,6 +7,11 @@ edition = "2021"
 user-test = []
 sched-demo = []
 ext4-write-test = []
+net-loopback-test = []
+user-tcp-echo = []
+user-udp-echo = []
+user-fs-smoke = []
 
 [dependencies]
 axfs = { path = "../axfs" }
+axnet = { path = "../axnet" }

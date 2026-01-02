@@ -1,8 +1,10 @@
 #![allow(dead_code)]
+//! Task runtime, scheduling hooks, and idle-loop orchestration.
 
+use core::arch::asm;
 use core::mem::size_of;
 use core::ptr;
-use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use crate::config;
 use crate::mm;
@@ -18,9 +20,11 @@ use crate::wait_queue::WaitQueue;
 
 static TICK_COUNT: AtomicU64 = AtomicU64::new(0);
 static NEED_RESCHED: AtomicBool = AtomicBool::new(false);
+static IDLE_STACK_TOP: AtomicUsize = AtomicUsize::new(0);
 static RUN_QUEUE: RunQueue = RunQueue::new();
 static SLEEP_QUEUE: SleepQueue = SleepQueue::new();
 static WAIT_QUEUE: WaitQueue = WaitQueue::new();
+static NET_WAITERS: TaskWaitQueue = TaskWaitQueue::new();
 // CURRENT_TASK is valid only while executing inside a task context.
 static mut CURRENT_TASK: Option<TaskId> = None;
 static mut IDLE_TASK: TaskControlBlock = task::idle_task();
@@ -67,8 +71,17 @@ fn dummy_task_c() -> ! {
     }
 }
 
+/// Advance runtime state on each timer tick.
 pub fn on_tick(ticks: u64) {
+    const NET_POLL_TICK_INTERVAL: u64 = 2;
     TICK_COUNT.store(ticks, Ordering::Relaxed);
+    if ticks % NET_POLL_TICK_INTERVAL == 0 {
+        axnet::request_poll();
+        if let Some(event) = axnet::poll(time::uptime_ms()) {
+            log_net_event(event, "tick");
+            let _ = wake_all(net_wait_queue());
+        }
+    }
     if config::ENABLE_SCHED_DEMO && ticks % 100 == 0 {
         crate::println!("scheduler: tick={}", ticks);
     }
@@ -93,21 +106,60 @@ pub fn on_tick(ticks: u64) {
     }
 }
 
+fn log_net_event(event: axnet::NetEvent, tag: &str) {
+    match event {
+        axnet::NetEvent::IcmpEchoReply { seq, from } => {
+            crate::println!("net: icmp echo reply seq={} from={}", seq, from);
+        }
+        axnet::NetEvent::ArpReply { from } => {
+            crate::println!("net: arp reply from {}", from);
+        }
+        axnet::NetEvent::ArpProbeSent { target } => {
+            crate::println!("net: arp probe sent to {}", target);
+        }
+        axnet::NetEvent::RxFrameSeen => {
+            crate::println!("net: rx frame seen");
+        }
+        axnet::NetEvent::TcpRecvWindow {
+            id,
+            port,
+            window,
+            capacity,
+            queued,
+        } => {
+            crate::println!(
+                "tcp: recv_win {} id={} port={} win={} cap={} queued={}",
+                tag,
+                id,
+                port,
+                window,
+                capacity,
+                queued
+            );
+        }
+        axnet::NetEvent::Activity => {}
+    }
+}
+
+/// Return the latest tick count observed by the runtime.
 pub fn tick_count() -> u64 {
     TICK_COUNT.load(Ordering::Relaxed)
 }
 
+/// Record trapframe pointers and user stack state on trap entry.
 pub fn on_trap_entry(tf: &mut crate::trap::TrapFrame) {
     // SAFETY: single-hart early use; current task does not change inside traps.
     unsafe {
         if let Some(task_id) = CURRENT_TASK {
             let _ = task::set_trap_frame(task_id, tf as *mut _ as usize);
-            let user_sp = crate::trap::read_user_stack();
-            let _ = task::set_user_sp(task_id, user_sp);
+            if tf.user_sp != 0 {
+                let _ = task::set_user_sp(task_id, tf.user_sp);
+            }
         }
     }
 }
 
+/// Clear the active trapframe pointer on trap exit.
 pub fn on_trap_exit() {
     // SAFETY: single-hart early use; clear any trap frame pointer on exit.
     unsafe {
@@ -117,16 +169,19 @@ pub fn on_trap_exit() {
     }
 }
 
+/// Return the currently running task ID, if any.
 pub fn current_task_id() -> Option<TaskId> {
     // SAFETY: single-hart early use; read-only access to CURRENT_TASK.
     unsafe { CURRENT_TASK }
 }
 
+/// Initialize runtime state and optional scheduler demo tasks.
 pub fn init() {
     TICK_COUNT.store(0, Ordering::Relaxed);
 
     match stack::init_idle_stack() {
         Some(stack) => {
+            IDLE_STACK_TOP.store(stack.top(), Ordering::Release);
             if config::ENABLE_SCHED_DEMO {
                 crate::println!("scheduler: idle stack top={:#x}", stack.top());
             }
@@ -174,6 +229,7 @@ pub fn init() {
     }
 }
 
+/// Spawn a new user task from a prepared user context.
 pub fn spawn_user(ctx: UserContext) -> Option<TaskId> {
     let stack = stack::alloc_task_stack()?;
     let task_id = task::alloc_task(user_task_entry, stack.top())?;
@@ -184,11 +240,13 @@ pub fn spawn_user(ctx: UserContext) -> Option<TaskId> {
     let _ = crate::process::init_process(task_id, 0, ctx.root_pa);
     crate::syscall::init_fd_table(task_id);
     let _ = task::set_user_sp(task_id, ctx.user_sp);
+    let _ = task::set_heap_top(task_id, ctx.heap_top);
     let _ = RUN_QUEUE.push(task_id);
     NEED_RESCHED.store(true, Ordering::Relaxed);
     Some(task_id)
 }
 
+/// Spawn a forked user task using an inherited trapframe snapshot.
 pub fn spawn_forked_user(
     parent_tf: &crate::trap::TrapFrame,
     child_root_pa: usize,
@@ -204,6 +262,7 @@ pub fn spawn_forked_user(
         ptr::copy_nonoverlapping(parent_tf as *const _, child_tf as *mut _, 1);
         child_tf.a0 = 0;
         child_tf.sepc = parent_tf.sepc.wrapping_add(4);
+        child_tf.user_sp = user_sp;
     }
     // Ensure the first resume uses the saved trap frame without clobbering it.
     let _ = task::set_context(task_id, resume_user_from_trap as usize, trap_frame_ptr);
@@ -238,7 +297,7 @@ fn user_task_entry() -> ! {
         crate::sbi::shutdown();
     }
     mm::switch_root(root_pa);
-    crate::trap::set_kernel_stack(kernel_sp);
+    // SAFETY: entry/user_sp/root_pa are validated above and the task owns them.
     unsafe {
         crate::trap::enter_user(entry, user_sp, mm::satp_for_root(root_pa));
     }
@@ -257,10 +316,10 @@ fn resume_user_from_trap() -> ! {
         crate::sbi::shutdown();
     }
     mm::switch_root(root_pa);
-    crate::trap::set_user_stack(user_sp);
     crate::trap::return_to_user(trap_frame);
 }
 
+/// Perform a single scheduling decision from the idle context.
 pub fn schedule_once() {
     let next_id = match RUN_QUEUE.pop_ready() {
         Some(task_id) => task_id,
@@ -295,6 +354,7 @@ pub fn schedule_once() {
     }
 }
 
+/// Trigger a schedule request if enough ticks have elapsed.
 pub fn maybe_schedule(ticks: u64, interval: u64) {
     if interval == 0 {
         return;
@@ -304,6 +364,7 @@ pub fn maybe_schedule(ticks: u64, interval: u64) {
     }
 }
 
+/// Preempt the current task and return to the idle context.
 pub fn preempt_current() {
     if !NEED_RESCHED.load(Ordering::Relaxed) {
         return;
@@ -331,18 +392,11 @@ pub fn preempt_current() {
         if root_pa != 0 && trap_frame != 0 {
             // 用户任务在 trap 中被抢占：恢复后从保存的 trapframe 返回用户态。
             let _ = task::set_context(task_id, resume_user_from_trap as usize, trap_frame);
-            if let Some(user_sp) = task::user_sp(task_id) {
-                if user_sp != 0 {
-                    crate::trap::set_user_stack(user_sp);
-                }
-            }
-        } else {
-            // 内核任务仅需保持当前内核栈指针供下次 trap 使用。
-            crate::trap::set_kernel_stack(crate::trap::current_sp());
         }
     }
 }
 
+/// Yield to the idle context if a reschedule is pending.
 pub fn yield_if_needed() {
     while NEED_RESCHED.swap(false, Ordering::Relaxed) {
         // 调度在空闲上下文中执行，避免在 trap 中切换上下文。
@@ -350,6 +404,7 @@ pub fn yield_if_needed() {
     }
 }
 
+/// Cooperatively yield the current task back to the run queue.
 pub fn yield_now() {
     // Cooperative yield: requeue the current task and switch back to idle.
     // SAFETY: single-hart early use; CURRENT_TASK is only accessed in init/idle/task contexts.
@@ -376,17 +431,11 @@ pub fn yield_now() {
         if root_pa != 0 && trap_frame != 0 {
             // 用户任务主动让出 CPU 时，确保后续能从 trapframe 返回用户态。
             let _ = task::set_context(task_id, resume_user_from_trap as usize, trap_frame);
-            if let Some(user_sp) = task::user_sp(task_id) {
-                if user_sp != 0 {
-                    crate::trap::set_user_stack(user_sp);
-                }
-            }
-        } else {
-            crate::trap::set_kernel_stack(crate::trap::current_sp());
         }
     }
 }
 
+/// Sleep the current task for at least the specified milliseconds.
 pub fn sleep_current_ms(ms: u64) -> bool {
     // Tick-based sleep: block the current task and let the timer wake it later.
     if ms == 0 {
@@ -425,6 +474,7 @@ pub fn sleep_current_ms(ms: u64) -> bool {
     true
 }
 
+/// Exit the current task and transfer control back to the idle loop.
 pub fn exit_current() -> ! {
     // SAFETY: single-hart early use; CURRENT_TASK is only accessed in init/idle/task contexts.
     unsafe {
@@ -444,6 +494,7 @@ pub fn exit_current() -> ! {
 }
 
 /// Block the current task on a wait queue until notified or the timeout elapses.
+/// Block the current task on a wait queue until notified or timeout.
 pub fn wait_timeout_ms(queue: &TaskWaitQueue, timeout_ms: u64) -> WaitResult {
     let tick_hz = time::tick_hz();
     if tick_hz == 0 {
@@ -492,6 +543,12 @@ pub fn wait_timeout_ms(queue: &TaskWaitQueue, timeout_ms: u64) -> WaitResult {
     }
 }
 
+/// Return the shared network wait queue used by socket syscalls.
+pub fn net_wait_queue() -> &'static TaskWaitQueue {
+    &NET_WAITERS
+}
+
+/// Move the current task into a blocked state on the given queue.
 pub fn block_current(queue: &TaskWaitQueue) {
     // Block the current task on a wait queue; caller controls the wake-up.
     // SAFETY: single-hart early use; CURRENT_TASK is only accessed in init/idle/task contexts.
@@ -516,6 +573,7 @@ pub fn block_current(queue: &TaskWaitQueue) {
     }
 }
 
+/// Wake a single task from the given queue.
 pub fn wake_one(queue: &TaskWaitQueue) -> bool {
     // Wake a single blocked waiter and enqueue it for scheduling.
     loop {
@@ -540,6 +598,7 @@ pub fn wake_one(queue: &TaskWaitQueue) -> bool {
     }
 }
 
+/// Wake all blocked tasks in the queue until the run queue is full.
 /// Wake all blocked tasks in the queue until the run queue is full.
 pub fn wake_all(queue: &TaskWaitQueue) -> usize {
     let mut woke = 0;
@@ -567,10 +626,41 @@ pub fn wake_all(queue: &TaskWaitQueue) -> usize {
     woke
 }
 
+/// Run the idle loop, polling net and async executors between sleeps.
 pub fn idle_loop() -> ! {
+    const NET_POLL_INTERVAL_MS: u64 = 20;
+    let mut last_net_poll_ms = 0u64;
     loop {
+        let now_ms = crate::time::uptime_ms();
+        if now_ms.wrapping_sub(last_net_poll_ms) >= NET_POLL_INTERVAL_MS {
+            axnet::request_poll();
+            last_net_poll_ms = now_ms;
+        }
+        if let Some(event) = axnet::poll(now_ms) {
+            log_net_event(event, "idle");
+            let _ = wake_all(net_wait_queue());
+        }
+        crate::async_exec::poll();
         yield_if_needed();
         crate::trap::enable_interrupts();
         crate::cpu::wait_for_interrupt();
+    }
+}
+
+/// Switch to the idle stack and enter the idle loop.
+pub fn enter_idle_loop() -> ! {
+    let top = IDLE_STACK_TOP.load(Ordering::Acquire);
+    if top == 0 {
+        idle_loop();
+    }
+    // SAFETY: switching to the dedicated idle stack before jumping to idle_loop.
+    unsafe {
+        asm!(
+            "mv sp, {0}",
+            "j {1}",
+            in(reg) top,
+            sym idle_loop,
+            options(noreturn)
+        );
     }
 }

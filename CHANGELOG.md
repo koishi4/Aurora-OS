@@ -53,6 +53,12 @@
 - Add poll/ppoll stubs that report pipe readiness, block on a single pipe fd, and use a sleep-retry loop for multi-fd waits.
 - Make ppoll sleep-retry fall back to timebase waiting when scheduler sleep is unavailable.
 - Add console input stash and polling readiness for stdin; USER_TEST now covers pipe poll readiness.
+- Add lseek support for VFS handles and honor O_APPEND in VFS writes; expose O_APPEND via fcntl.
+- Fix O_NONBLOCK flag value to match Linux userspace expectations.
+- Add pwrite64 for VFS files to support offset-based writes.
+- Add preadv/pwritev for VFS files to support offset vector I/O.
+- Add userland-staging self-test to boot ext4 images with staged iperf3/redis binaries when available.
+- Add fs_smoke user test for lseek/pread64/pwrite64/preadv/pwritev/ftruncate/O_APPEND and wire it into smoke scripts.
 - Enable timer-driven preemption by returning running tasks to the run queue and scheduling from idle.
 - Allow user tasks to be preempted by timer ticks and resume via trapframe-backed paths.
 - Add execve loader for `/init` built-in ELF image with argv/envp stack layout.
@@ -78,6 +84,28 @@
 - Add axfs memfs scaffold and wire getdents64 to memfs directory entries.
 - Route openat/newfstatat path resolution through memfs metadata.
 - Add memfs unit tests for path resolution and metadata.
+- Add `apps/net_bench` and `scripts/build_net_bench.sh` as a lightweight TCP throughput sink for the net perf harness.
+- Update net perf baseline script to enable USER_TEST and ext4 mount checks so `/init` executes under QEMU.
+- Add INIT_ELF_SKIP_BUILD to mkfs_ext4 so custom `/init` binaries are not overwritten.
+- Teach net perf baseline to archive the QEMU log and validate PERF_EXPECT markers against it.
+- Record net-perf baseline run with net_bench in docs/process/net_perf_baseline_2026-01-01.md.
+- Add net-perf sender helper, hostfwd wiring, auto host port selection, ready-wait handling, and a length-prefixed net_bench stream; record missing rx bytes explicitly.
+- Trigger net poll after TCP recv to refresh window updates for long streams.
+- Poll once after TCP recv in sys_recvfrom to keep long transfers flowing.
+- Add TCP recv window instrumentation and periodic net poll to stabilize long streams.
+- Increase TCP socket buffer length to 8192 and set net-perf default payload to 65536.
+- Guard net poll reentrancy, surface TCP recv window events from the stack, and lift TCP buffers to 64KB.
+- Document 1MiB net-perf run requiring extended TIMEOUT.
+- Return EALREADY when nonblocking connect is invoked on a connecting socket.
+- Extend tcp_echo to accept repeated connect return codes (EINPROGRESS/EALREADY/EISCONN).
+- Honor MSG_DONTWAIT in sendto/recvfrom/sendmsg/recvmsg.
+- Cover MSG_DONTWAIT EAGAIN behavior in udp_echo.
+- Implement FD_CLOEXEC tracking and close-on-exec for file descriptors.
+- Parse SOCK_NONBLOCK/SOCK_CLOEXEC in socket creation.
+- Extend tcp_echo to validate SOCK_NONBLOCK/SOCK_CLOEXEC via F_GETFD.
+- Add accept4 support for SOCK_NONBLOCK/SOCK_CLOEXEC.
+- Preserve FD_CLOEXEC when updating file status flags via F_SETFL.
+- Add a minimal no-alloc async executor with static task slots and idle-loop polling.
 - Route faccessat/statx/readlinkat path resolution through memfs.
 - Route statfs path resolution through memfs.
 - Route path-based stub syscalls (mkdirat/unlinkat/linkat/renameat* and chmod/chown/utimensat) through memfs.
@@ -97,6 +125,7 @@
 - Add minimal FAT32 write_at support for existing files and cover it in host tests.
 - Implement ext4 group descriptor/inode table parsing with read-only directory lookup and extent depth-0 reads.
 - Switch fd entries to carry VFS handles so open/read/write/stat/getdents64 route through VFS.
+- Rename fd kind tracking to fd object and standardize stdio object helpers.
 - Load execve images from VFS-backed /init instead of the memfile path.
 - Allow opening /proc as a directory and return minimal entries via getdents64.
 - Extend USER_TEST to cover getdents64 on / and /dev.
@@ -107,16 +136,27 @@
 - Add frame refcounting and release of user address spaces on waitpid/execve.
 - Extend user-mode smoke to cover clone/wait4 and CoW write path validation.
 - Add virtio-blk MMIO support and prefer external rootfs images over the ramdisk.
+- Extend ext4 write to allocate single-indirect blocks and add an indirect write/read test.
+- Add ftruncate and O_TRUNC support for VFS-backed files.
 - Use an IRQ-driven wait queue for virtio-blk completion and fall back to polling when needed.
 - Add an ext4-init host-side VFS check for reading `/init` from an ext4 image.
 - Extend ext4-init host test to validate root directory entries, `/etc/issue`, and larger reads.
 - Force QEMU virtio-mmio into modern mode in run/test scripts.
 - Extend ext4 read path to handle extent trees and indirect blocks.
+- Fix ext4 sparse-file reads by zero-filling holes instead of truncating at missing blocks.
 - Re-enable interrupts in idle so blocking syscalls can sleep and resume.
 - Extend user-mode smoke to cover multi-fd ppoll timeout path.
 - Track O_NONBLOCK via fcntl and honor it for pipe reads/writes.
 - Add uname syscall stub with minimal utsname fields.
 - Add minimal getppid/getuid/geteuid/getgid/getegid/getresuid/getresgid stubs.
+- Add per-process brk tracking and sys_brk to grow user heaps for Rust runtime initialization.
+- Guard wait queue mutations with IRQ masking to avoid reentrant corruption.
+- Make trap entry handle kernel-mode interrupts without swapping to user stack.
+- Keep sscratch zero in kernel mode and use trapframe.user_sp for user returns.
+- Switch to kernel page table during external IRQ handling to access PLIC safely.
+- Skip timer preemption when trapping from kernel mode to avoid reentrancy issues.
+- Clear sscratch during context switches to honor kernel-mode trap contract.
+- Loop back IPv4 frames destined to the local address for in-kernel TCP echo tests.
 - Add gettid and sched_yield stubs (TaskId+1 when available).
 - Add exit_group stub aligned with exit shutdown.
 - Add clock_gettime64 alias to clock_gettime stub.
@@ -147,11 +187,66 @@
 - Add setpgid/getpgid/getsid/setsid/getpgrp/setpgrp stubs (TaskId+1 when available).
 - Add getgroups/setgroups stubs returning empty groups.
 - Add test runner script for internal self-test cases and log summaries.
+- Extend self-test case list with net, net-loopback, and tcp-echo cases.
 - Add PLIC-backed external IRQ handling and virtio-blk interrupt-driven completion.
 - Add an ext4 rootfs mount log marker and smoke-test check in QEMU runs.
 - Extend /init to read `/etc/issue` and verify it in ext4 QEMU smoke runs.
 - Reduce ext4 read-path stack pressure by reusing a shared scratch buffer.
+- Allocate kernel stacks from contiguous pages with a guard page to prevent stack underflow into user data.
 - Extend FAT32 write_at to update directory entries and grow cluster chains, plus add a fatlog.txt rootfs fixture and host growth test.
 - Extend USER_TEST to write/read `/fatlog.txt` and add a FAT32 write/read marker check in ramdisk self-tests.
 - Allow the FAT32 ramdisk block device to write back to the in-memory rootfs image for self-tests.
 - Extend FAT32 directory entry updates to find files under subdirectories and add a subdir write/read host test.
+- Add axnet NetDevice/NetError interfaces as the network driver boundary.
+- Add minimal virtio-net MMIO driver with RX/TX queues and IRQ ack handling.
+- Add NET=1 QEMU toggle and optional virtio-net smoke log check.
+- Add smoltcp-backed axnet interface with static IPv4 config and idle-loop polling.
+- Add ICMP echo request path on boot (reply depends on QEMU user-net).
+- Add socket syscall skeletons and socket fd handling for TCP/UDP paths.
+- Add ARP probe on boot with reply logging and smoke-test check for QEMU user-net.
+- Add blocking accept/send/recv paths for sockets with net wait queue wakeups.
+- Switch idle loop to a dedicated idle stack to avoid boot stack overflows.
+- Log one-time virtio-net IRQ and ARP probe events for RX-path diagnostics.
+- Fix virtio-net modern header length and align TX buffer to restore ARP replies.
+- Add socket readiness tracking and poll integration for TCP accept/recv/send semantics.
+- Add TCP loopback self-test and smoke-test marker for socket semantics.
+- Add user-space tcp_echo app, build script, and ext4 rootfs integration for /tcp_echo.
+- Add user-space udp_echo app and ext4 rootfs integration for /udp_echo.
+- Add TCP_ECHO_TEST smoke path with tcp-echo log validation.
+- Add UDP_ECHO_TEST smoke path with udp-echo log validation.
+- Implement connect EINPROGRESS semantics and map connection failures to net-specific errno.
+- Add minimal getsockopt/setsockopt/shutdown support with SO_ERROR tracking for TCP connects.
+- Add getsockname/getpeername support for socket address queries.
+- Add SO_RCVTIMEO/SO_SNDTIMEO handling with timeout-aware socket waits.
+- Add sendmsg/recvmsg with basic iovec support for sockets.
+- Add sendmmsg/recvmmsg batching for UDP sockets.
+- Extend udp_echo to validate SO_RCVTIMEO timeout errors.
+- Extend udp_echo to validate SO_SNDTIMEO get/set behavior.
+- Extend tcp_echo to exercise nonblocking connect with ppoll and SO_ERROR checks.
+- Extend tcp_echo to exercise sendmsg/recvmsg with split iovecs over TCP.
+- Extend tcp_echo to validate getsockname/getpeername address reporting.
+- Add net baseline script to run net/net-loopback/tcp-echo/udp-echo with log capture.
+- Add net perf baseline harness for iperf3/redis logs and templates.
+- Fix sockaddr_in IP parsing to honor network byte order for local TCP connects.
+- Keep net polling active while TCP handshake is pending to avoid stalled connects.
+- Grow RISC-V boot stack to 64KB to avoid deep syscall stack overflows.
+- Map user stacks page-by-page to avoid execve stack zeroing overflows.
+- Refine sys_connect HUP handling to return the socket error when available.
+- Honor SO_SNDTIMEO when blocking on TCP connect.
+- Extend tcp_echo to validate connect failure via SO_ERROR.
+- Allow net-perf to override QEMU timeout via PERF_QEMU_TIMEOUT.
+- Allow net-perf to override host sender I/O timeout via PERF_IO_TIMEOUT.
+- Increase TCP socket buffers to 16KB and shorten idle net poll interval.
+- Add MAP_FIXED support and page-table cleanup for anonymous mmap/munmap.
+- Add userland app adaptation plan document (iperf3/redis).
+- Add syscall matrix collection script for iperf3/redis.
+- Record initial syscall coverage matrix for iperf3/redis (help/version paths).
+- Add access/readlink wrappers plus pread64/madvise stubs for app syscall coverage.
+- Add rseq ENOSYS stub and document arch_prctl as unsupported on riscv64.
+- Add minimal eventfd/timerfd/epoll syscall support for userland event loops.
+- Add userland staging script for iperf3/redis rootfs injection.
+- Add iperf3/redis cross-build helper scripts for static binaries.
+- Add ext4 inode extent(depth=0) and extent tree(depth=1/2) write support with sparse/depth1/depth2 host tests.
+- Add direct-mapped block cache with writeback flush behavior for block devices.
+- Add sync syscall to flush mounted VFS caches.
+- Add FAT32 truncate support with zero-fill growth test.

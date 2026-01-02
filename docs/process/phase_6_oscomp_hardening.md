@@ -6,6 +6,25 @@
 ## 进展
 - 接入 `scripts/test_oscomp.sh`，运行 `tests/self/` 中的自研测例并采集日志。
 - 产出日志目录 `build/selftest/`，生成 summary 便于回归记录。
+- 扩展自研测例覆盖网络路径：`net`/`net-loopback`/`tcp-echo`/`udp-echo` 用例纳入自测清单。
+- 新增 `fs-smoke` 自研用例，覆盖 lseek/pread64/pwrite64/preadv/pwritev/ftruncate/O_APPEND 文件偏移语义。
+- 运行 `make test-oscomp ARCH=riscv64 PLATFORM=qemu`，覆盖新增 fs-smoke 用例并通过。
+- 运行 `scripts/collect_syscall_matrix.sh` 生成 iperf3/redis help/version 路径 syscall 采集日志。
+- 增加 userland-staging 自测项：若已在 `build/rootfs-extra` 放置 iperf3/redis，将其打包进 ext4 并启动验证；无二进制时跳过。
+- 运行 `make test-oscomp ARCH=riscv64 PLATFORM=qemu`，userland-staging 用例已纳入自测流程。
+- tcp-echo 增加连接失败路径校验（SO_ERROR 映射），提升连接错误码一致性覆盖。
+- net-perf 基线脚本支持 `PERF_QEMU_TIMEOUT`，避免大流量下 QEMU 超时截断。
+- net-perf 增加 `PERF_IO_TIMEOUT` 发送端超时参数，并补充 1MiB/4MiB 基线记录。
+- TCP 缓冲区上调至 16KB、idle net poll 间隔调整为 20ms，作为性能调优基线。
+- 4MiB net-perf 基线调优后耗时约 3.4s（见 net_perf_baseline_2026-01-01.md）。
+- 8MiB/16MiB net-perf 扩展基线分别约 33.4s/80.4s（见 net_perf_baseline_2026-01-01.md）。
+- 增加 mmap/munmap/mprotect 最小兼容实现（匿名私有映射 + MAP_FIXED + munmap 回收与空表清理 + mprotect 权限更新），为后续 libc/应用适配打底。
+- 输出用户态应用适配路线草案（iperf3/redis），建立 syscall 覆盖矩阵计划。
+- 新增 `scripts/collect_syscall_matrix.sh`，用于 host 侧采集 iperf3/redis syscall 覆盖清单；当前环境缺少 strace/iperf3/redis-server，待补齐后执行。
+- 已完成 host 侧 help/version 路径 syscall 采集，补齐 access/pread64/readlink/madvise 占位，rseq/arch_prctl 维持 ENOSYS 兼容。
+- 增加 epoll/eventfd/timerfd 最小语义支持，方便后续用户态事件循环与定时器适配。
+- 增加 `scripts/stage_userland_apps.sh`，用于将本地静态构建的 iperf3/redis 写入 rootfs 目录。
+- 增加 `scripts/build_iperf3.sh`/`scripts/build_redis.sh` 交叉编译脚本，便于后续应用基准集成。
 
 ## 问题与定位
 - 尚未进入测例加固阶段，暂无问题记录。
@@ -16,3 +35,4 @@
 ## 下一步
 - 继续扩展自研测例覆盖面（FS/Net/调度）。
 - 完成测例加固后进入交付准备。
+- 记录 net-perf 基线与自研测例回归结果，形成周期性对比。

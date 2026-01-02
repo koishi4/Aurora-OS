@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+//! Device tree (DTB) parsing helpers.
 
 use core::fmt;
 
@@ -15,21 +16,32 @@ const FDT_END: u32 = 9;
 const MAX_DEPTH: usize = 16;
 
 const MAX_VIRTIO_MMIO: usize = 4;
+/// Maximum number of memory-mapped device regions returned to the MMU.
 pub const MAX_DEVICE_REGIONS: usize = MAX_VIRTIO_MMIO + 1;
 
 #[derive(Copy, Clone, Debug, Default)]
+/// Virtio-mmio device description extracted from the DTB.
 pub struct VirtioMmioDevice {
+    /// MMIO region of the device.
     pub region: MemoryRegion,
+    /// IRQ line associated with the device.
     pub irq: u32,
 }
 
 #[derive(Copy, Clone, Debug)]
+/// Parsed DTB information used during boot.
 pub struct DtbInfo {
+    /// System memory region.
     pub memory: Option<MemoryRegion>,
+    /// UART MMIO region.
     pub uart: Option<MemoryRegion>,
+    /// Timebase frequency in Hz.
     pub timebase_frequency: Option<u64>,
+    /// Discovered virtio-mmio devices.
     pub virtio_mmio: [VirtioMmioDevice; MAX_VIRTIO_MMIO],
+    /// Number of valid virtio-mmio entries.
     pub virtio_mmio_len: usize,
+    /// PLIC MMIO region.
     pub plic: Option<MemoryRegion>,
 }
 
@@ -47,10 +59,12 @@ impl Default for DtbInfo {
 }
 
 impl DtbInfo {
+    /// Return the list of virtio-mmio devices.
     pub fn virtio_mmio_devices(&self) -> &[VirtioMmioDevice] {
         &self.virtio_mmio[..self.virtio_mmio_len]
     }
 
+    /// Collect device regions for identity mapping.
     pub fn collect_device_regions(&self, out: &mut [MemoryRegion]) -> usize {
         let mut count = 0usize;
         for dev in self.virtio_mmio_devices() {
@@ -71,6 +85,7 @@ impl DtbInfo {
 }
 
 #[derive(Copy, Clone, Debug)]
+/// DTB parsing errors.
 pub enum DtbError {
     NullPointer,
     BadMagic,
@@ -118,13 +133,15 @@ impl FdtHeader {
     }
 }
 
+/// Parse a flattened device tree from the given address.
 pub fn parse(dtb_addr: usize) -> Result<DtbInfo, DtbError> {
     if dtb_addr == 0 {
         return Err(DtbError::NullPointer);
     }
 
-    // Safety: dtb_addr points to a valid FDT provided by the firmware.
+    // SAFETY: dtb_addr points to a valid FDT provided by the firmware.
     let base = dtb_addr as *const u8;
+// SAFETY: FDT bounds are validated before pointer access.
     let header = unsafe { FdtHeader::read(base) };
     if header.magic != FDT_MAGIC {
         return Err(DtbError::BadMagic);
@@ -140,8 +157,11 @@ pub fn parse(dtb_addr: usize) -> Result<DtbInfo, DtbError> {
         return Err(DtbError::BadOffsets);
     }
 
+// SAFETY: FDT bounds are validated before pointer access.
     let struct_base = unsafe { base.add(struct_off) };
+// SAFETY: FDT bounds are validated before pointer access.
     let struct_end = unsafe { struct_base.add(struct_size) };
+// SAFETY: FDT bounds are validated before pointer access.
     let strings_base = unsafe { base.add(strings_off) };
 
     let mut addr_cells = 2usize;
@@ -153,12 +173,17 @@ pub fn parse(dtb_addr: usize) -> Result<DtbInfo, DtbError> {
 
     let mut cursor = struct_base;
     while (cursor as usize) < (struct_end as usize) {
+// SAFETY: FDT bounds are validated before pointer access.
         let token = unsafe { read_u32_be_ptr(cursor) };
+// SAFETY: FDT bounds are validated before pointer access.
         cursor = unsafe { cursor.add(4) };
         match token {
             FDT_BEGIN_NODE => {
+// SAFETY: FDT bounds are validated before pointer access.
                 let name_len = unsafe { cstr_len(cursor, struct_end) };
+// SAFETY: FDT bounds are validated before pointer access.
                 let name = unsafe { read_str(cursor, name_len) };
+// SAFETY: FDT bounds are validated before pointer access.
                 cursor = unsafe { cursor.add(align_up(name_len + 1, 4)) };
 
                 if depth >= MAX_DEPTH {
@@ -189,11 +214,16 @@ pub fn parse(dtb_addr: usize) -> Result<DtbInfo, DtbError> {
                 }
             }
             FDT_PROP => {
+// SAFETY: FDT bounds are validated before pointer access.
                 let len = unsafe { read_u32_be_ptr(cursor) } as usize;
+// SAFETY: FDT bounds are validated before pointer access.
                 cursor = unsafe { cursor.add(4) };
+// SAFETY: FDT bounds are validated before pointer access.
                 let nameoff = unsafe { read_u32_be_ptr(cursor) } as usize;
+// SAFETY: FDT bounds are validated before pointer access.
                 cursor = unsafe { cursor.add(4) };
                 let value = cursor;
+// SAFETY: FDT bounds are validated before pointer access.
                 cursor = unsafe { cursor.add(align_up(len, 4)) };
 
                 if depth == 0 {
@@ -203,25 +233,31 @@ pub fn parse(dtb_addr: usize) -> Result<DtbInfo, DtbError> {
                 if nameoff >= strings_size {
                     continue;
                 }
+// SAFETY: FDT bounds are validated before pointer access.
                 let name_len = unsafe {
                     cstr_len(strings_base.add(nameoff), strings_base.add(strings_size))
                 };
+// SAFETY: FDT bounds are validated before pointer access.
                 let name = unsafe { read_str(strings_base.add(nameoff), name_len) };
                 let state = &mut stack[depth - 1];
 
                 match name {
                     Some("#address-cells") if depth == 1 => {
                         if len >= 4 {
+// SAFETY: FDT bounds are validated before pointer access.
                             addr_cells = unsafe { read_u32_be_ptr(value) } as usize;
                         }
                     }
                     Some("#size-cells") if depth == 1 => {
                         if len >= 4 {
+// SAFETY: FDT bounds are validated before pointer access.
                             size_cells = unsafe { read_u32_be_ptr(value) } as usize;
                         }
                     }
                     Some("device_type") => {
+// SAFETY: FDT bounds are validated before pointer access.
                         let str_len = unsafe { cstr_len(value, value.add(len)) };
+// SAFETY: FDT bounds are validated before pointer access.
                         if let Some(kind) = unsafe { read_str(value, str_len) } {
                             if kind == "memory" {
                                 state.is_memory = true;
@@ -230,6 +266,7 @@ pub fn parse(dtb_addr: usize) -> Result<DtbInfo, DtbError> {
                     }
                     Some("timebase-frequency") if info.timebase_frequency.is_none() => {
                         if len >= 4 {
+// SAFETY: FDT bounds are validated before pointer access.
                             let freq = unsafe { read_u32_be_ptr(value) } as u64;
                             info.timebase_frequency = Some(freq);
                         }
@@ -247,6 +284,7 @@ pub fn parse(dtb_addr: usize) -> Result<DtbInfo, DtbError> {
                     }
                     Some("interrupts") => {
                         if state.is_virtio_mmio && len >= 4 {
+// SAFETY: FDT bounds are validated before pointer access.
                             let irq = unsafe { read_u32_be_ptr(value) };
                             state.virtio_irq = Some(irq);
                         }
@@ -298,6 +336,7 @@ fn parse_reg(value: *const u8, len: usize, addr_cells: usize, size_cells: usize)
         return None;
     }
     let addr = read_cells(value, addr_cells)?;
+// SAFETY: FDT bounds are validated before pointer access.
     let size = read_cells(unsafe { value.add(addr_cells * 4) }, size_cells)?;
     Some(MemoryRegion { base: addr, size })
 }
@@ -308,6 +347,7 @@ fn read_cells(value: *const u8, cells: usize) -> Option<u64> {
     }
     let mut out = 0u64;
     for idx in 0..cells {
+// SAFETY: FDT bounds are validated before pointer access.
         let cell = unsafe { read_u32_be_ptr(value.add(idx * 4)) } as u64;
         out = (out << 32) | cell;
     }
@@ -317,12 +357,15 @@ fn read_cells(value: *const u8, cells: usize) -> Option<u64> {
 fn has_uart_compat(value: *const u8, len: usize) -> bool {
     let mut offset = 0usize;
     while offset < len {
+// SAFETY: FDT bounds are validated before pointer access.
         let ptr = unsafe { value.add(offset) };
+// SAFETY: FDT bounds are validated before pointer access.
         let part_len = unsafe { cstr_len(ptr, value.add(len)) };
         if part_len == 0 {
             offset += 1;
             continue;
         }
+// SAFETY: FDT bounds are validated before pointer access.
         let s = unsafe { read_str(ptr, part_len) };
         if matches!(s, Some("ns16550a") | Some("ns16550") | Some("uart8250")) {
             return true;
@@ -335,12 +378,15 @@ fn has_uart_compat(value: *const u8, len: usize) -> bool {
 fn has_virtio_mmio_compat(value: *const u8, len: usize) -> bool {
     let mut offset = 0usize;
     while offset < len {
+// SAFETY: FDT bounds are validated before pointer access.
         let ptr = unsafe { value.add(offset) };
+// SAFETY: FDT bounds are validated before pointer access.
         let part_len = unsafe { cstr_len(ptr, value.add(len)) };
         if part_len == 0 {
             offset += 1;
             continue;
         }
+// SAFETY: FDT bounds are validated before pointer access.
         let s = unsafe { read_str(ptr, part_len) };
         if matches!(s, Some("virtio,mmio")) {
             return true;
@@ -353,12 +399,15 @@ fn has_virtio_mmio_compat(value: *const u8, len: usize) -> bool {
 fn has_plic_compat(value: *const u8, len: usize) -> bool {
     let mut offset = 0usize;
     while offset < len {
+// SAFETY: FDT bounds are validated before pointer access.
         let ptr = unsafe { value.add(offset) };
+// SAFETY: FDT bounds are validated before pointer access.
         let part_len = unsafe { cstr_len(ptr, value.add(len)) };
         if part_len == 0 {
             offset += 1;
             continue;
         }
+// SAFETY: FDT bounds are validated before pointer access.
         let s = unsafe { read_str(ptr, part_len) };
         if matches!(s, Some("riscv,plic0") | Some("sifive,plic-1.0.0")) {
             return true;

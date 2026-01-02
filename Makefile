@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help fmt clippy build run gdb test-host test-qemu-smoke test-oscomp rootfs-ext4 clean
+.PHONY: help fmt clippy build run gdb test-host test-qemu-smoke test-oscomp test-net-baseline test-net-perf rootfs-ext4 clean
 
 help:
 	@printf "Project Aurora build/test entrypoints\n\n"
@@ -16,11 +16,16 @@ help:
 	@printf "  make test-host\n"
 	@printf "  make test-qemu-smoke ARCH=riscv64 PLATFORM=qemu [FS=path/to/ext4.img]\n"
 	@printf "  make test-oscomp ARCH=riscv64 PLATFORM=qemu [FS=path/to/ext4.img] [EXPECT_INIT=1]\n"
+	@printf "  make test-net-baseline ARCH=riscv64 PLATFORM=qemu\n"
+	@printf "  make test-net-perf ARCH=riscv64 PLATFORM=qemu\n"
 	@printf "  make rootfs-ext4 OUT=build/rootfs.ext4 SIZE=16M\n"
 	@printf "  make clean\n"
 	@printf "\nOptions:\n"
 	@printf "  USER_TEST=1  Enable minimal user-mode ecall smoke path\n"
 	@printf "  SCHED_DEMO=1 Enable scheduler demo tasks/logs during bring-up\n"
+	@printf "  NET=1        Enable virtio-net device in QEMU run/test\n"
+	@printf "  EXPECT_NET=1 Require virtio-net ready banner in smoke test\n"
+	@printf "  TCP_ECHO_TEST=1 Run user TCP echo test (requires NET=1 and ext4 rootfs)\n"
 
 fmt:
 	@./scripts/fmt.sh
@@ -45,6 +50,12 @@ test-qemu-smoke:
 
 test-oscomp:
 	@./scripts/test_oscomp.sh
+
+test-net-baseline:
+	@./scripts/net_baseline.sh
+
+test-net-perf:
+	@./scripts/net_perf_baseline.sh
 
 rootfs-ext4:
 	@./scripts/mkfs_ext4.sh

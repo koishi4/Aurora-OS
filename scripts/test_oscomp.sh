@@ -102,6 +102,17 @@ for case_name in "${CASES[@]}"; do
   expect_fat32=0
   expect_ext4_write=0
   ext4_write_test=0
+  net=0
+  expect_net=0
+  net_loopback_test=0
+  expect_net_loopback=0
+  tcp_echo_test=0
+  expect_tcp_echo=0
+  udp_echo_test=0
+  expect_udp_echo=0
+  fs_smoke_test=0
+  expect_fs_smoke=0
+  userland_staging_test=0
   if [[ "${case_name}" == "ext4-init" ]]; then
     ensure_ext4_image
     FS_EXT4="$(abs_path "${FS_EXT4}")"
@@ -124,14 +135,64 @@ for case_name in "${CASES[@]}"; do
     expect_ext4=1
     expect_ext4_write=1
     ext4_write_test=1
+  elif [[ "${case_name}" == "net" ]]; then
+    net=1
+    expect_net=1
+  elif [[ "${case_name}" == "net-loopback" ]]; then
+    net=1
+    expect_net=1
+    net_loopback_test=1
+    expect_net_loopback=1
+  elif [[ "${case_name}" == "tcp-echo" ]]; then
+    tcp_echo_test=1
+    expect_tcp_echo=1
+  elif [[ "${case_name}" == "udp-echo" ]]; then
+    udp_echo_test=1
+    expect_udp_echo=1
+  elif [[ "${case_name}" == "fs-smoke" ]]; then
+    fs_smoke_test=1
+    expect_fs_smoke=1
+  elif [[ "${case_name}" == "userland-staging" ]]; then
+    userland_staging_test=1
   elif [[ "${case_name}" == "ramdisk" ]]; then
     expect_fat32=1
+  fi
+
+  if [[ "${userland_staging_test}" == "1" ]]; then
+    EXTRA_ROOTFS_DIR="${ROOT}/build/rootfs-extra"
+    iperf_bin="${ROOT}/build/iperf3"
+    redis_bin="${ROOT}/build/redis-server"
+    IPERF3_BIN=""
+    REDIS_BIN=""
+    if [[ -f "${iperf_bin}" ]]; then
+      IPERF3_BIN="${iperf_bin}"
+    fi
+    if [[ -f "${redis_bin}" ]]; then
+      REDIS_BIN="${redis_bin}"
+    fi
+    EXTRA_ROOTFS_DIR="${EXTRA_ROOTFS_DIR}" IPERF3_BIN="${IPERF3_BIN}" \
+      REDIS_BIN="${REDIS_BIN}" "${ROOT}/scripts/stage_userland_apps.sh"
+    if [[ ! -f "${EXTRA_ROOTFS_DIR}/iperf3" && ! -f "${EXTRA_ROOTFS_DIR}/redis-server" ]]; then
+      echo "${case_name}: status=skipped log=${case_log} detail=no-staged-apps" >> "${SUMMARY_FILE}"
+      continue
+    fi
+    expect_ext4=1
+    expect_ext4_write=1
+    ext4_write_test=1
+    OUT="${ROOT}/build/rootfs-userland.ext4" EXTRA_ROOTFS_DIR="${EXTRA_ROOTFS_DIR}" \
+      "${ROOT}/scripts/mkfs_ext4.sh"
+    case_fs="${ROOT}/build/rootfs-userland.ext4"
   fi
 
   set +e
   ARCH="${ARCH}" PLATFORM="${PLATFORM}" FS="${case_fs}" MODE="${MODE}" \
     USER_TEST=1 EXPECT_INIT="${EXPECT_INIT}" EXPECT_EXT4="${expect_ext4}" EXPECT_FAT32="${expect_fat32}" \
-    EXT4_WRITE_TEST="${ext4_write_test}" EXPECT_EXT4_WRITE="${expect_ext4_write}" TIMEOUT="${TIMEOUT}" \
+    EXT4_WRITE_TEST="${ext4_write_test}" EXPECT_EXT4_WRITE="${expect_ext4_write}" \
+    NET="${net}" EXPECT_NET="${expect_net}" NET_LOOPBACK_TEST="${net_loopback_test}" \
+    EXPECT_NET_LOOPBACK="${expect_net_loopback}" TCP_ECHO_TEST="${tcp_echo_test}" \
+    EXPECT_TCP_ECHO="${expect_tcp_echo}" UDP_ECHO_TEST="${udp_echo_test}" \
+    EXPECT_UDP_ECHO="${expect_udp_echo}" FS_SMOKE_TEST="${fs_smoke_test}" \
+    EXPECT_FS_SMOKE="${expect_fs_smoke}" TIMEOUT="${TIMEOUT}" \
     QEMU_BIN="${QEMU_BIN}" BIOS="${BIOS}" MEM="${MEM}" SMP="${SMP}" \
     LOG_DIR="${LOG_DIR}" LOG_FILE="${case_log}" \
     "${ROOT}/scripts/test_qemu_smoke.sh"

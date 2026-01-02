@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+//! Kernel entry point and subsystem initialization order.
 
 mod console;
 mod dtb;
@@ -18,6 +19,7 @@ mod syscall;
 mod user;
 mod fs;
 mod virtio_blk;
+mod virtio_net;
 mod task_wait_queue;
 mod task;
 mod scheduler;
@@ -26,6 +28,7 @@ mod context;
 mod stack;
 mod config;
 mod process;
+mod async_exec;
 
 use core::panic::PanicInfo;
 
@@ -34,8 +37,10 @@ core::arch::global_asm!(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../..
 core::arch::global_asm!(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../arch/riscv64/context.S")));
 
 #[no_mangle]
+/// Kernel entry invoked by the architecture-specific bootstrap.
 pub extern "C" fn rust_main(hart_id: usize, dtb_addr: usize) -> ! {
     trap::init();
+    print_banner();
     crate::println!("Aurora kernel booting...");
     crate::println!("hart_id={:#x} dtb={:#x}", hart_id, dtb_addr);
     let dtb_info = match dtb::parse(dtb_addr) {
@@ -80,6 +85,21 @@ pub extern "C" fn rust_main(hart_id: usize, dtb_addr: usize) -> ! {
     mm::init(dtb_info.memory, &device_regions[..device_count]);
     plic::init(dtb_info.plic);
     fs::init(dtb_info.virtio_mmio_devices());
+    virtio_net::init(dtb_info.virtio_mmio_devices());
+    if let Some(dev) = virtio_net::device() {
+        if axnet::init(dev).is_ok() {
+            crate::println!("axnet: interface up (static 10.0.2.15/24)");
+            let _ = axnet::arp_probe_gateway_once();
+            #[cfg(feature = "net-loopback-test")]
+            {
+                if axnet::tcp_loopback_test_once().is_ok() {
+                    crate::println!("net: tcp loopback ok");
+                } else {
+                    crate::println!("net: tcp loopback failed");
+                }
+            }
+        }
+    }
 
     let timebase = dtb_info.timebase_frequency.unwrap_or(10_000_000);
     let tick_hz = config::DEFAULT_TICK_HZ;
@@ -105,7 +125,18 @@ pub extern "C" fn rust_main(hart_id: usize, dtb_addr: usize) -> ! {
         }
     }
 
-    runtime::idle_loop();
+    runtime::enter_idle_loop();
+}
+
+/// Emit the ANSI aurora banner to the early console.
+fn print_banner() {
+    crate::println!("\x1b[36;1m    ___                       \x1b[0m");
+    crate::println!("\x1b[36;1m   /   | __  __ _________  ___\x1b[0m");
+    crate::println!("\x1b[34;1m  / /| |/ / / // ___/ __ \\/ _ \\\x1b[0m");
+    crate::println!("\x1b[35;1m / ___ / /_/ // /  / /_/ / // /\x1b[0m");
+    crate::println!("\x1b[35;1m/_/  |_\\__,_//_/   \\____/_//_/ \x1b[0m");
+    crate::println!();
+    crate::println!("\x1b[32m :: Aurora OS :: \x1b[90m(Powered by Rust)\x1b[0m");
 }
 
 #[panic_handler]
