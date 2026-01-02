@@ -15,19 +15,41 @@
 - DNS/配置依赖：优先使用 IP 直连，避免依赖 `/etc/resolv.conf` 与复杂 NSS。
 - 网络测试：iperf3 作为吞吐基线，redis 作为请求/响应基线（get/set、pipeline）。
 
-## 覆盖矩阵（待填充）
+## 覆盖矩阵（初稿）
 | syscall | iperf3 | redis | 备注 |
 | --- | --- | --- | --- |
-| read/write/open/close | - | - | 基础 I/O |
-| socket/connect/bind/listen/accept | - | - | 网络核心路径 |
-| mmap/munmap/mprotect | - | - | 内存映射 |
-| epoll/eventfd/timerfd | - | - | 事件与定时器 |
-| futex/clone | - | - | 线程/同步 |
-| clock_gettime/nanosleep | - | - | 时间 |
+| read/write/open/close/openat | ✓ | ✓ | 基础 I/O |
+| brk | ✓ | ✓ | 堆增长 |
+| mmap/munmap/mprotect | ✓ | ✓ | 匿名私有映射 |
+| socket/connect/bind/listen/accept | - | - | 需要运行态采集 |
+| epoll/eventfd/timerfd | - | - | 需要运行态采集 |
+| futex/clone | - | ✓ | redis 版本路径出现 futex |
+| clock_gettime/nanosleep | - | - | 需要运行态采集 |
+| access | ✓ | ✓ | 建议兼容 access→faccessat |
+| pread64 | ✓ | ✓ | 缺失（待实现） |
+| rseq | ✓ | ✓ | 缺失（可暂时返回 ENOSYS） |
+| arch_prctl | ✓ | ✓ | riscv 可返回 ENOSYS |
+| madvise | - | ✓ | 缺失（待实现） |
+| readlink | - | ✓ | readlinkat 已有，需补 readlink |
+| prlimit64 | ✓ | ✓ | 已支持 |
+| getrandom | ✓ | ✓ | 已支持 |
+| prctl | - | ✓ | 已支持 |
+| sched_getaffinity | - | ✓ | 已支持 |
+| getcwd/getpid/lseek/umask | - | ✓ | 已支持 |
 
 ## 采集状态
-- 当前主机未检测到 `strace`/`iperf3`/`redis-server`，需要安装后再生成覆盖矩阵。
-- 采集脚本：`scripts/collect_syscall_matrix.sh`。
+- 已通过 `scripts/collect_syscall_matrix.sh` 完成 host 侧 `--help/--version` 路径采集，输出目录：
+  - `build/syscall-matrix/`
+- 采集脚本依赖 ptrace 权限，若报 `PTRACE_TRACEME: Operation not permitted` 需提升权限执行。
+
+### 采集结果（help/version 路径）
+- iperf3：access, arch_prctl, brk, close, execve, exit_group, fstat, getrandom, ioctl, mmap, mprotect, munmap, openat, pread64, prlimit64, read, rseq, set_robust_list, set_tid_address, uname, write
+- redis-server：access, arch_prctl, brk, close, execve, exit_group, fstat, futex, getcwd, getpid, getrandom, ioctl, lseek, madvise, mmap, mprotect, munmap, open, openat, pipe2, prctl, pread64, prlimit64, read, readlink, rseq, sched_getaffinity, set_robust_list, set_tid_address, umask, write
+
+### 缺口分析（初步）
+- 必须补齐：pread64, readlink, madvise, access（或兼容到 faccessat）。
+- 可暂时返回 ENOSYS：arch_prctl（riscv）、rseq（若应用未启用线程/注册）。
+- 运行态后续补齐：epoll/eventfd/timerfd、socket 路径与时间相关 syscall。
 
 ## 关键数据结构
 - `SyscallCoverageMatrix`：记录 syscall -> 状态/风险/测试点。
