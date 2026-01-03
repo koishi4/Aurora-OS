@@ -259,6 +259,10 @@ fn cmd_cd(line: &[u8], args: &[Arg], argc: usize) {
     // SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     let ret = unsafe { syscall6(SYS_CHDIR, path as usize, 0, 0, 0, 0, 0) };
     if ret < 0 {
+        if ret == -20 {
+            write_stdout(b"cd: not a directory\n");
+            return;
+        }
         write_stdout(b"cd: failed");
         write_errno(ret);
     }
