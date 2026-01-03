@@ -18,7 +18,17 @@ const AT_FDCWD: isize = -100;
 const O_RDONLY: usize = 0;
 
 const PROMPT: &[u8] = b"aurora> ";
-const BANNER: &[u8] = b"Aurora shell ready. Type 'help' for commands.\n";
+const BANNER: &[u8] = b"\nAurora OS / shell\n\
+-----------------\n\
+OS:       Aurora OS\n\
+Arch:     riscv64\n\
+Platform: qemu-virt\n\
+Kernel:   axruntime\n\
+RootFS:   ext4\n\
+Net:      virtio-net\n\
+Shell:    aurora-sh\n\
+\n\
+Type 'help' for commands.\n";
 const HELP_TEXT: &[u8] = b"commands: help echo ls cat cd pwd exit\n";
 
 const MAX_LINE: usize = 256;
@@ -365,7 +375,6 @@ fn cmd_cat(line: &[u8], args: &[Arg], argc: usize) {
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    write_stdout(b"\n");
     write_stdout(BANNER);
     loop {
         write_stdout(PROMPT);
