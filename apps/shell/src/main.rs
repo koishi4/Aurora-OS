@@ -19,11 +19,11 @@ const O_RDONLY: usize = 0;
 
 const PROMPT: &[u8] = b"aurora> ";
 const BANNER: &[u8] = b"\n\
-    ___                       \n\
-   /   | __  __ _________  ___\n\
-  / /| |/ / / // ___/ __ \\/ _ \\\n\
- / ___ / /_/ // /  / /_/ / // /\n\
-/_/  |_|\\__,_//_/   \\____/_//_/ \n\
+\x1b[36;1m    ___                       \x1b[0m\n\
+\x1b[36;1m   /   | __  __ _________  ___\x1b[0m\n\
+\x1b[34;1m  / /| |/ / / // ___/ __ \\/ _ \\\x1b[0m\n\
+\x1b[35;1m / ___ / /_/ // /  / /_/ / // /\x1b[0m\n\
+\x1b[35;1m/_/  |_|\\__,_//_/   \\____/_//_/ \x1b[0m\n\
 \n\
 Aurora OS / shell\n\
 -----------------\n\
@@ -119,14 +119,32 @@ fn read_byte() -> Option<u8> {
     Some(ch)
 }
 
+static mut SKIP_LF: bool = false;
+
 fn read_line(buf: &mut [u8]) -> usize {
     let mut len = 0usize;
     loop {
         let Some(ch) = read_byte() else {
             continue;
         };
+        // SAFETY: single-threaded user shell input handling.
+        unsafe {
+            if SKIP_LF {
+                SKIP_LF = false;
+                if ch == b'\n' {
+                    continue;
+                }
+            }
+        }
         match ch {
-            b'\r' => {}
+            b'\r' => {
+                write_stdout(b"\n");
+                // SAFETY: single-threaded user shell input handling.
+                unsafe {
+                    SKIP_LF = true;
+                }
+                break;
+            }
             b'\n' => {
                 write_stdout(b"\n");
                 break;
