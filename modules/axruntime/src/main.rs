@@ -114,7 +114,16 @@ pub extern "C" fn rust_main(hart_id: usize, dtb_addr: usize) -> ! {
         crate::println!("ext4: write test armed");
     }
 
-    if config::ENABLE_USER_TEST {
+    if config::ENABLE_USER_SHELL {
+        if let Some(ctx) = syscall::prepare_user_init() {
+            crate::println!("user: spawn init shell entry={:#x}", ctx.entry);
+            if runtime::spawn_user(ctx).is_none() {
+                crate::println!("user: spawn failed");
+            }
+        } else {
+            crate::println!("user: init shell setup failed, continue in kernel");
+        }
+    } else if config::ENABLE_USER_TEST {
         if let Some(ctx) = user::prepare_user_test() {
             crate::println!("user: spawn user task entry={:#x}", ctx.entry);
             if runtime::spawn_user(ctx).is_none() {

@@ -11,6 +11,8 @@ pub const MAX_TASKS: usize = 8;
 pub const MAX_ASYNC_TASKS: usize = 16;
 /// 通过 `--features user-test` 启用最小用户态 ecall 验证路径。
 pub const ENABLE_USER_TEST: bool = cfg!(feature = "user-test");
+/// 通过 `--features user-shell` 启动交互式 shell 作为 /init。
+pub const ENABLE_USER_SHELL: bool = cfg!(feature = "user-shell");
 /// 通过 `--features sched-demo` 启用调度 demo 任务与日志。
 pub const ENABLE_SCHED_DEMO: bool = cfg!(feature = "sched-demo");
 /// 通过 `--features ext4-write-test` 启用 ext4 写路径冒烟自测。

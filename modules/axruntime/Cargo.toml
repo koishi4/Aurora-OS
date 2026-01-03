@@ -5,6 +5,7 @@ edition = "2021"
 
 [features]
 user-test = []
+user-shell = []
 sched-demo = []
 ext4-write-test = []
 net-loopback-test = []

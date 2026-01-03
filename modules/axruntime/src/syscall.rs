@@ -1400,37 +1400,16 @@ const EXECVE_IMAGE_MAX: usize = 0x100000;
 // SAFETY: 单核 execve 过程复用该缓冲区读取 ELF 镜像。
 static mut EXECVE_IMAGE: [u8; EXECVE_IMAGE_MAX] = [0; EXECVE_IMAGE_MAX];
 
+/// Load the `/init` image from the VFS and prepare a user context for it.
+pub fn prepare_user_init() -> Option<crate::user::UserContext> {
+    let (mount, inode) = vfs_lookup_path("/init").ok()?;
+    let image = vfs_read_inode_image(mount, inode).ok()?;
+    crate::user::load_exec_elf(0, image, 0, 0).ok()
+}
+
 fn execve_vfs_image(root_pa: usize, pathname: usize) -> Result<&'static [u8], Errno> {
     let (mount, inode) = vfs_lookup_inode(root_pa, pathname)?;
-    with_mounts(|mounts| {
-        let fs = mounts.fs_for(mount).ok_or(Errno::NoEnt)?;
-        let meta = fs.metadata(inode).map_err(map_vfs_err)?;
-        if meta.file_type != FileType::File {
-            return Err(Errno::NoEnt);
-        }
-        let size = meta.size as usize;
-        if size == 0 || size > EXECVE_IMAGE_MAX {
-            return Err(Errno::NoMem);
-        }
-        // SAFETY: 单核 execve 路径，缓冲区只在此处写入。
-        unsafe {
-            let buf = &mut EXECVE_IMAGE[..size];
-            let mut offset = 0usize;
-            while offset < size {
-                let read = fs
-                    .read_at(inode, offset as u64, &mut buf[offset..])
-                    .map_err(map_vfs_err)?;
-                if read == 0 {
-                    break;
-                }
-                offset += read;
-            }
-            if offset != size {
-                return Err(Errno::Inval);
-            }
-            Ok(&EXECVE_IMAGE[..size])
-        }
-    })
+    vfs_read_inode_image(mount, inode)
 }
 
 fn sys_clone(
@@ -4273,6 +4252,42 @@ fn vfs_lookup_inode(root_pa: usize, pathname: usize) -> Result<(MountId, InodeId
     let mut buf = [0u8; MAX_PATH_LEN];
     let path = read_user_path_abs(root_pa, pathname, &mut buf)?;
     with_mounts(|mounts| mounts.resolve_path(path).map_err(map_vfs_err))
+}
+
+fn vfs_lookup_path(path: &str) -> Result<(MountId, InodeId), Errno> {
+    with_mounts(|mounts| mounts.resolve_path(path).map_err(map_vfs_err))
+}
+
+fn vfs_read_inode_image(mount: MountId, inode: InodeId) -> Result<&'static [u8], Errno> {
+    with_mounts(|mounts| {
+        let fs = mounts.fs_for(mount).ok_or(Errno::NoEnt)?;
+        let meta = fs.metadata(inode).map_err(map_vfs_err)?;
+        if meta.file_type != FileType::File {
+            return Err(Errno::NoEnt);
+        }
+        let size = meta.size as usize;
+        if size == 0 || size > EXECVE_IMAGE_MAX {
+            return Err(Errno::NoMem);
+        }
+        // SAFETY: 单核 execve/引导路径，缓冲区只在此处写入。
+        unsafe {
+            let buf = &mut EXECVE_IMAGE[..size];
+            let mut offset = 0usize;
+            while offset < size {
+                let read = fs
+                    .read_at(inode, offset as u64, &mut buf[offset..])
+                    .map_err(map_vfs_err)?;
+                if read == 0 {
+                    break;
+                }
+                offset += read;
+            }
+            if offset != size {
+                return Err(Errno::Inval);
+            }
+            Ok(&EXECVE_IMAGE[..size])
+        }
+    })
 }
 
 fn vfs_check_parent(root_pa: usize, pathname: usize) -> Result<(), Errno> {

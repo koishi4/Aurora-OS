@@ -6,6 +6,7 @@ ARCH=${ARCH:-riscv64}
 PLATFORM=${PLATFORM:-qemu}
 MODE=${MODE:-debug}
 USER_TEST=${USER_TEST:-0}
+SHELL_TEST=${SHELL_TEST:-0}
 SCHED_DEMO=${SCHED_DEMO:-0}
 EXT4_WRITE_TEST=${EXT4_WRITE_TEST:-0}
 NET_LOOPBACK_TEST=${NET_LOOPBACK_TEST:-0}
@@ -45,6 +46,9 @@ if [[ "${MODE}" == "release" ]]; then
 fi
 if [[ "${USER_TEST}" == "1" ]]; then
   CARGO_FLAGS+=(--features user-test)
+fi
+if [[ "${SHELL_TEST}" == "1" ]]; then
+  CARGO_FLAGS+=(--features user-shell)
 fi
 if [[ "${SCHED_DEMO}" == "1" ]]; then
   CARGO_FLAGS+=(--features sched-demo)

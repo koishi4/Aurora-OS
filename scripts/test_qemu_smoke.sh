@@ -127,6 +127,7 @@ if [[ "${FS_SMOKE_TEST}" == "1" ]]; then
 fi
 
 if [[ "${SHELL_TEST}" == "1" ]]; then
+  USER_TEST=0
   if [[ -z "${FS}" ]]; then
     SHELL_ELF="${ROOT}/build/shell.elf"
     SHELL_IMAGE="${ROOT}/build/rootfs-shell.ext4"
@@ -141,6 +142,9 @@ if [[ "${SHELL_TEST}" == "1" ]]; then
   if [[ "${EXPECT_SHELL}" == "0" ]]; then
     EXPECT_SHELL=1
   fi
+  if [[ -z "${EXPECT_EXT4_ISSUE}" ]]; then
+    EXPECT_EXT4_ISSUE=0
+  fi
 fi
 
 if ! command -v "${QEMU_BIN}" >/dev/null 2>&1; then
@@ -150,6 +154,7 @@ fi
 
 mkdir -p "${LOG_DIR}"
 export USER_TEST
+export SHELL_TEST
 export NET_LOOPBACK_TEST
 export TCP_ECHO_TEST
 export UDP_ECHO_TEST
