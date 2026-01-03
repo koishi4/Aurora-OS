@@ -18,7 +18,14 @@ const AT_FDCWD: isize = -100;
 const O_RDONLY: usize = 0;
 
 const PROMPT: &[u8] = b"aurora> ";
-const BANNER: &[u8] = b"\nAurora OS / shell\n\
+const BANNER: &[u8] = b"\n\
+    ___                       \n\
+   /   | __  __ _________  ___\n\
+  / /| |/ / / // ___/ __ \\/ _ \\\n\
+ / ___ / /_/ // /  / /_/ / // /\n\
+/_/  |_|\\__,_//_/   \\____/_//_/ \n\
+\n\
+Aurora OS / shell\n\
 -----------------\n\
 OS:       Aurora OS\n\
 Arch:     riscv64\n\
