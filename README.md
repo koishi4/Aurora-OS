@@ -315,6 +315,59 @@ FS=build/rootfs.ext4 make run ARCH=riscv64 PLATFORM=qemu
 启动后会显示 Aurora ASCII 图标与系统信息块（OS/Arch/Platform/Kernel/RootFS/Net/Shell），
 并进入 `aurora>` 提示符。
 
+示例输出（节选）与逐行说明：
+
+```text
+OpenSBI v1.3
+...（OpenSBI 版本/平台信息省略）
+Aurora kernel booting...
+hart_id=0x0 dtb=0x9fe00000
+dtb: uart base=0x10000000 size=0x100
+dtb: timebase-frequency=10000000Hz
+dtb: virtio-mmio base=0x10008000 size=0x1000 irq=8
+dtb: virtio-mmio base=0x10007000 size=0x1000 irq=7
+dtb: virtio-mmio base=0x10006000 size=0x1000 irq=6
+dtb: virtio-mmio base=0x10005000 size=0x1000 irq=5
+dtb: plic base=0xc000000 size=0x600000
+mm: memory base=0x80000000 size=0x20000000
+mm: frame allocator start=0x80791000 end=0xa0000000 pages=129135
+mm: paging enabled (sv39 identity map)
+timer: tick=10Hz interval=1000000 ticks
+vfs: mounted ext4 rootfs
+user: spawn init shell entry=0x40000452
+~~~~~~~~~~~~~~~~~.::::::.                              aurora@oscomp
+~~~~~~~~~~~~~~.::::::::::::.                       -----------------------
+~~~~~~~~~~~~.::::::----::::::.                     OS:       Aurora Kernel
+~~~~~~~~~~.::::::--------::::::.                   Arch:     riscv64gc
+~~~~~~~~.::::::----====----::::::.                 Platform: QEMU virt
+~~~~~~.::::::----========----::::::.               Kernel:   axruntime
+~~~~.::::::----==========----::::::.               FS:       ext4 / fat32
+~~~::::::----====++++====----::::::                Net:      virtio-net + smoltcp
+~~~'::::----====++++====----::::'                  Shell:    aurora-sh
+Type 'help' for commands.
+aurora>
+```
+
+逐行解释：
+- `OpenSBI v1.3`：固件版本号，来自 OpenSBI 引导层。
+- `Aurora kernel booting...`：内核启动主流程开始。
+- `hart_id=... dtb=...`：当前 CPU hart 与设备树地址。
+- `dtb: uart ...`：UART MMIO 位置，串口输出依赖它。
+- `dtb: timebase-frequency=...`：时钟频率，用于定时器初始化。
+- `dtb: virtio-mmio ...`：virtio 设备的 MMIO 地址与 IRQ。
+- `dtb: plic ...`：PLIC 中断控制器地址与范围。
+- `mm: memory base=... size=...`：内存物理区间。
+- `mm: frame allocator start=... end=... pages=...`：页帧分配器可用范围。
+- `mm: paging enabled (sv39 identity map)`：启用 Sv39 分页并建立恒等映射。
+- `timer: tick=... interval=...`：系统 tick 与定时器间隔。
+- `vfs: mounted ext4 rootfs`：ext4 根文件系统挂载完成。
+- `user: spawn init shell entry=...`：从 `/init` 启动 shell，入口地址。
+- 波纹 ASCII 左侧块：Aurora 视觉标识（与 README SVG 左侧图案一致）。
+- `aurora@oscomp`/分隔线：类 neofetch 头部信息。
+- `OS/Arch/Platform/Kernel/FS/Net/Shell`：shell 环境概览字段。
+- `Type 'help' for commands.`：提示可用命令列表。
+- `aurora>`：交互提示符，输入命令后回车执行。
+
 ---
 
 ## 网络与性能测试
