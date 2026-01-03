@@ -839,16 +839,15 @@ fn cmd_stat(line: &[u8], args: &[Arg], argc: usize) {
         write_errno(ret);
         return;
     }
-    let mode = st.st_mode & S_IFMT;
-    let kind = if mode == S_IFDIR {
-        b"dir"
-    } else if mode == S_IFLNK {
-        b"link"
-    } else {
-        b"file"
-    };
     write_stdout(b"type: ");
-    write_stdout(kind);
+    let mode = st.st_mode & S_IFMT;
+    if mode == S_IFDIR {
+        write_stdout(b"dir");
+    } else if mode == S_IFLNK {
+        write_stdout(b"link");
+    } else {
+        write_stdout(b"file");
+    }
     write_stdout(b" size: ");
     write_num(st.st_size.max(0) as usize);
     write_stdout(b"\r\n");
