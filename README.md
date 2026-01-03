@@ -252,6 +252,8 @@ make test-qemu-smoke ARCH=riscv64 PLATFORM=qemu FS=build/rootfs.ext4
 | `EXPECT_UDP_ECHO` | 检查 UDP echo 日志 | `1` |
 | `FS_SMOKE_TEST` | 文件系统冒烟测试 | `1` |
 | `EXPECT_FS_SMOKE` | 检查 FS smoke 日志 | `1` |
+| `SHELL_TEST` | 交互式 shell 冒烟测试 | `1` |
+| `EXPECT_SHELL` | 检查 shell banner 日志 | `1` |
 | `NET_LOOPBACK_TEST` | 触发内核 loopback 自测 | `1` |
 | `EXPECT_NET` | 检查 virtio-net ready 日志 | `1` |
 | `EXPECT_NET_LOOPBACK` | 检查 loopback 日志 | `1` |

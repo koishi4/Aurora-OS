@@ -26,6 +26,7 @@ help:
 	@printf "  NET=1        Enable virtio-net device in QEMU run/test\n"
 	@printf "  EXPECT_NET=1 Require virtio-net ready banner in smoke test\n"
 	@printf "  TCP_ECHO_TEST=1 Run user TCP echo test (requires NET=1 and ext4 rootfs)\n"
+	@printf "  SHELL_TEST=1  Run interactive shell smoke test (runs /shell as /init)\n"
 
 fmt:
 	@./scripts/fmt.sh

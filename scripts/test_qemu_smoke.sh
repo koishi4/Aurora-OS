@@ -23,6 +23,8 @@ UDP_ECHO_TEST=${UDP_ECHO_TEST:-0}
 EXPECT_UDP_ECHO=${EXPECT_UDP_ECHO:-0}
 FS_SMOKE_TEST=${FS_SMOKE_TEST:-0}
 EXPECT_FS_SMOKE=${EXPECT_FS_SMOKE:-0}
+SHELL_TEST=${SHELL_TEST:-0}
+EXPECT_SHELL=${EXPECT_SHELL:-0}
 EXPECT_EXT4_ISSUE=${EXPECT_EXT4_ISSUE:-}
 TARGET=riscv64gc-unknown-none-elf
 CRATE=axruntime
@@ -55,6 +57,10 @@ if [[ "${TCP_ECHO_TEST}" == "1" && "${UDP_ECHO_TEST}" == "1" ]]; then
 fi
 if [[ "${FS_SMOKE_TEST}" == "1" && ( "${TCP_ECHO_TEST}" == "1" || "${UDP_ECHO_TEST}" == "1" ) ]]; then
   echo "FS_SMOKE_TEST cannot be combined with TCP_ECHO_TEST or UDP_ECHO_TEST." >&2
+  exit 1
+fi
+if [[ "${SHELL_TEST}" == "1" && ( "${TCP_ECHO_TEST}" == "1" || "${UDP_ECHO_TEST}" == "1" || "${FS_SMOKE_TEST}" == "1" ) ]]; then
+  echo "SHELL_TEST cannot be combined with TCP_ECHO_TEST, UDP_ECHO_TEST, or FS_SMOKE_TEST." >&2
   exit 1
 fi
 
@@ -117,6 +123,23 @@ if [[ "${FS_SMOKE_TEST}" == "1" ]]; then
   fi
   if [[ "${EXPECT_FS_SMOKE}" == "0" ]]; then
     EXPECT_FS_SMOKE=1
+  fi
+fi
+
+if [[ "${SHELL_TEST}" == "1" ]]; then
+  if [[ -z "${FS}" ]]; then
+    SHELL_ELF="${ROOT}/build/shell.elf"
+    SHELL_IMAGE="${ROOT}/build/rootfs-shell.ext4"
+    MODE="${MODE}" OUT="${SHELL_ELF}" "${ROOT}/scripts/build_shell.sh"
+    INIT_ELF_SKIP_BUILD=1 INIT_ELF="${SHELL_ELF}" SHELL_ELF="${SHELL_ELF}" OUT="${SHELL_IMAGE}" \
+      "${ROOT}/scripts/mkfs_ext4.sh"
+    FS="${SHELL_IMAGE}"
+  fi
+  if [[ "${EXPECT_EXT4}" == "0" ]]; then
+    EXPECT_EXT4=1
+  fi
+  if [[ "${EXPECT_SHELL}" == "0" ]]; then
+    EXPECT_SHELL=1
   fi
 fi
 
@@ -214,6 +237,14 @@ fi
 if [[ "${EXPECT_INIT}" == "1" ]]; then
   if ! grep -q "init: ok" "${LOG_FILE}"; then
     echo "Smoke test failed: init banner not found." >&2
+    cat "${LOG_FILE}" >&2
+    exit 1
+  fi
+fi
+
+if [[ "${EXPECT_SHELL}" == "1" ]]; then
+  if ! grep -q "Aurora shell ready" "${LOG_FILE}"; then
+    echo "Smoke test failed: shell banner not found." >&2
     cat "${LOG_FILE}" >&2
     exit 1
   fi
