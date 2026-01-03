@@ -4,6 +4,8 @@
 
 面向 OSComp 内核赛道的 Rust 组件化操作系统内核工程。
 
+详情请参见[Project Aurora 内核设计手册.pdf](Project%20Aurora%20内核设计手册.pdf)
+
 ---
 
 ## 目录
