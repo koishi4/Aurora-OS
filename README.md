@@ -365,7 +365,7 @@ aurora>
 - 波纹 ASCII 左侧块：Aurora 视觉标识（与 README SVG 左侧图案一致）。
 - `aurora@oscomp`/分隔线：类 neofetch 头部信息。
 - `OS/Arch/Platform/Kernel/FS/Net/Shell`：shell 环境概览字段。
-- `Type 'help' for commands.`：提示可用命令列表。
+- `Type 'help' for commands.`：提示可用命令列表（help/echo/ls/cat/cd/pwd/exit/clear/head/tail/wc/stat/sleep/hexdump/touch/append）。
 - `aurora>`：交互提示符，输入命令后回车执行。
 
 ---
