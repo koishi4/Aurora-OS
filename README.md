@@ -308,8 +308,8 @@ make rootfs-ext4 OUT=build/rootfs.ext4 SIZE=16M
 
 ```bash
 ./scripts/build_shell.sh OUT=build/shell.elf
-INIT_ELF=build/shell.elf SHELL_ELF=build/shell.elf make rootfs-ext4 OUT=build/rootfs.ext4
-FS=build/rootfs.ext4 make run ARCH=riscv64 PLATFORM=qemu
+INIT_ELF_SKIP_BUILD=1 INIT_ELF=build/shell.elf SHELL_ELF=build/shell.elf make rootfs-ext4 OUT=build/rootfs.ext4
+SHELL_TEST=1 FS=build/rootfs.ext4 make run ARCH=riscv64 PLATFORM=qemu
 ```
 
 启动后会显示 Aurora ASCII 图标与系统信息块（OS/Arch/Platform/Kernel/RootFS/Net/Shell），
