@@ -138,7 +138,7 @@ fn read_line(buf: &mut [u8]) -> usize {
         }
         match ch {
             b'\r' => {
-                write_stdout(b"\n");
+                write_stdout(b"\r\n");
                 // SAFETY: single-threaded user shell input handling.
                 unsafe {
                     SKIP_LF = true;
@@ -146,7 +146,7 @@ fn read_line(buf: &mut [u8]) -> usize {
                 break;
             }
             b'\n' => {
-                write_stdout(b"\n");
+                write_stdout(b"\r\n");
                 break;
             }
             0x08 | 0x7f => {
@@ -400,6 +400,7 @@ fn cmd_cat(line: &[u8], args: &[Arg], argc: usize) {
 
 fn write_prompt() {
     let mut buf = [0u8; IO_BUF_LEN];
+    write_stdout(b"\r");
     // SAFETY: syscall arguments follow the expected ABI and pointers are valid.
     let ret = unsafe { syscall6(SYS_GETCWD, buf.as_mut_ptr() as usize, buf.len(), 0, 0, 0, 0) };
     if ret > 1 {
