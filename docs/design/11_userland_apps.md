@@ -16,6 +16,7 @@
 - 网络测试：iperf3 作为吞吐基线，redis 作为请求/响应基线（get/set、pipeline）。
 - staging：`scripts/stage_userland_apps.sh` 支持将已构建的 iperf3/redis 二进制写入 rootfs 目录（通过 `EXTRA_ROOTFS_DIR` 进入 ext4 镜像）。
 - 构建脚本：`scripts/build_iperf3.sh`/`scripts/build_redis.sh` 支持本地静态交叉编译（需要已下载的源码目录与 riscv64 交叉工具链）。
+- 交互式 shell：提供 `apps/shell` 作为最小交互入口，覆盖 `read/write/openat/getdents64/chdir/getcwd` 等 syscall，便于手工验证 FS 与终端交互。
 
 ## 覆盖矩阵（初稿）
 | syscall | iperf3 | redis | 备注 |

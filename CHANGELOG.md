@@ -85,6 +85,7 @@
 - Route openat/newfstatat path resolution through memfs metadata.
 - Add memfs unit tests for path resolution and metadata.
 - Add `apps/net_bench` and `scripts/build_net_bench.sh` as a lightweight TCP throughput sink for the net perf harness.
+- Add `apps/shell` and `scripts/build_shell.sh` for a minimal interactive user shell (help/ls/cat/cd/pwd/echo/exit).
 - Update net perf baseline script to enable USER_TEST and ext4 mount checks so `/init` executes under QEMU.
 - Add INIT_ELF_SKIP_BUILD to mkfs_ext4 so custom `/init` binaries are not overwritten.
 - Teach net perf baseline to archive the QEMU log and validate PERF_EXPECT markers against it.

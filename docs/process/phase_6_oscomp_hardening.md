@@ -25,6 +25,7 @@
 - 增加 epoll/eventfd/timerfd 最小语义支持，方便后续用户态事件循环与定时器适配。
 - 增加 `scripts/stage_userland_apps.sh`，用于将本地静态构建的 iperf3/redis 写入 rootfs 目录。
 - 增加 `scripts/build_iperf3.sh`/`scripts/build_redis.sh` 交叉编译脚本，便于后续应用基准集成。
+- 新增 `apps/shell` 交互式用户态程序，覆盖 stdin/stdout 与基础 FS 命令，便于手工回归验证。
 
 ## 问题与定位
 - 尚未进入测例加固阶段，暂无问题记录。

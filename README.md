@@ -282,6 +282,7 @@ make rootfs-ext4 OUT=build/rootfs.ext4 SIZE=16M
 
 - `INIT_ELF`：指定 `/init` ELF
 - `TCP_ECHO_ELF` / `UDP_ECHO_ELF` / `FS_SMOKE_ELF`：附加测试程序
+- `SHELL_ELF`：附加交互式 shell 到 `/shell`
 - `EXTRA_ROOTFS_DIR`：将目录整体拷贝进 rootfs
 
 ### 新增用户态程序流程
@@ -299,6 +300,15 @@ make rootfs-ext4 OUT=build/rootfs.ext4 SIZE=16M
 | `udp_echo` | UDP echo 覆盖 send/recv/msg | `scripts/build_udp_echo.sh` | `UDP_ECHO_TEST=1 make test-qemu-smoke ...` |
 | `fs_smoke` | 文件系统读写/seek/IOV | `scripts/build_fs_smoke.sh` | `FS_SMOKE_TEST=1 make test-qemu-smoke ...` |
 | `net_bench` | 简易吞吐接收端（性能基线） | `scripts/build_net_bench.sh` | `make test-net-perf ...` |
+| `shell` | 交互式 shell（help/ls/cat/cd/pwd/echo/exit） | `scripts/build_shell.sh` | `INIT_ELF=build/shell.elf make rootfs-ext4 ...` |
+
+交互式 shell 运行示例：
+
+```bash
+./scripts/build_shell.sh OUT=build/shell.elf
+INIT_ELF=build/shell.elf SHELL_ELF=build/shell.elf make rootfs-ext4 OUT=build/rootfs.ext4
+FS=build/rootfs.ext4 make run ARCH=riscv64 PLATFORM=qemu
+```
 
 ---
 
