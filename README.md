@@ -312,6 +312,9 @@ INIT_ELF=build/shell.elf SHELL_ELF=build/shell.elf make rootfs-ext4 OUT=build/ro
 FS=build/rootfs.ext4 make run ARCH=riscv64 PLATFORM=qemu
 ```
 
+启动后会显示 Aurora ASCII 图标与系统信息块（OS/Arch/Platform/Kernel/RootFS/Net/Shell），
+并进入 `aurora>` 提示符。
+
 ---
 
 ## 网络与性能测试
