@@ -181,12 +181,6 @@ sudo apt-get install -y build-essential clang lld qemu-system-riscv64 gdb-multia
 rustup target add riscv64gc-unknown-none-elf
 ```
 
-> **建议使用docker**：
-
-`docker build -t aurora-os-env .`
-
-`docker run -it --rm -v "$(pwd):/aurora-os" aurora-os-env`
-
 ---
 
 ## 构建/运行/测试
